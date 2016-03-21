@@ -305,6 +305,10 @@ if (cookie) {
   addrs = cookie["addrs"];
   pks = cookie["pks"];
   selectedAddr = cookie["selectedAddr"];
+} else {
+  addrs = [config.eth_addr];
+  pks = [config.eth_addr_pk];
+  selectedAddr = 0;
 }
 var nonce = undefined;
 var funds = 0;
