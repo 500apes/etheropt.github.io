@@ -300,15 +300,14 @@ Main.refresh = function() {
 
 //globals
 var cookie = Main.readCookie("user");
+var addrs = [config.eth_addr];
+var pks = [config.eth_addr_pk];
+var selectedAddr = 0;
 if (cookie) {
   cookie = JSON.parse(cookie);
   addrs = cookie["addrs"];
   pks = cookie["pks"];
   selectedAddr = cookie["selectedAddr"];
-} else {
-  addrs = [config.eth_addr];
-  pks = [config.eth_addr_pk];
-  selectedAddr = 0;
 }
 var nonce = undefined;
 var funds = 0;
