@@ -300,10 +300,10 @@ Main.refresh = function() {
 }
 
 //globals
-var cookie = Main.readCookie("user");
 var addrs = [config.eth_addr];
 var pks = [config.eth_addr_pk];
 var selectedAddr = 0;
+var cookie = Main.readCookie("user");
 if (cookie) {
   cookie = JSON.parse(cookie);
   addrs = cookie["addrs"];
