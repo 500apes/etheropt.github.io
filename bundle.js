@@ -344,7 +344,6 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-config.home_url = 'http://localhost:8080';
 config.contract_market = 'market.sol';
 config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
 config.domain = undefined;
@@ -352,7 +351,6 @@ config.port = 8081;
 config.eth_testnet = true;
 config.eth_provider = 'http://localhost:8545';
 config.eth_addr = '0x0000000000000000000000000000000000000000';
-config.eth_addr = '0x18e79a47d8a58bef5aaecbba85ea1420649c64a8';
 config.eth_addr_pk = '';
 
 try {
@@ -61371,7 +61369,15 @@ function sign(web3, address, value, privateKey, callback) {
   if (typeof(privateKey) != 'undefined') {
     if (privateKey.substring(0,2)=='0x') privateKey = privateKey.substring(2,privateKey.length);
     if (value.substring(0,2)=='0x') value = value.substring(2,value.length);
-  	var sig = ethUtil.ecsign(new Buffer(value, 'hex'), new Buffer(privateKey, 'hex'));
+    try {
+      var sig = ethUtil.ecsign(new Buffer(value, 'hex'), new Buffer(privateKey, 'hex'));
+    } catch (err) {
+      if (typeof(callback)!='undefined') {
+        callback(undefined);
+      } else {
+        return undefined;
+      }
+    }
     var r = '0x'+sig.r.toString('hex');
     var s = '0x'+sig.s.toString('hex');
     var v = sig.v;
@@ -61384,11 +61390,15 @@ function sign(web3, address, value, privateKey, callback) {
   } else {
     if (typeof(callback)!='undefined') {
       web3.eth.sign(address, value, function(err, sig) {
-        var r = sig.slice(0, 66);
-        var s = '0x' + sig.slice(66, 130);
-        var v = web3.toDecimal('0x' + sig.slice(130, 132));
-        if (v!=27 && v!=28) v+=27;
-        callback({r: r, s: s, v: v});
+        try {
+          var r = sig.slice(0, 66);
+          var s = '0x' + sig.slice(66, 130);
+          var v = web3.toDecimal('0x' + sig.slice(130, 132));
+          if (v!=27 && v!=28) v+=27;
+          callback({r: r, s: s, v: v});
+        } catch (err) {
+          callback(undefined);
+        }
       });
     } else {
       var sig = web3.eth.sign(address, value);
@@ -61396,7 +61406,11 @@ function sign(web3, address, value, privateKey, callback) {
       var s = '0x' + sig.slice(66, 130);
       var v = web3.toDecimal('0x' + sig.slice(130, 132));
       if (v!=27 && v!=28) v+=27;
-      return {r: r, s: s, v: v};
+      try {
+        return {r: r, s: s, v: v};
+      } catch (err) {
+        return undefined;
+      }
     }
   }
 }
