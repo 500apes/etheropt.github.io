@@ -71,29 +71,6 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
   this.server = http.Server(this.app);
 	this.server.timeout = 1000*10;
 	this.server.listen(this.port);
-  this.app.get('/', function(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.writeHead(200);
-    res.end(JSON.stringify(self.mm_orders.concat(self.received_orders)));
-	});
-  this.app.post('/', function(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    var blockNumber = web3.eth.blockNumber;
-    try {
-      var new_orders = req.body.orders;
-      new_orders = new_orders.filter(function(order){
-        var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
-        var hash = '0x'+sha256(new Buffer(condensed,'hex'));
-        var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
-        return blockNumber<=order.blockExpires && verified && hash==order.hash;
-      });
-      self.received_orders = self.received_orders.concat(new_orders);
-    } catch(err) {
-      console.log(err);
-    }
-    res.writeHead(200);
-    res.end(undefined);
-	});
 
   web3 = new Web3();
   web3.setProvider(new web3.providers.HttpProvider(config.eth_provider));
@@ -104,6 +81,39 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 	  web3.eth.defaultAccount = config.eth_addr;
 	  var myContract = web3.eth.contract(abi);
 	  myContract = myContract.at(config.contract_market_addr);
+
+    //responders
+    self.app.get('/', function(req, res) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.writeHead(200);
+      res.end(JSON.stringify(self.mm_orders.concat(self.received_orders)));
+  	});
+    self.app.post('/', function(req, res) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      var blockNumber = web3.eth.blockNumber;
+      try {
+        var new_orders = req.body.orders;
+        async.each(new_orders, function(order, callback_each) {
+          var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
+          var hash = '0x'+sha256(new Buffer(condensed,'hex'));
+          var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+          utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
+            var balance = result.toNumber();
+            utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMaxLossAfterTrade', [order.addr, order.optionChainID, order.optionID, order.size, -order.size*order.price], function(result) {
+              balance = balance + result.toNumber();
+              if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+                self.received_orders.push(order);
+              }
+              callback_each(null);
+            });
+          });
+        });
+      } catch(err) {
+        console.log(err);
+      }
+      res.writeHead(200);
+      res.end(undefined);
+  	});
 
 		//publish server address
 		utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMarketMakers', [], function(result) {

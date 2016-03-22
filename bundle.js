@@ -86,7 +86,8 @@ Main.order = function(option, price, size, order) {
   order = JSON.parse(order);
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
-  if (order && price==order.price && ((size>0 && order.size<0) || (size<0 && order.size>0)) && Math.abs(size)<=Math.abs(order.size)) {
+  if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price)) && Math.abs(size)<=Math.abs(order.size)) {
+    price = order.price;
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], size], function(result) {
       if (result) {
         utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, size, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
