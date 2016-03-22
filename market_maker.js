@@ -22,7 +22,7 @@ if (cli_options.help) {
 	console.log(cli.getUsage());
 } else {
 	var server = new server.Server(cli_options.domain, cli_options.port, cli_options.eth_addr, cli_options.armed,
-    function (callback) {
+    function (existing_pricer_data, callback) {
       callback();
     },
     function(option, pricer_data) {
