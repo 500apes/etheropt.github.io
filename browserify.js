@@ -79,12 +79,13 @@ Main.deleteAddress = function() {
   selectedAddr = 0;
   Main.refresh();
 }
-Main.buy = function(order, price, size) {
+Main.order = function(option, price, size, order) {
+  option = JSON.parse(option);
   order = JSON.parse(order);
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
-  if (price==order.price && size>0 && order.size<0 && size<=Math.abs(order.size)) {
-    size = +size;
+  if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price)) && Math.abs(size)<=Math.abs(order.size)) {
+    price = order.price;
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], size], function(result) {
       if (result) {
         utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, size, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
@@ -94,18 +95,25 @@ Main.buy = function(order, price, size) {
         });
       }
     });
-  }
-}
-Main.sell = function(order, price, size) {
-  order = JSON.parse(order);
-  size = utility.ethToWei(size);
-  price = price * 1000000000000000000;
-  if (price==order.price && size>0 && order.size>0 && size<=Math.abs(order.size)) {
-    size = -size;
-    utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, size, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-      txHash = result[0];
-      nonce = result[1];
-      Main.alertTxHash(txHash);
+  } else {
+    utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMarketMakers', [], function(result) {
+      var market_makers = result.filter(function(x){return x!=''});
+      var blockNumber = web3.eth.blockNumber;
+			var orderID = utility.getRandomInt(0,Math.pow(2,64));
+      var blockExpires = blockNumber + 10;
+      var condensed = utility.pack([option.optionChainID, option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
+      var hash = sha256(new Buffer(condensed,'hex'));
+      var sig = utility.sign(web3, addrs[selectedAddr], hash, undefined);
+      var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+      async.each(market_makers,
+        function(market_maker, callback) {
+          request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
+            callback(null);
+          });
+        },
+        function(err) {
+        }
+      );
     });
   }
 }

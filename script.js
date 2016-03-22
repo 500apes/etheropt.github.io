@@ -23,9 +23,11 @@ $(function () {
     $('body').on('click', '#buy_submit', function (e) {
         e.preventDefault();
         $('#buy_modal').modal('hide');
-        bundle.Main.buy($('#buy_order').val(), $('#buy_price').val(), $('#buy_size').val());
+        bundle.Main.order($('#buy_option').val(), $('#buy_price').val(), $('#buy_size').val(), $('#buy_order').val());
     });
     $('#buy_modal').on('show.bs.modal', function(e) {
+        var option = JSON.stringify($(e.relatedTarget).data('option'));
+        $(e.currentTarget).find('input[id="buy_option"]').val(option);
         var order = JSON.stringify($(e.relatedTarget).data('order'));
         $(e.currentTarget).find('input[id="buy_order"]').val(order);
         var price = $(e.relatedTarget).data('price');
@@ -40,9 +42,11 @@ $(function () {
     $('body').on('click', '#sell_submit', function (e) {
         e.preventDefault();
         $('#sell_modal').modal('hide');
-        bundle.Main.sell($('#sell_order').val(), $('#sell_price').val(), $('#sell_size').val());
+        bundle.Main.order($('#sell_option').val(), $('#sell_price').val(), -$('#sell_size').val(), $('#sell_order').val());
     });
     $('#sell_modal').on('show.bs.modal', function(e) {
+        var option = JSON.stringify($(e.relatedTarget).data('option'));
+        $(e.currentTarget).find('input[id="sell_option"]').val(option);
         var order = JSON.stringify($(e.relatedTarget).data('order'));
         $(e.currentTarget).find('input[id="sell_order"]').val(order);
         var price = $(e.relatedTarget).data('price');

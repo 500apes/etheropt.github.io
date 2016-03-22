@@ -164,23 +164,50 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
   }
 }
 
-function sign(web3, address, value, privateKey) {
+function sign(web3, address, value, privateKey, callback) {
   if (typeof(privateKey) != 'undefined') {
-    if (privateKey.substring(0,2)=='0x') {
-      privateKey = privateKey.substring(2,privateKey.length);
-    }
+    if (privateKey.substring(0,2)=='0x') privateKey = privateKey.substring(2,privateKey.length);
+    if (value.substring(0,2)=='0x') value = value.substring(2,value.length);
   	var sig = ethUtil.ecsign(new Buffer(value, 'hex'), new Buffer(privateKey, 'hex'));
     var r = '0x'+sig.r.toString('hex');
     var s = '0x'+sig.s.toString('hex');
     var v = sig.v;
-    return {r: r, s: s, v: v};
+    var result = {r: r, s: s, v: v};
+    if (typeof(callback)!='undefined') {
+      callback(result);
+    } else {
+      return result;
+    }
   } else {
-    var sig = web3.eth.sign(address, value);
-    var r = sig.slice(0, 66);
-    var s = '0x' + sig.slice(66, 130);
-    var v = web3.toDecimal('0x' + sig.slice(130, 132));
-    if (v!=27 && v!=28) v+=27;
-    return {r: r, s: s, v: v};
+    if (typeof(callback)!='undefined') {
+      web3.eth.sign(address, value, function(err, sig) {
+        var r = sig.slice(0, 66);
+        var s = '0x' + sig.slice(66, 130);
+        var v = web3.toDecimal('0x' + sig.slice(130, 132));
+        if (v!=27 && v!=28) v+=27;
+        callback({r: r, s: s, v: v});
+      });
+    } else {
+      var sig = web3.eth.sign(address, value);
+      var r = sig.slice(0, 66);
+      var s = '0x' + sig.slice(66, 130);
+      var v = web3.toDecimal('0x' + sig.slice(130, 132));
+      if (v!=27 && v!=28) v+=27;
+      return {r: r, s: s, v: v};
+    }
+  }
+}
+
+function verify(web3, address, v, r, s, value, callback) {
+  if (r.substring(0,2)=='0x') r=r.substring(2,r.length);
+  if (s.substring(0,2)=='0x') s=s.substring(2,s.length);
+  if (value.substring(0,2)=='0x') value=value.substring(2,value.length);
+  var pubKey = ethUtil.ecrecover(new Buffer(value, 'hex'), Number(v), new Buffer(r, 'hex'), new Buffer(s, 'hex'));
+  var result = address == '0x'+ethUtil.pubToAddress(new Buffer(pubKey, 'hex')).toString('hex');
+  if (callback) {
+    callback(result);
+  } else {
+    return result;
   }
 }
 
@@ -437,6 +464,7 @@ exports.proxyGetBalance = proxyGetBalance;
 exports.proxySend = proxySend;
 exports.proxyCall = proxyCall;
 exports.sign = sign;
+exports.verify = verify;
 exports.createAddress = createAddress;
 exports.verifyPrivateKey = verifyPrivateKey;
 exports.readFile = readFile;

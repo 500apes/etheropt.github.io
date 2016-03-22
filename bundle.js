@@ -1,4 +1,5 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.bundle = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
+(function (Buffer){
 var Web3 = _dereq_('web3');
 var utility = _dereq_('./utility.js');
 var request = _dereq_('request');
@@ -80,12 +81,12 @@ Main.deleteAddress = function() {
   selectedAddr = 0;
   Main.refresh();
 }
-Main.buy = function(order, price, size) {
+Main.order = function(option, price, size, order) {
+  option = JSON.parse(option);
   order = JSON.parse(order);
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
-  if (price==order.price && size>0 && order.size<0 && size<=Math.abs(order.size)) {
-    size = +size;
+  if (order && price==order.price && ((size>0 && order.size<0) || (size<0 && order.size>0)) && Math.abs(size)<=Math.abs(order.size)) {
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], size], function(result) {
       if (result) {
         utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, size, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
@@ -95,18 +96,25 @@ Main.buy = function(order, price, size) {
         });
       }
     });
-  }
-}
-Main.sell = function(order, price, size) {
-  order = JSON.parse(order);
-  size = utility.ethToWei(size);
-  price = price * 1000000000000000000;
-  if (price==order.price && size>0 && order.size>0 && size<=Math.abs(order.size)) {
-    size = -size;
-    utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, size, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-      txHash = result[0];
-      nonce = result[1];
-      Main.alertTxHash(txHash);
+  } else {
+    utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMarketMakers', [], function(result) {
+      var market_makers = result.filter(function(x){return x!=''});
+      var blockNumber = web3.eth.blockNumber;
+			var orderID = utility.getRandomInt(0,Math.pow(2,64));
+      var blockExpires = blockNumber + 10;
+      var condensed = utility.pack([option.optionChainID, option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
+      var hash = sha256(new Buffer(condensed,'hex'));
+      var sig = utility.sign(web3, addrs[selectedAddr], hash, undefined);
+      var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+      async.each(market_makers,
+        function(market_maker, callback) {
+          request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
+            callback(null);
+          });
+        },
+        function(err) {
+        }
+      );
     });
   }
 }
@@ -329,12 +337,13 @@ utility.readFile(config.contract_market+'.compiled', function(result){
 
 module.exports = {Main: Main, utility: utility};
 
-},{"./utility.js":259,"async":11,"async/dist/async.min.js":10,"js-sha256":131,"request":158,"web3":208}],2:[function(_dereq_,module,exports){
+}).call(this,_dereq_("buffer").Buffer)
+},{"./utility.js":259,"async":11,"async/dist/async.min.js":10,"buffer":344,"js-sha256":131,"request":158,"web3":208}],2:[function(_dereq_,module,exports){
 (function (global){
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-// config.home_url = 'http://localhost:8080';
+config.home_url = 'http://localhost:8080';
 config.contract_market = 'market.sol';
 config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
 config.domain = undefined;
@@ -342,7 +351,7 @@ config.port = 8081;
 config.eth_testnet = true;
 config.eth_provider = 'http://localhost:8545';
 config.eth_addr = '0x0000000000000000000000000000000000000000';
-// config.eth_addr = '0x18e79a47d8a58bef5aaecbba85ea1420649c64a8';
+config.eth_addr = '0x18e79a47d8a58bef5aaecbba85ea1420649c64a8';
 config.eth_addr_pk = '';
 
 try {
@@ -61357,23 +61366,50 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
   }
 }
 
-function sign(web3, address, value, privateKey) {
+function sign(web3, address, value, privateKey, callback) {
   if (typeof(privateKey) != 'undefined') {
-    if (privateKey.substring(0,2)=='0x') {
-      privateKey = privateKey.substring(2,privateKey.length);
-    }
+    if (privateKey.substring(0,2)=='0x') privateKey = privateKey.substring(2,privateKey.length);
+    if (value.substring(0,2)=='0x') value = value.substring(2,value.length);
   	var sig = ethUtil.ecsign(new Buffer(value, 'hex'), new Buffer(privateKey, 'hex'));
     var r = '0x'+sig.r.toString('hex');
     var s = '0x'+sig.s.toString('hex');
     var v = sig.v;
-    return {r: r, s: s, v: v};
+    var result = {r: r, s: s, v: v};
+    if (typeof(callback)!='undefined') {
+      callback(result);
+    } else {
+      return result;
+    }
   } else {
-    var sig = web3.eth.sign(address, value);
-    var r = sig.slice(0, 66);
-    var s = '0x' + sig.slice(66, 130);
-    var v = web3.toDecimal('0x' + sig.slice(130, 132));
-    if (v!=27 && v!=28) v+=27;
-    return {r: r, s: s, v: v};
+    if (typeof(callback)!='undefined') {
+      web3.eth.sign(address, value, function(err, sig) {
+        var r = sig.slice(0, 66);
+        var s = '0x' + sig.slice(66, 130);
+        var v = web3.toDecimal('0x' + sig.slice(130, 132));
+        if (v!=27 && v!=28) v+=27;
+        callback({r: r, s: s, v: v});
+      });
+    } else {
+      var sig = web3.eth.sign(address, value);
+      var r = sig.slice(0, 66);
+      var s = '0x' + sig.slice(66, 130);
+      var v = web3.toDecimal('0x' + sig.slice(130, 132));
+      if (v!=27 && v!=28) v+=27;
+      return {r: r, s: s, v: v};
+    }
+  }
+}
+
+function verify(web3, address, v, r, s, value, callback) {
+  if (r.substring(0,2)=='0x') r=r.substring(2,r.length);
+  if (s.substring(0,2)=='0x') s=s.substring(2,s.length);
+  if (value.substring(0,2)=='0x') value=value.substring(2,value.length);
+  var pubKey = ethUtil.ecrecover(new Buffer(value, 'hex'), Number(v), new Buffer(r, 'hex'), new Buffer(s, 'hex'));
+  var result = address == '0x'+ethUtil.pubToAddress(new Buffer(pubKey, 'hex')).toString('hex');
+  if (callback) {
+    callback(result);
+  } else {
+    return result;
   }
 }
 
@@ -61630,6 +61666,7 @@ exports.proxyGetBalance = proxyGetBalance;
 exports.proxySend = proxySend;
 exports.proxyCall = proxyCall;
 exports.sign = sign;
+exports.verify = verify;
 exports.createAddress = createAddress;
 exports.verifyPrivateKey = verifyPrivateKey;
 exports.readFile = readFile;
