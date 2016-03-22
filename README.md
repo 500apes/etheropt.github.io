@@ -30,9 +30,9 @@ Anyone can add an option chain by calling the addOptionChain() function. There i
 
 Market makers
 ----------
-The order book for Etheropt is maintained in a distributed fashion by a collection of users called market makers who are responsible for making markets and maintaining an order book of resting orders. Anyone can become a market maker by running [market_maker.js] using node. When run with the --armed parameter, this file will send a transaction to the smart contract indicating that the user wishes to become a market maker. The smart contract can handle at most 6 market makers. If there are already 6 market makers, someone can only become a market maker if the balance in his account exceeds the smallest balance of the other market makers, in which case he will replace the market maker with the smallest balance.
+The order book for Etheropt is maintained in a distributed fashion by a collection of users called market makers who are responsible for making markets and maintaining an order book of resting orders. Anyone can become a market maker by running [market_maker.js](market_maker.js) using node. When run with the --armed parameter, this file will send a transaction to the smart contract indicating that the user wishes to become a market maker. The smart contract can handle at most 6 market makers. If there are already 6 market makers, someone can only become a market maker if the balance in his account exceeds the smallest balance of the other market makers, in which case he will replace the market maker with the smallest balance.
 
-A market maker is responsible for making markets, maintaining an order book of resting orders, and publishing this data via a small server. The [market_maker.js] script does all of this automatically. The market making strategy currently makes markets as wide as possible. Individuals are free to modify the script and provide tighter markets.
+A market maker is responsible for making markets, maintaining an order book of resting orders, and publishing this data via a small server. The [market_maker.js](market_maker.js) script does all of this automatically. The market making strategy currently makes markets as wide as possible. Individuals are free to modify the script and provide tighter markets.
 
 Placing orders
 ----------
