@@ -86,7 +86,9 @@ Main.order = function(option, price, size, order) {
   order = JSON.parse(order);
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
+  console.log('a');
   if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price)) && Math.abs(size)<=Math.abs(order.size)) {
+    console.log('b');
     price = order.price;
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], size], function(result) {
       if (result) {
@@ -98,7 +100,9 @@ Main.order = function(option, price, size, order) {
       }
     });
   } else {
+    console.log('c');
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMarketMakers', [], function(result) {
+      console.log('d');
       var market_makers = result.filter(function(x){return x!=''});
       var blockNumber = web3.eth.blockNumber;
 			var orderID = utility.getRandomInt(0,Math.pow(2,64));
