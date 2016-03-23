@@ -344,7 +344,7 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-config.home_url = 'http://localhost:8080';
+// config.home_url = 'http://localhost:8080';
 config.contract_market = 'market.sol';
 config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
 config.domain = undefined;
