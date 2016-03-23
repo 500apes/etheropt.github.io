@@ -118,14 +118,13 @@ Main.order = function(option, price, size, order) {
             } else if (balance<=0) {
               Main.alertInfo('You do not have the funds to place this order.');
             } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
-              Main.alertInfo('Your order has been sent to the order book.');
               async.each(market_makers,
                 function(market_maker, callback) {
                   request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
-                    callback(null);
                   });
                 },
                 function(err) {
+                  Main.alertInfo('Your order has been sent to the order book.');
                 }
               );
             }
