@@ -383,7 +383,7 @@ config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
 config.domain = undefined;
 config.port = 8081;
 config.eth_testnet = true;
-config.eth_provider = 'http://localhost:8546';
+config.eth_provider = 'http://localhost:8545';
 config.eth_addr = '0x0000000000000000000000000000000000000000';
 config.eth_addr_pk = '';
 
@@ -61275,7 +61275,6 @@ function readFile(filename, callback) {
         });
       } else {
         request.get(config.home_url+"/"+filename, function(err, httpResponse, body){
-          console.log(filename+' '+body);
           callback(body);
         });
       }
