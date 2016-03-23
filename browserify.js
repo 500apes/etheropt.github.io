@@ -85,16 +85,15 @@ Main.order = function(option, price, size, order) {
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
   var matchSize = 0;
-  if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price)) && Math.abs(size)<=Math.abs(order.size)) {
+  if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price))) {
     if (Math.abs(size)<=Math.abs(order.size)) {
       matchSize = size;
     } else {
       matchSize = -order.size;
     }
     size = size - matchSize;
-    console.log('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
+    Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], matchSize], function(result) {
-      console.log(result);
       if (result) {
         utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
           txHash = result[0];

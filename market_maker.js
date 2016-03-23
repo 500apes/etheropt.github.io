@@ -26,6 +26,13 @@ if (cli_options.help) {
       callback();
     },
     function(option, pricer_data) {
+			var today = Date.now();
+			var expiration = Date.parse(option.expiration+" 00:00:00 UTC");
+			var t_days = (expiration - today)/86400000.0;
+			var t = t_days / 365.0;
+
+			if (t<=0) return undefined;
+
       var buy_price = 0.0001;
       var sell_price = option.margin;
       var buy_size = utility.ethToWei(1);

@@ -87,16 +87,15 @@ Main.order = function(option, price, size, order) {
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
   var matchSize = 0;
-  if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price)) && Math.abs(size)<=Math.abs(order.size)) {
+  if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price))) {
     if (Math.abs(size)<=Math.abs(order.size)) {
       matchSize = size;
     } else {
       matchSize = -order.size;
     }
     size = size - matchSize;
-    console.log('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
+    Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], matchSize], function(result) {
-      console.log(result);
       if (result) {
         utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
           txHash = result[0];
@@ -377,7 +376,7 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-config.home_url = 'http://localhost:8080';
+// config.home_url = 'http://localhost:8080';
 config.contract_market = 'market.sol';
 config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
 config.domain = undefined;
@@ -61388,7 +61387,8 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
           }
           options.nonce = nonce;
           options.to = address;
-          options.data = '0x' + sha3(functionName+"()").slice(0, 8) + coder.encodeParams(inputTypes, args);
+          var typeName = inputTypes.join();
+          options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
           var tx = new Tx(options);
           tx.sign(new Buffer(privateKey, 'hex'));
           var serializedTx = tx.serialize().toString('hex');

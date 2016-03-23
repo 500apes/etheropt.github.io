@@ -153,7 +153,8 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
           }
           options.nonce = nonce;
           options.to = address;
-          options.data = '0x' + sha3(functionName+"()").slice(0, 8) + coder.encodeParams(inputTypes, args);
+          var typeName = inputTypes.join();
+          options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
           var tx = new Tx(options);
           tx.sign(new Buffer(privateKey, 'hex'));
           var serializedTx = tx.serialize().toString('hex');
