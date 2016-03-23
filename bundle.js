@@ -124,8 +124,10 @@ Main.selectAddress = function(i) {
   Main.refresh();
 }
 Main.addAddress = function(addr, pk) {
+  if (addr.slice(0,2)!='0x') addr = '0x'+addr;
+  if (pk.slice(0,2)=='0x') pk = pk.slice(2);
   if (pk!=undefined && pk!='' && !utility.verifyPrivateKey(addr, pk)) {
-    Main.alertInfo('For account '+addr+' , the private key is invalid.');
+    Main.alertInfo('For account '+addr+', the private key is invalid.');
   } else if (!web3.isAddress(addr)) {
     Main.alertInfo('The specified address, '+addr+', is invalid.');
   } else {
