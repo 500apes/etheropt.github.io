@@ -103,7 +103,7 @@ Main.order = function(option, price, size, order) {
       var blockExpires = blockNumber + 10;
       var condensed = utility.pack([option.optionChainID, option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
       var hash = sha256(new Buffer(condensed,'hex'));
-      var sig = utility.sign(web3, addrs[selectedAddr], hash, undefined);
+      var sig = utility.sign(web3, addrs[selectedAddr], hash, pks[selectedAddr]);
       var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
       async.each(market_makers,
         function(market_maker, callback) {
