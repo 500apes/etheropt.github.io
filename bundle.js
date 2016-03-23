@@ -344,6 +344,7 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
+config.home_url = 'http://localhost:8080';
 config.contract_market = 'market.sol';
 config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
 config.domain = undefined;
@@ -61329,6 +61330,9 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
                 nonce = parseInt(result['result'][i]['nonce']);
               }
             }
+            if (nonce==undefined) {
+              nonce = 0;
+            }
           } catch (err) {
             nonce = 0;
           }
@@ -61344,7 +61348,11 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
       },
       function (err) {
         if (!err) {
-          nonce = nonce + 1;
+          if (nonce==undefined || nonce<=0){
+            nonce = config.testnet ? 1048576 : 0; //initial nonce is 2^20 for testnet, 0 for livenet
+          } else {
+            nonce = nonce + 1;
+          }
           options.nonce = nonce;
           options.to = address;
           options.data = '0x' + sha3(functionName+"()").slice(0, 8) + coder.encodeParams(inputTypes, args);

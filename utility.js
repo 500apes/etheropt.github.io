@@ -128,6 +128,9 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
                 nonce = parseInt(result['result'][i]['nonce']);
               }
             }
+            if (nonce==undefined) {
+              nonce = 0;
+            }
           } catch (err) {
             nonce = 0;
           }
@@ -143,7 +146,11 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
       },
       function (err) {
         if (!err) {
-          nonce = nonce + 1;
+          if (nonce==undefined || nonce<=0){
+            nonce = config.testnet ? 1048576 : 0; //initial nonce is 2^20 for testnet, 0 for livenet
+          } else {
+            nonce = nonce + 1;
+          }
           options.nonce = nonce;
           options.to = address;
           options.data = '0x' + sha3(functionName+"()").slice(0, 8) + coder.encodeParams(inputTypes, args);
