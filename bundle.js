@@ -86,18 +86,28 @@ Main.order = function(option, price, size, order) {
   order = JSON.parse(order);
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
+  var matchSize = 0;
   if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price)) && Math.abs(size)<=Math.abs(order.size)) {
-    price = order.price;
-    utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], size], function(result) {
+    if (Math.abs(size)<=Math.abs(order.size)) {
+      matchSize = size;
+    } else {
+      matchSize = -order.size;
+    }
+    size = size - matchSize;
+    console.log('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
+    utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], matchSize], function(result) {
+      console.log(result);
       if (result) {
-        utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, size, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+        utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
           txHash = result[0];
           nonce = result[1];
           Main.alertTxHash(txHash);
         });
       }
     });
-  } else {
+  }
+  if (size!=0) {
+    Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(size))+' eth) could not be matched immediately so it will be sent to the order book.');
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMarketMakers', [], function(result) {
       var market_makers = result.filter(function(x){return x!=''});
       utility.blockNumber(web3, function(blockNumber){
@@ -106,33 +116,36 @@ Main.order = function(option, price, size, order) {
         var condensed = utility.pack([option.optionChainID, option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
         var hash = sha256(new Buffer(condensed,'hex'));
         var sig = utility.sign(web3, addrs[selectedAddr], hash, pks[selectedAddr]);
-        var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+        if (!sig) {
+          Main.alertInfo('Your order could not be signed.');
+        } else {
+          var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
 
-        var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
-        var hash = '0x'+sha256(new Buffer(condensed,'hex'));
-        var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
-        utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
-          var balance = result.toNumber();
-          utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMaxLossAfterTrade', [order.addr, order.optionChainID, order.optionID, order.size, -order.size*order.price], function(result) {
-            balance = balance + result.toNumber();
-            if (!verified) {
-              Main.alertInfo('Your order could not be signed.');
-            } else if (balance<=0) {
-              Main.alertInfo('You do not have the funds to place this order.');
-            } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
-              console.log(market_makers);
-              async.each(market_makers,
-                function(market_maker, callback) {
-                  request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
-                  });
-                },
-                function(err) {
-                  Main.alertInfo('Your order has been sent to the order book.');
-                }
-              );
-            }
+          var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
+          var hash = '0x'+sha256(new Buffer(condensed,'hex'));
+          var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+          utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
+            var balance = result.toNumber();
+            utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMaxLossAfterTrade', [order.addr, order.optionChainID, order.optionID, order.size, -order.size*order.price], function(result) {
+              balance = balance + result.toNumber();
+              if (!verified) {
+                Main.alertInfo('Signature verification failed.');
+              } else if (balance<=0) {
+                Main.alertInfo('You do not have the funds to place your order.');
+              } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+                Main.alertInfo('Your order has been sent to the order book.');
+                async.each(market_makers,
+                  function(market_maker, callback) {
+                    request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
+                    });
+                  },
+                  function(err) {
+                  }
+                );
+              }
+            });
           });
-        });
+        }
       });
     });
   }
@@ -364,13 +377,13 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-// config.home_url = 'http://localhost:8080';
+config.home_url = 'http://localhost:8080';
 config.contract_market = 'market.sol';
 config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
 config.domain = undefined;
 config.port = 8081;
 config.eth_testnet = true;
-config.eth_provider = 'http://localhost:8545';
+config.eth_provider = 'http://localhost:8546';
 config.eth_addr = '0x0000000000000000000000000000000000000000';
 config.eth_addr_pk = '';
 
@@ -61394,19 +61407,19 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
 }
 
 function blockNumber(web3, callback) {
-  try {
-    web3.eth.getBlockNumber(function(err, blockNumber){
-      callback(blockNumber);
-    });
-  } catch (err) {
-    console.log(err);
-    var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
-    request.get(url, function(err, httpResponse, body){
-      if (!err) {
-        callback(hex_to_dec(body['result']));
-      }
-    });
-  }
+  web3.eth.getBlockNumber(function(err, blockNumber){
+    if (!err) {
+      callback(Number(blockNumber));
+    } else {
+      var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
+      request.get(url, function(err, httpResponse, body){
+        if (!err) {
+          var result = JSON.parse(body);
+          callback(Number(hex_to_dec(result['result'])));
+        }
+      });
+    }
+  });
 }
 
 function sign(web3, address, value, privateKey, callback) {

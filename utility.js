@@ -172,20 +172,19 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
 }
 
 function blockNumber(web3, callback) {
-  try {
-    web3.eth.getBlockNumber(function(err, blockNumber){
-      callback(blockNumber);
-    });
-  } catch (err) {
-    var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
-    request.get(url, function(err, httpResponse, body){
-      if (!err) {
-        console.log(body['result']);
-        console.log(hex_to_dec(body['result']));
-        callback(hex_to_dec(body['result']));
-      }
-    });
-  }
+  web3.eth.getBlockNumber(function(err, blockNumber){
+    if (!err) {
+      callback(Number(blockNumber));
+    } else {
+      var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
+      request.get(url, function(err, httpResponse, body){
+        if (!err) {
+          var result = JSON.parse(body);
+          callback(Number(hex_to_dec(result['result'])));
+        }
+      });
+    }
+  });
 }
 
 function sign(web3, address, value, privateKey, callback) {

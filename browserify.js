@@ -84,18 +84,28 @@ Main.order = function(option, price, size, order) {
   order = JSON.parse(order);
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
+  var matchSize = 0;
   if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price)) && Math.abs(size)<=Math.abs(order.size)) {
-    price = order.price;
-    utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], size], function(result) {
+    if (Math.abs(size)<=Math.abs(order.size)) {
+      matchSize = size;
+    } else {
+      matchSize = -order.size;
+    }
+    size = size - matchSize;
+    console.log('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
+    utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], matchSize], function(result) {
+      console.log(result);
       if (result) {
-        utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, size, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+        utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
           txHash = result[0];
           nonce = result[1];
           Main.alertTxHash(txHash);
         });
       }
     });
-  } else {
+  }
+  if (size!=0) {
+    Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(size))+' eth) could not be matched immediately so it will be sent to the order book.');
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMarketMakers', [], function(result) {
       var market_makers = result.filter(function(x){return x!=''});
       utility.blockNumber(web3, function(blockNumber){
@@ -119,15 +129,15 @@ Main.order = function(option, price, size, order) {
               if (!verified) {
                 Main.alertInfo('Signature verification failed.');
               } else if (balance<=0) {
-                Main.alertInfo('You do not have the funds to place this order.');
+                Main.alertInfo('You do not have the funds to place your order.');
               } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+                Main.alertInfo('Your order has been sent to the order book.');
                 async.each(market_makers,
                   function(market_maker, callback) {
                     request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
                     });
                   },
                   function(err) {
-                    Main.alertInfo('Your order has been sent to the order book.');
                   }
                 );
               }
