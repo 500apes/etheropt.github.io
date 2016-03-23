@@ -105,15 +105,32 @@ Main.order = function(option, price, size, order) {
       var hash = sha256(new Buffer(condensed,'hex'));
       var sig = utility.sign(web3, addrs[selectedAddr], hash, pks[selectedAddr]);
       var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
-      async.each(market_makers,
-        function(market_maker, callback) {
-          request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
-            callback(null);
-          });
-        },
-        function(err) {
-        }
-      );
+
+      var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
+      var hash = '0x'+sha256(new Buffer(condensed,'hex'));
+      var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+      utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
+        var balance = result.toNumber();
+        utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMaxLossAfterTrade', [order.addr, order.optionChainID, order.optionID, order.size, -order.size*order.price], function(result) {
+          balance = balance + result.toNumber();
+          if (!verified) {
+            Main.alertInfo('Your order could not be signed.');
+          } else if (balance<=0) {
+            Main.alertInfo('You do not have the funds to place this order.');
+          } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+            Main.alertInfo('Your order has been sent to the order book.');
+            async.each(market_makers,
+              function(market_maker, callback) {
+                request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
+                  callback(null);
+                });
+              },
+              function(err) {
+              }
+            );
+          }
+        });
+      });
     });
   }
 }

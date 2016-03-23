@@ -84,12 +84,13 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 	  var myContract = web3.eth.contract(abi);
 	  myContract = myContract.at(config.contract_market_addr);
 
-    //responders
+    //get
     self.app.get('/', function(req, res) {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.writeHead(200);
       res.end(JSON.stringify(self.mm_orders.concat(self.received_orders)));
   	});
+		//post
     self.app.post('/', function(req, res) {
       res.setHeader('Access-Control-Allow-Origin', '*');
       var blockNumber = web3.eth.blockNumber;
