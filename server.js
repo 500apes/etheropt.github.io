@@ -93,29 +93,30 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 		//post
     self.app.post('/', function(req, res) {
       res.setHeader('Access-Control-Allow-Origin', '*');
-      var blockNumber = web3.eth.blockNumber;
-      try {
-        var new_orders = req.body.orders;
-        async.each(new_orders, function(order, callback_each) {
-          var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
-          var hash = '0x'+sha256(new Buffer(condensed,'hex'));
-          var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
-          utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
-            var balance = result.toNumber();
-            utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMaxLossAfterTrade', [order.addr, order.optionChainID, order.optionID, order.size, -order.size*order.price], function(result) {
-              balance = balance + result.toNumber();
-              if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
-                self.received_orders.push(order);
-              }
-              callback_each(null);
-            });
-          });
-        });
-      } catch(err) {
-        console.log(err);
-      }
-      res.writeHead(200);
-      res.end(undefined);
+      utility.blockNumber(web3, function(blockNumber) {
+				try {
+	        var new_orders = req.body.orders;
+	        async.each(new_orders, function(order, callback_each) {
+	          var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
+	          var hash = '0x'+sha256(new Buffer(condensed,'hex'));
+	          var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+	          utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
+	            var balance = result.toNumber();
+	            utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMaxLossAfterTrade', [order.addr, order.optionChainID, order.optionID, order.size, -order.size*order.price], function(result) {
+	              balance = balance + result.toNumber();
+	              if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+	                self.received_orders.push(order);
+	              }
+	              callback_each(null);
+	            });
+	          });
+	        });
+	      } catch(err) {
+	        console.log(err);
+	      }
+			});
+			res.writeHead(200);
+			res.end(undefined);
   	});
 
 		//publish server address
@@ -243,76 +244,77 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
     async.forever(
       function(next) {
         var today = Date.now();
-        var blockNumber = web3.eth.blockNumber;
-        var orderID = utility.getRandomInt(0,Math.pow(2,64));
-        var nonce = undefined;
-        async.map(self.options,
-          function(option, callback) {
-            var expiration = Date.parse(option.expiration+" 00:00:00 UTC");
-            var t_days = (expiration - today)/86400000.0;
-            var t = t_days / 365.0;
-            if (t>0) {
-              var result = self.pricer_fn(option, self.pricer_data);
-              if (result) {
-                console.log(option.expiration, option.kind, option.strike, ((result.buy_price)+" ("+(utility.weiToEth(result.buy_size))+" eth) @ "+(result.sell_price)+" ("+(utility.weiToEth(result.sell_size))+" eth)"));
-                var buy_price = result.buy_price * 1000000000000000000;
-                var sell_price = result.sell_price * 1000000000000000000;
-                var buy_size = result.buy_size;
-                var sell_size = result.sell_size;
-                var blockExpires = blockNumber + result.expires;
+        utility.blockNumber(web3, function(blockNumber) {
+					var orderID = utility.getRandomInt(0,Math.pow(2,64));
+	        var nonce = undefined;
+	        async.map(self.options,
+	          function(option, callback) {
+	            var expiration = Date.parse(option.expiration+" 00:00:00 UTC");
+	            var t_days = (expiration - today)/86400000.0;
+	            var t = t_days / 365.0;
+	            if (t>0) {
+	              var result = self.pricer_fn(option, self.pricer_data);
+	              if (result) {
+	                console.log(option.expiration, option.kind, option.strike, ((result.buy_price)+" ("+(utility.weiToEth(result.buy_size))+" eth) @ "+(result.sell_price)+" ("+(utility.weiToEth(result.sell_size))+" eth)"));
+	                var buy_price = result.buy_price * 1000000000000000000;
+	                var sell_price = result.sell_price * 1000000000000000000;
+	                var buy_size = result.buy_size;
+	                var sell_size = result.sell_size;
+	                var blockExpires = blockNumber + result.expires;
 
-                var orders = [];
+	                var orders = [];
 
-                var condensed = utility.pack([option.optionChainID, option.optionID, buy_price, buy_size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
-                var hash = sha256(new Buffer(condensed,'hex'));
-                utility.sign(web3, self.eth_addr, hash, undefined, function(sig){
-                  if (sig) {
-                    orders.push({optionChainID: option.optionChainID, optionID: option.optionID, price: buy_price, size: buy_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash});
-                  } else {
-                    console.log("Failed to sign order.");
-                    orders.push(undefined);
-                  }
-                });
+	                var condensed = utility.pack([option.optionChainID, option.optionID, buy_price, buy_size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
+	                var hash = sha256(new Buffer(condensed,'hex'));
+	                utility.sign(web3, self.eth_addr, hash, undefined, function(sig){
+	                  if (sig) {
+	                    orders.push({optionChainID: option.optionChainID, optionID: option.optionID, price: buy_price, size: buy_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash});
+	                  } else {
+	                    console.log("Failed to sign order.");
+	                    orders.push(undefined);
+	                  }
+	                });
 
-                var condensed = utility.pack([option.optionChainID, option.optionID, sell_price, -sell_size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
-                var hash = sha256(new Buffer(condensed,'hex'));
-                utility.sign(web3, self.eth_addr, hash, undefined, function(sig) {
-                  if (sig) {
-                    orders.push({optionChainID: option.optionChainID, optionID: option.optionID, price: sell_price, size: -sell_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash});
-                  } else {
-                    console.log("Failed to sign order.");
-                    orders.push(undefined);
-                  }
-                });
+	                var condensed = utility.pack([option.optionChainID, option.optionID, sell_price, -sell_size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
+	                var hash = sha256(new Buffer(condensed,'hex'));
+	                utility.sign(web3, self.eth_addr, hash, undefined, function(sig) {
+	                  if (sig) {
+	                    orders.push({optionChainID: option.optionChainID, optionID: option.optionID, price: sell_price, size: -sell_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash});
+	                  } else {
+	                    console.log("Failed to sign order.");
+	                    orders.push(undefined);
+	                  }
+	                });
 
-                async.until(
-                  function() { return orders.length==2; },
-                  function(callback_until) { setTimeout(function () { callback_until(null); }, 1000); },
-                  function(err) {
-                    callback(null, orders.filter(function(x){return x!=undefined}));
-                  }
-                );
-              } else {
-                callback(null,[]);
-              }
-            }
-          },
-          function(err, mm_orders) {
-            var mm_orders = mm_orders.reduce(function(a, b) {return a.concat(b);}, []);
-            var new_mm_orders = [];
-            mm_orders.forEach(function(mm_order){
-              var existing_orders = self.mm_orders.filter(function(x){return x.optionChainID==mm_order.optionChainID && x.optionID==mm_order.optionID && Math.sign(x.size)==Math.sign(mm_order.size)});
-              if (existing_orders.length==1 && blockNumber+5<=existing_orders[0].blockExpires && existing_orders[0].buy_price==mm_order.buy_price && existing_orders[0].sell_price==mm_order.sell_price && existing_orders[0].buy_size==mm_order.buy_size && existing_orders[0].sell_size==mm_order.sell_size) {
-                new_mm_orders.push(existing_orders[0]);
-              } else {
-                new_mm_orders.push(mm_order);
-              }
-            });
-            self.mm_orders = new_mm_orders;
-            self.received_orders = self.received_orders.filter(function(order){return blockNumber<=order.blockExpires;});
-            setTimeout(function () { next(); }, 1*1000);
-          }
-        );
+	                async.until(
+	                  function() { return orders.length==2; },
+	                  function(callback_until) { setTimeout(function () { callback_until(null); }, 1000); },
+	                  function(err) {
+	                    callback(null, orders.filter(function(x){return x!=undefined}));
+	                  }
+	                );
+	              } else {
+	                callback(null,[]);
+	              }
+	            }
+	          },
+	          function(err, mm_orders) {
+	            var mm_orders = mm_orders.reduce(function(a, b) {return a.concat(b);}, []);
+	            var new_mm_orders = [];
+	            mm_orders.forEach(function(mm_order){
+	              var existing_orders = self.mm_orders.filter(function(x){return x.optionChainID==mm_order.optionChainID && x.optionID==mm_order.optionID && Math.sign(x.size)==Math.sign(mm_order.size)});
+	              if (existing_orders.length==1 && blockNumber+5<=existing_orders[0].blockExpires && existing_orders[0].buy_price==mm_order.buy_price && existing_orders[0].sell_price==mm_order.sell_price && existing_orders[0].buy_size==mm_order.buy_size && existing_orders[0].sell_size==mm_order.sell_size) {
+	                new_mm_orders.push(existing_orders[0]);
+	              } else {
+	                new_mm_orders.push(mm_order);
+	              }
+	            });
+	            self.mm_orders = new_mm_orders;
+	            self.received_orders = self.received_orders.filter(function(order){return blockNumber<=order.blockExpires;});
+	            setTimeout(function () { next(); }, 1*1000);
+	          }
+	        );
+				});
       },
       function(err) {
         console.log(err);

@@ -171,6 +171,22 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
   }
 }
 
+function blockNumber(web3, callback) {
+  try {
+    web3.eth.getBlockNumber(function(err, blockNumber){
+      callback(blockNumber);
+    });
+  } catch (err) {
+    console.log(err);
+    var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
+    request.get(url, function(err, httpResponse, body){
+      if (!err) {
+        callback(hex_to_dec(body['result']));
+      }
+    });
+  }
+}
+
 function sign(web3, address, value, privateKey, callback) {
   if (typeof(privateKey) != 'undefined') {
     if (privateKey.substring(0,2)=='0x') privateKey = privateKey.substring(2,privateKey.length);
@@ -486,6 +502,7 @@ exports.mean = mean;
 exports.proxyGetBalance = proxyGetBalance;
 exports.proxySend = proxySend;
 exports.proxyCall = proxyCall;
+exports.blockNumber = blockNumber;
 exports.sign = sign;
 exports.verify = verify;
 exports.createAddress = createAddress;
