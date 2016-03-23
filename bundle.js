@@ -61275,6 +61275,7 @@ function readFile(filename, callback) {
         });
       } else {
         request.get(config.home_url+"/"+filename, function(err, httpResponse, body){
+          console.log(filename+' '+body);
           callback(body);
         });
       }
