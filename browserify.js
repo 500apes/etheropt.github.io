@@ -118,6 +118,7 @@ Main.order = function(option, price, size, order) {
             } else if (balance<=0) {
               Main.alertInfo('You do not have the funds to place this order.');
             } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+              console.log(market_makers);
               async.each(market_makers,
                 function(market_maker, callback) {
                   request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
