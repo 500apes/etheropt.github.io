@@ -177,10 +177,11 @@ function blockNumber(web3, callback) {
       callback(blockNumber);
     });
   } catch (err) {
-    console.log(err);
     var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
+        console.log(body['result']);
+        console.log(hex_to_dec(body['result']));
         callback(hex_to_dec(body['result']));
       }
     });
