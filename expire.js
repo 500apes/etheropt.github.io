@@ -54,7 +54,6 @@ if (cli_options.help) {
 							var sig_r = '0x'+result.signature_v2.sig_r;
 							var sig_s = '0x'+result.signature_v2.sig_s;
 							var sig_v = result.signature_v2.sig_v;
-							console.log(result);
 							var settlement = result.winner_value;
 							if (sig_r && sig_s && sig_v && value) {
 								console.log("Should expire "+expiration+", settlement:", settlement);
