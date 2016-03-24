@@ -14,7 +14,7 @@ Main.alertInfo = function(message) {
   console.log(message);
 }
 Main.alertTxHash = function(txHash) {
-  $('#splash-container').css('display', 'none');
+  // $('#splash-container').css('display', 'none');
   Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
 }
 Main.tooltip = function(message) {

@@ -57,3 +57,9 @@ $(function () {
         $(e.currentTarget).find('#sell_description').html(description);
     });
 });
+$(function() {
+    $('.clickable').on('click',function(){
+        var effect = $(this).data('effect');
+        $(this).closest('.panel')[effect]();
+    });
+});
