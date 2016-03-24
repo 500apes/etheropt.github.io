@@ -17,7 +17,11 @@ Main.alertInfo = function(message) {
 }
 Main.alertTxHash = function(txHash) {
   // $('#splash-container').css('display', 'none');
-  Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
+  if (txHash) {
+    Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
+  } else {
+    Main.alertInfo('You tried to send an Ethereum transaction but there was an error.'); 
+  }
 }
 Main.tooltip = function(message) {
   return '<a href="#" data-toggle="tooltip" data-placement="bottom" title="'+message+'"><i class="fa fa-question-circle fa-lg"></i></a>';
@@ -118,40 +122,41 @@ Main.order = function(option, price, size, order) {
         var blockExpires = blockNumber + 10;
         var condensed = utility.pack([option.optionChainID, option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
         var hash = sha256(new Buffer(condensed,'hex'));
-        var sig = utility.sign(web3, addrs[selectedAddr], hash, pks[selectedAddr]);
-        if (!sig) {
-          Main.alertInfo('Your order could not be signed.');
-        } else {
-          var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+        utility.sign(web3, addrs[selectedAddr], hash, pks[selectedAddr], function(sig) {
+          if (!sig) {
+            Main.alertInfo('Your order could not be signed.');
+          } else {
+            var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
 
-          var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
-          var hash = '0x'+sha256(new Buffer(condensed,'hex'));
-          var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
-          utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
-            var balance = result.toNumber();
-            utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMaxLossAfterTrade', [order.addr, order.optionChainID, order.optionID, order.size, -order.size*order.price], function(result) {
-              balance = balance + result.toNumber();
-              if (!verified) {
-                Main.alertInfo('Signature verification failed.');
-              } else if (balance<=0) {
-                Main.alertInfo('You do not have the funds to place your order.');
-              } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
-                Main.alertInfo('Your order has been sent to the order book.');
-                setTimeout(function () {
-                    Main.refresh();
-                }, 2000);
-                async.each(market_makers,
-                  function(market_maker, callback) {
-                    request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
-                    });
-                  },
-                  function(err) {
-                  }
-                );
-              }
+            var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
+            var hash = '0x'+sha256(new Buffer(condensed,'hex'));
+            var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+            utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
+              var balance = result.toNumber();
+              utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMaxLossAfterTrade', [order.addr, order.optionChainID, order.optionID, order.size, -order.size*order.price], function(result) {
+                balance = balance + result.toNumber();
+                if (!verified) {
+                  Main.alertInfo('Signature verification failed.');
+                } else if (balance<=0) {
+                  Main.alertInfo('You do not have the funds to place your order.');
+                } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+                  Main.alertInfo('Your order has been sent to the order book.');
+                  setTimeout(function () {
+                      Main.refresh();
+                  }, 2000);
+                  async.each(market_makers,
+                    function(market_maker, callback) {
+                      request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
+                      });
+                    },
+                    function(err) {
+                    }
+                  );
+                }
+              });
             });
-          });
-        }
+          }
+        });
       });
     });
   }
@@ -205,11 +210,12 @@ Main.withdraw = function(amount) {
   });
 }
 Main.connectionTest = function() {
-  var connection = undefined;
+  if (connection) return connection;
   try {
     web3.eth.getBalance('0x0000000000000000000000000000000000000000');
     connection = {connection: 'Geth', provider: config.eth_provider, testnet: config.eth_testnet};
   } catch(err) {
+    web3.setProvider(undefined);
     connection = {connection: 'Proxy', provider: 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io', testnet: config.eth_testnet};
   }
   connection.contract = '<a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+config.contract_market_addr+'" target="_blank">'+config.contract_market_addr+'</a>';
@@ -358,6 +364,7 @@ if (cookie) {
   pks = cookie["pks"];
   selectedAddr = cookie["selectedAddr"];
 }
+var connection = undefined;
 var nonce = undefined;
 var funds = 0;
 var fundsAvailable = 0;
@@ -61305,9 +61312,7 @@ function writeFile(filename, data) {
 }
 
 function proxyGetBalance(web3, address, callback) {
-  try {
-    callback(web3.eth.getBalance(address));
-  } catch(err) {
+  function proxy(){
     var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=balance&address='+address+'&tag=latest';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
@@ -61316,12 +61321,19 @@ function proxyGetBalance(web3, address, callback) {
       }
     });
   }
+  try {
+    if (web3.currentProvider) {
+      callback(web3.eth.getBalance(address));
+    } else {
+      proxy();
+    }
+  } catch(err) {
+    proxy();
+  }
 }
 
 function proxyCall(web3, contract, address, functionName, args, callback) {
-  try {
-    callback(contract[functionName].call.apply(null, args));
-  } catch(err) {
+  function proxy() {
     var web3 = new Web3();
     var data = contract[functionName].getData.apply(null, args);
     var result = undefined;
@@ -61335,13 +61347,19 @@ function proxyCall(web3, contract, address, functionName, args, callback) {
       }
     });
   }
+  try {
+    if (web3.currentProvider) {
+      callback(contract[functionName].call.apply(null, args));
+    } else {
+      proxy();
+    }
+  } catch(err) {
+    proxy();
+  }
 }
 
 function proxySend(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
-  try {
-    web3.eth.defaultAccount = fromAddress;
-    callback([contract[functionName].sendTransaction.apply(null, args),0]);
-  } catch(err) {
+  function proxy(){
     if (privateKey && privateKey.substring(0,2)=='0x') {
       privateKey = privateKey.substring(2,privateKey.length);
     }
@@ -61388,7 +61406,7 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
       function (err) {
         if (!err) {
           if (nonce==undefined || nonce<=0){
-            nonce = config.testnet ? 1048576 : 0; //initial nonce is 2^20 for testnet, 0 for livenet
+            nonce = config.eth_testnet ? 1048576 : 0; //initial nonce is 2^20 for testnet, 0 for livenet
           } else {
             nonce = nonce + 1;
           }
@@ -61404,29 +61422,56 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
           request.get(url, function(err, httpResponse, body){
             if (!err) {
               result = JSON.parse(body);
-              callback([result['result'], nonce]);
+              if (result['result']) {
+                callback([result['result'], nonce]);
+              } else if (result['error']) {
+                console.log(result['error']['message']);
+                callback([undefined, nonce]);
+              }
+            } else {
+              console.log(err);
+              callback([undefined, nonce]);
             }
           });
         }
       }
     );
   }
+  try {
+    if (web3.currentProvider) {
+      web3.eth.defaultAccount = fromAddress;
+      callback([contract[functionName].sendTransaction.apply(null, args),0]);
+    } else {
+      proxy();
+    }
+  } catch(err) {
+    console.log(err);
+    console.log('Attempting to send transaction through the proxy.');
+    proxy();
+  }
 }
 
 function blockNumber(web3, callback) {
-  web3.eth.getBlockNumber(function(err, blockNumber){
-    if (!err) {
-      callback(Number(blockNumber));
-    } else {
-      var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
-      request.get(url, function(err, httpResponse, body){
-        if (!err) {
-          var result = JSON.parse(body);
-          callback(Number(hex_to_dec(result['result'])));
-        }
-      });
-    }
-  });
+  function proxy() {
+    var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
+    request.get(url, function(err, httpResponse, body){
+      if (!err) {
+        var result = JSON.parse(body);
+        callback(Number(hex_to_dec(result['result'])));
+      }
+    });
+  }
+  if (web3.currentProvider) {
+    web3.eth.getBlockNumber(function(err, blockNumber){
+      if (!err) {
+        callback(Number(blockNumber));
+      } else {
+        proxy();
+      }
+    });
+  } else {
+    proxy();
+  }
 }
 
 function sign(web3, address, value, privateKey, callback) {
@@ -61436,46 +61481,25 @@ function sign(web3, address, value, privateKey, callback) {
     try {
       var sig = ethUtil.ecsign(new Buffer(value, 'hex'), new Buffer(privateKey, 'hex'));
     } catch (err) {
-      if (typeof(callback)!='undefined') {
-        callback(undefined);
-      } else {
-        return undefined;
-      }
+      callback(undefined);
     }
     var r = '0x'+sig.r.toString('hex');
     var s = '0x'+sig.s.toString('hex');
     var v = sig.v;
     var result = {r: r, s: s, v: v};
-    if (typeof(callback)!='undefined') {
-      callback(result);
-    } else {
-      return result;
-    }
+    callback(result);
   } else {
-    if (typeof(callback)!='undefined') {
-      web3.eth.sign(address, value, function(err, sig) {
-        try {
-          var r = sig.slice(0, 66);
-          var s = '0x' + sig.slice(66, 130);
-          var v = web3.toDecimal('0x' + sig.slice(130, 132));
-          if (v!=27 && v!=28) v+=27;
-          callback({r: r, s: s, v: v});
-        } catch (err) {
-          callback(undefined);
-        }
-      });
-    } else {
-      var sig = web3.eth.sign(address, value);
-      var r = sig.slice(0, 66);
-      var s = '0x' + sig.slice(66, 130);
-      var v = web3.toDecimal('0x' + sig.slice(130, 132));
-      if (v!=27 && v!=28) v+=27;
+    web3.eth.sign(address, value, function(err, sig) {
       try {
-        return {r: r, s: s, v: v};
+        var r = sig.slice(0, 66);
+        var s = '0x' + sig.slice(66, 130);
+        var v = web3.toDecimal('0x' + sig.slice(130, 132));
+        if (v!=27 && v!=28) v+=27;
+        callback({r: r, s: s, v: v});
       } catch (err) {
-        return undefined;
+        callback(undefined);
       }
-    }
+    });
   }
 }
 

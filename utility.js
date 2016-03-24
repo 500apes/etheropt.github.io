@@ -64,9 +64,7 @@ function writeFile(filename, data) {
 }
 
 function proxyGetBalance(web3, address, callback) {
-  try {
-    callback(web3.eth.getBalance(address));
-  } catch(err) {
+  function proxy(){
     var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=balance&address='+address+'&tag=latest';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
@@ -75,12 +73,19 @@ function proxyGetBalance(web3, address, callback) {
       }
     });
   }
+  try {
+    if (web3.currentProvider) {
+      callback(web3.eth.getBalance(address));
+    } else {
+      proxy();
+    }
+  } catch(err) {
+    proxy();
+  }
 }
 
 function proxyCall(web3, contract, address, functionName, args, callback) {
-  try {
-    callback(contract[functionName].call.apply(null, args));
-  } catch(err) {
+  function proxy() {
     var web3 = new Web3();
     var data = contract[functionName].getData.apply(null, args);
     var result = undefined;
@@ -94,13 +99,19 @@ function proxyCall(web3, contract, address, functionName, args, callback) {
       }
     });
   }
+  try {
+    if (web3.currentProvider) {
+      callback(contract[functionName].call.apply(null, args));
+    } else {
+      proxy();
+    }
+  } catch(err) {
+    proxy();
+  }
 }
 
 function proxySend(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
-  try {
-    web3.eth.defaultAccount = fromAddress;
-    callback([contract[functionName].sendTransaction.apply(null, args),0]);
-  } catch(err) {
+  function proxy(){
     if (privateKey && privateKey.substring(0,2)=='0x') {
       privateKey = privateKey.substring(2,privateKey.length);
     }
@@ -147,7 +158,7 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
       function (err) {
         if (!err) {
           if (nonce==undefined || nonce<=0){
-            nonce = config.testnet ? 1048576 : 0; //initial nonce is 2^20 for testnet, 0 for livenet
+            nonce = config.eth_testnet ? 1048576 : 0; //initial nonce is 2^20 for testnet, 0 for livenet
           } else {
             nonce = nonce + 1;
           }
@@ -163,29 +174,56 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
           request.get(url, function(err, httpResponse, body){
             if (!err) {
               result = JSON.parse(body);
-              callback([result['result'], nonce]);
+              if (result['result']) {
+                callback([result['result'], nonce]);
+              } else if (result['error']) {
+                console.log(result['error']['message']);
+                callback([undefined, nonce]);
+              }
+            } else {
+              console.log(err);
+              callback([undefined, nonce]);
             }
           });
         }
       }
     );
   }
+  try {
+    if (web3.currentProvider) {
+      web3.eth.defaultAccount = fromAddress;
+      callback([contract[functionName].sendTransaction.apply(null, args),0]);
+    } else {
+      proxy();
+    }
+  } catch(err) {
+    console.log(err);
+    console.log('Attempting to send transaction through the proxy.');
+    proxy();
+  }
 }
 
 function blockNumber(web3, callback) {
-  web3.eth.getBlockNumber(function(err, blockNumber){
-    if (!err) {
-      callback(Number(blockNumber));
-    } else {
-      var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
-      request.get(url, function(err, httpResponse, body){
-        if (!err) {
-          var result = JSON.parse(body);
-          callback(Number(hex_to_dec(result['result'])));
-        }
-      });
-    }
-  });
+  function proxy() {
+    var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
+    request.get(url, function(err, httpResponse, body){
+      if (!err) {
+        var result = JSON.parse(body);
+        callback(Number(hex_to_dec(result['result'])));
+      }
+    });
+  }
+  if (web3.currentProvider) {
+    web3.eth.getBlockNumber(function(err, blockNumber){
+      if (!err) {
+        callback(Number(blockNumber));
+      } else {
+        proxy();
+      }
+    });
+  } else {
+    proxy();
+  }
 }
 
 function sign(web3, address, value, privateKey, callback) {
@@ -195,46 +233,25 @@ function sign(web3, address, value, privateKey, callback) {
     try {
       var sig = ethUtil.ecsign(new Buffer(value, 'hex'), new Buffer(privateKey, 'hex'));
     } catch (err) {
-      if (typeof(callback)!='undefined') {
-        callback(undefined);
-      } else {
-        return undefined;
-      }
+      callback(undefined);
     }
     var r = '0x'+sig.r.toString('hex');
     var s = '0x'+sig.s.toString('hex');
     var v = sig.v;
     var result = {r: r, s: s, v: v};
-    if (typeof(callback)!='undefined') {
-      callback(result);
-    } else {
-      return result;
-    }
+    callback(result);
   } else {
-    if (typeof(callback)!='undefined') {
-      web3.eth.sign(address, value, function(err, sig) {
-        try {
-          var r = sig.slice(0, 66);
-          var s = '0x' + sig.slice(66, 130);
-          var v = web3.toDecimal('0x' + sig.slice(130, 132));
-          if (v!=27 && v!=28) v+=27;
-          callback({r: r, s: s, v: v});
-        } catch (err) {
-          callback(undefined);
-        }
-      });
-    } else {
-      var sig = web3.eth.sign(address, value);
-      var r = sig.slice(0, 66);
-      var s = '0x' + sig.slice(66, 130);
-      var v = web3.toDecimal('0x' + sig.slice(130, 132));
-      if (v!=27 && v!=28) v+=27;
+    web3.eth.sign(address, value, function(err, sig) {
       try {
-        return {r: r, s: s, v: v};
+        var r = sig.slice(0, 66);
+        var s = '0x' + sig.slice(66, 130);
+        var v = web3.toDecimal('0x' + sig.slice(130, 132));
+        if (v!=27 && v!=28) v+=27;
+        callback({r: r, s: s, v: v});
       } catch (err) {
-        return undefined;
+        callback(undefined);
       }
-    }
+    });
   }
 }
 
