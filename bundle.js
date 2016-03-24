@@ -110,6 +110,8 @@ Main.order = function(option, price, size, order) {
           Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
           Main.alertTxHash(txHash);
         });
+      } else {
+        Main.alertInfo('You tried to match against a resting order but the order match failed. This can be because the order expired or traded already, or either you or the counterparty do not have enough funds to cover the trade.');
       }
     });
   }
@@ -117,7 +119,7 @@ Main.order = function(option, price, size, order) {
     Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(size))+' eth) could not be matched immediately so it will be sent to the order book.');
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'getMarketMakers', [], function(result) {
       var market_makers = result.filter(function(x){return x!=''});
-      utility.blockNumber(web3, function(blockNumber){
+      utility.blockNumber(web3, function(blockNumber) {
         var orderID = utility.getRandomInt(0,Math.pow(2,64));
         var blockExpires = blockNumber + 10;
         var condensed = utility.pack([option.optionChainID, option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
@@ -127,9 +129,8 @@ Main.order = function(option, price, size, order) {
             Main.alertInfo('Your order could not be signed.');
           } else {
             var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
-
-            var condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
-            var hash = '0x'+sha256(new Buffer(condensed,'hex'));
+            condensed = utility.pack([order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256, 256]);
+            hash = '0x'+sha256(new Buffer(condensed,'hex'));
             var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
             utility.proxyCall(web3, myContract, config.contract_market_addr, 'getFunds', [order.addr, false], function(result) {
               var balance = result.toNumber();
@@ -390,7 +391,7 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-// config.home_url = 'http://localhost:8080';
+config.home_url = 'http://localhost:8080';
 config.contract_market = 'market.sol';
 config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
 config.domain = undefined;
@@ -61480,14 +61481,14 @@ function sign(web3, address, value, privateKey, callback) {
     if (value.substring(0,2)=='0x') value = value.substring(2,value.length);
     try {
       var sig = ethUtil.ecsign(new Buffer(value, 'hex'), new Buffer(privateKey, 'hex'));
+      var r = '0x'+sig.r.toString('hex');
+      var s = '0x'+sig.s.toString('hex');
+      var v = sig.v;
+      var result = {r: r, s: s, v: v};
+      callback(result);
     } catch (err) {
       callback(undefined);
     }
-    var r = '0x'+sig.r.toString('hex');
-    var s = '0x'+sig.s.toString('hex');
-    var v = sig.v;
-    var result = {r: r, s: s, v: v};
-    callback(result);
   } else {
     web3.eth.sign(address, value, function(err, sig) {
       try {

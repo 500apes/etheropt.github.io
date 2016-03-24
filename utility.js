@@ -232,14 +232,14 @@ function sign(web3, address, value, privateKey, callback) {
     if (value.substring(0,2)=='0x') value = value.substring(2,value.length);
     try {
       var sig = ethUtil.ecsign(new Buffer(value, 'hex'), new Buffer(privateKey, 'hex'));
+      var r = '0x'+sig.r.toString('hex');
+      var s = '0x'+sig.s.toString('hex');
+      var v = sig.v;
+      var result = {r: r, s: s, v: v};
+      callback(result);
     } catch (err) {
       callback(undefined);
     }
-    var r = '0x'+sig.r.toString('hex');
-    var s = '0x'+sig.s.toString('hex');
-    var v = sig.v;
-    var result = {r: r, s: s, v: v};
-    callback(result);
   } else {
     web3.eth.sign(address, value, function(err, sig) {
       try {
