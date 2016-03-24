@@ -8,11 +8,17 @@ Installation
 ----------
 In order to ease interaction with the smart contract, Etheropt has a graphical user interface (GUI).
 
-There is no installation necessary to use the GUI. Just go to the main Etheropt page and the GUI will be running in your Web browser. You can also choose to download the GitHub repository and run the GUI locally.
+There is no installation necessary to use the GUI. Just go to the main Etheropt page ([http://etheropt.github.io](http://etheropt.github.io)) and the GUI will be running in your Web browser. You can also choose to download the GitHub repository and run the GUI locally. The GUI stores your account in the browser only and does not store anything remotely. The only remote server it interacts with is the Ethereum network.
 
 Ethereum network
 ----------
-The GUI can connect to the Ethereum network in one of two ways. If you have Geth running locally in RPC mode (at http://localhost:8545), Etheropt will automatically connect to it. If you don't have Geth running locally, Etheropt will connect to the Ethereum network through the public API provided by Etherscan. You can find out whether you are connected to Geth or Etherscan at the bottom of the page.
+The GUI can connect to the Ethereum network in one of two ways. If you have Geth running locally in RPC mode (at http://localhost:8545), Etheropt will automatically connect to it. You must run Geth with --rpc and --rpccorsdomain, like this:
+
+```
+geth --rpc console --rpccorsdomain 'http://etheropt.github.io'
+```
+
+If you don't have Geth running locally, Etheropt will connect to the Ethereum network through the public API provided by Etherscan. You can find out whether you are connected to Geth or Etherscan at the bottom of the page.
 
 Accounts
 ----------
@@ -36,11 +42,13 @@ A market maker is responsible for making markets, maintaining an order book of r
 
 Placing orders
 ----------
-The GUI queries the market makers and shows the best bid and offer for each option. To place an order, simply click the buy or sell button next to the contract and enter the size and price you wish to trade. Every contract shows your current position under "My position." If you place an order that doesn't immediately cross with the tightest market maker, the order will be broadcast to all of the market makers. The order will then rest on the books of the market makers until it expires or someone trades with it.
+The GUI queries the market makers and shows the best bid and offer for each option. To place an order, simply click the buy or sell button next to the contract and enter the size and price you wish to trade. Every contract shows your current position under "My position." If you place an order that doesn't immediately cross with the tightest resting order, the order will be broadcast to all of the market makers. The order will then rest on the order book until it expires or someone trades with it.
+
+The GUI will only send an order if you have enough funds to cover it. If the order can partially match against a resting order, the partial cross will be sent to the smart contract to trade and the remaining order will rest on the book. For example, if you want to buy 10 eth worth of an option but there is only 5 eth offered, 5 eth will match and the remaining 5 eth will rest on the order book. Similarly, resting orders can be filled in pieces because the smart contract records the portion of an order that has already traded. For example, if you have a resting order to buy 10 eth worth of an option, it can be filled by two counterparties each selling 5 eth of the order.
 
 Every order resting on the order book (whether submitted by a market maker or through the GUI) consists of an option, a price, a size, an expiration block number, an order ID, and a signature. When the smart contract processes an order match, it will verify that the signature is valid, the order has not expired, there is enough unfilled volume in the order, and both users have enough available funds to cover the trade. If these things are true, the smart contract will record the trade.
 
-An advantage of the distributed market maker system is that transactions with the smart contract are only necessary when crossing trades. The transaction fees (Ethereum gas fees) are paid by the person who crosses the trade and not by the person who creates the resting order. This is similar to the maker/taker fee model used by some centralized exchanges.
+An advantage of the distributed market maker system is that transactions with the smart contract are only necessary when crossing trades. The transaction fee (Ethereum gas fee) is paid by the person who crosses the trade and not by the person who creates the resting order. This is similar to the maker/taker fee model used by some centralized exchanges.
 
 Cash usage and expiration
 ----------

@@ -8,10 +8,13 @@ function Main() {
 }
 //functions
 Main.alertInfo = function(message) {
-  $('#alerts').append('<div class="alert alert-info"><button type="button" class="close" data-dismiss="alert">&times;</button>' + message + '</div>');
+  $('#log-container').css('display', 'block');
+  $('#log').append($('<p>' + message + '</p>').hide().fadeIn(2000));
+  $('#log').animate({scrollTop: $('#log').prop("scrollHeight")}, 500);
   console.log(message);
 }
 Main.alertTxHash = function(txHash) {
+  $('#splash-container').css('display', 'none');
   Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
 }
 Main.tooltip = function(message) {
@@ -72,6 +75,7 @@ Main.createAddress = function() {
   var addr = '0x'+newAddress[0].toString('hex');
   var pk = '0x'+newAddress[1].toString('hex');
   Main.addAddress(addr, pk);
+  Main.alertInfo('You just created an Ethereum address: '+addr+'.');
 }
 Main.deleteAddress = function() {
   addrs.splice(selectedAddr, 1);
@@ -131,6 +135,9 @@ Main.order = function(option, price, size, order) {
                 Main.alertInfo('You do not have the funds to place your order.');
               } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
                 Main.alertInfo('Your order has been sent to the order book.');
+                setTimeout(function () {
+                    Main.refresh();
+                }, 2000);
                 async.each(market_makers,
                   function(market_maker, callback) {
                     request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
@@ -171,7 +178,7 @@ Main.showPrivateKey = function() {
   if (pk==undefined || pk=='') {
     Main.alertInfo('For account '+addr+', there is no private key available. You can still transact if you are connected to Geth and the account is unlocked.');
   } else {
-    Main.alertInfo('For account '+addr+', the private key is '+pk);
+    Main.alertInfo('For account '+addr+', the private key is '+pk+'.');
   }
 }
 Main.shapeshift_click = function(a,e) {

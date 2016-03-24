@@ -49,3 +49,12 @@ body, html {
 #market {
 
 }
+
+#log-container {
+  display: none;
+  background: #cef;
+}
+#log {
+  height: 100px;
+  overflow-y: auto;
+}
