@@ -20,7 +20,7 @@ Main.alertTxHash = function(txHash) {
   if (txHash) {
     Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
   } else {
-    Main.alertInfo('You tried to send an Ethereum transaction but there was an error.'); 
+    Main.alertInfo('You tried to send an Ethereum transaction but there was an error.');
   }
 }
 Main.tooltip = function(message) {
@@ -102,12 +102,12 @@ Main.order = function(option, price, size, order) {
       matchSize = -order.size;
     }
     size = size - matchSize;
-    Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], matchSize], function(result) {
       if (result) {
         utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
           txHash = result[0];
           nonce = result[1];
+          Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
           Main.alertTxHash(txHash);
         });
       }
