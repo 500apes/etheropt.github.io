@@ -61427,10 +61427,10 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
               }
             }
             if (nonce==undefined) {
-              nonce = 0;
+              nonce = -1;
             }
           } catch (err) {
-            nonce = 0;
+            nonce = -1;
           }
         }
       });
@@ -61444,7 +61444,7 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
       },
       function (err) {
         if (!err) {
-          if (nonce==undefined || nonce<=0){
+          if (nonce==undefined || nonce<0){
             nonce = config.eth_testnet ? 1048576 : 0; //initial nonce is 2^20 for testnet, 0 for livenet
           } else {
             nonce = nonce + 1;
