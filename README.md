@@ -2,7 +2,7 @@ Etheropt
 =============
 [![Gitter](https://badges.gitter.im/Etherboost/etheropt.svg)](https://gitter.im/etheropt/etheropt.github.io)
 
-Etheropt is a decentralized options exchange built on [Ethereum](https://ethereum.org/). The options you see here are vanilla call and put options on the price of Ethereum in USD as reported by [Poloniex](https://poloniex.com/exchange#btc_eth) and [Coindesk](http://www.coindesk.com/price) and verified by [Reality Keys](https://www.realitykeys.com). Etheropt has no owner. Its entire operation is described and executed by an Ethereum [smart contract](market.sol). Etheropt does not make any money as the smart contract does not charge any fees -- not for trading, not for adding funds, not for withdrawing, not for anything.
+Etheropt is a decentralized options exchange built on [Ethereum](https://ethereum.org/). The options you see here are vanilla call and put options on the price of Ethereum in USD as reported by [Poloniex](https://poloniex.com/exchange#btc_eth) and [Coindesk](http://www.coindesk.com/price) and verified by [Reality Keys](https://www.realitykeys.com). Etheropt has no owner. Its entire operation is described and executed by an Ethereum [smart contract](etheropt.sol). Etheropt does not make any money as the smart contract does not charge any fees -- not for trading, not for adding funds, not for withdrawing, not for anything.
 
 Installation
 ----------
@@ -15,7 +15,7 @@ Ethereum network
 The GUI can connect to the Ethereum network in one of two ways. If you have Geth running locally in RPC mode (at http://localhost:8545), Etheropt will automatically connect to it. You must run Geth with --rpc and --rpccorsdomain, like this:
 
 ```
-geth --rpc console --rpccorsdomain 'http://etheropt.github.io'
+geth --rpc console --rpccorsdomain 'http://etheropt.github.io' console
 ```
 
 If you don't have Geth running locally, Etheropt will connect to the Ethereum network through the public API provided by Etherscan. You can find out whether you are connected to Geth or Etherscan at the bottom of the page.
@@ -42,7 +42,7 @@ A market maker is responsible for making markets, maintaining an order book of r
 
 Placing orders
 ----------
-The GUI queries the market makers and shows the best bid and offer for each option. To place an order, simply click the buy or sell button next to the contract and enter the size and price you wish to trade. Every contract shows your current position under "My position." If you place an order that doesn't immediately cross with the tightest resting order, the order will be broadcast to all of the market makers. The order will then rest on the order book until it expires or someone trades with it.
+The GUI queries the market makers and shows the best bid and offer for each option. To place an order, simply click the buy or sell button next to the contract and enter the size and price you wish to trade. Every contract shows your current position under "My position." If you place an order that doesn't immediately cross with the tightest resting order, the order will be broadcast to all of the market makers. The order will then rest on the order book until it expires or someone trades with it. By default, orders sent from the GUI will expire in 10 blocks (approximately two minutes).
 
 The GUI will only send an order if you have enough funds to cover it. If the order can partially match against a resting order, the partial cross will be sent to the smart contract to trade and the remaining order will rest on the book. For example, if you want to buy 10 eth worth of an option but there is only 5 eth offered, 5 eth will match and the remaining 5 eth will rest on the order book. Similarly, resting orders can be filled in pieces because the smart contract records the portion of an order that has already traded. For example, if you have a resting order to buy 10 eth worth of an option, it can be filled by two counterparties each selling 5 eth of the order.
 
@@ -60,7 +60,7 @@ It is worth noting how exactly expiration works. For example, if you buy 10 eth 
 
 The smart contract
 ----------
-The Solidity code for the smart contract can be found in the GitHub repository at [market.sol](market.sol). It has been compiled and deployed to the Ethereum network. You are encouraged to read and understand it yourself. You may even want to write your own code to generate transactions to send to the smart contract instead of using the GUI. The contract's functions are listed below.
+The Solidity code for the smart contract can be found in the GitHub repository at [etheropt.sol](etheropt.sol). It has been compiled and deployed to the Ethereum network. You are encouraged to read and understand it yourself. You may even want to write your own code to generate transactions to send to the smart contract instead of using the GUI. The contract's functions are listed below.
 
 * **Market()**: This function initializes the contract. It doesn't do anything special.
 
@@ -84,7 +84,7 @@ The Solidity code for the smart contract can be found in the GitHub repository a
 
 * **getMoneyness(int strike, uint settlement, uint margin) constant returns(int)**: This function takes the strike (put is negative), settlement, and margin (all these values are scaled by 1000000000000000000) and returns the moneyness (also scaled by 1000000000000000000), taking into account the margin.
 
-* **addOptionChain(uint existingOptionChainID, uint expiration, string underlying, uint margin, uint realityID, bytes32 factHash, bytes32 ethAddr, int[] strikes)**: If the existingOptionChainID parameter is greater than six, it adds an option chain, which consists of an expiration, an underlying, a margin amount, a Reality Keys ID, a Reality Keys fact hash, a Reality Keys address, and a collection of strikes (calls are positive, puts are negative). There is a limit on the number of option chains that can be created (the limit is six). Once that limit is met, new option chains must replace expired ones. If the existingOptionChainID is less than six, this function will append the new strikes to an existing option chain. There is also a limit on the number of strikes an option chain can contain (the limit is 10).
+* **addOptionChain(uint expiration, string underlying, uint margin, uint realityID, bytes32 factHash, bytes32 ethAddr, int[] strikes)**: This function adds an option chain, which consists of an expiration, an underlying, a margin amount, a Reality Keys ID, a Reality Keys fact hash, a Reality Keys address, and a collection of strikes (calls are positive, puts are negative). There is a limit on the number of option chains that can be created (the limit is six). Once that limit is met, new option chains can only be created if they can replace ones that are expired or have no positions. There is also a limit on the number of strikes an option chain can contain (the limit is 10).
 
 * **orderMatch(uint optionChainID, uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, uint8 v, bytes32 r, bytes32 s, int matchSize)**: This function matches an order. It will fail if there isn't enough size left in the order to match the trade, if either user doesn't have enough funds to cover the trade, if the order has expired, or if the signature is invalid. If the trade can cross, the users' positions will be updated to reflect the trade.
 
@@ -93,3 +93,10 @@ The Solidity code for the smart contract can be found in the GitHub repository a
 * **getMaxLossAfterTrade(address user, uint optionChainID, uint optionID, int positionChange, int cashChange) constant returns(int)**: This function returns the user's maximum possible loss after doing the specified trade.
 
 * **min(uint a, uint b) constant returns(uint)**: This function returns the minimum of two numbers.
+
+Tests
+----------
+Install mocha and then run
+```
+mocha test.js
+```

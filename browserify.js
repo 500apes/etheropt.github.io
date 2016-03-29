@@ -102,7 +102,7 @@ Main.order = function(option, price, size, order) {
     size = size - matchSize;
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], matchSize], function(result) {
       if (result) {
-        utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+        utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 4000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
           txHash = result[0];
           nonce = result[1];
           Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
@@ -161,6 +161,7 @@ Main.order = function(option, price, size, order) {
   }
 }
 Main.selectAddress = function(i) {
+  nonce = undefined;
   selectedAddr = i;
   Main.refresh();
 }
@@ -217,7 +218,7 @@ Main.connectionTest = function() {
     web3.setProvider(undefined);
     connection = {connection: 'Proxy', provider: 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io', testnet: config.eth_testnet};
   }
-  connection.contract = '<a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+config.contract_market_addr+'" target="_blank">'+config.contract_market_addr+'</a>';
+  connection.contract = '<a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+config.contract_market_addr+'" target="_blank">'+config.contract_market_addr+'</a> (<a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+config.contract_market_addr+'#code" target="_blank">Verify</a>)';
   new EJS({url: config.home_url+'/'+'connection.ejs'}).update('connection', {connection: connection});
   Main.popovers();
   return connection;
@@ -373,8 +374,8 @@ web3.setProvider(new web3.providers.HttpProvider(config.eth_provider));
 var myContract = undefined;
 utility.readFile(config.contract_market+'.compiled', function(result){
   var compiled = JSON.parse(result);
-  var code = compiled.Market.code;
-  var abi = compiled.Market.info.abiDefinition;
+  var code = compiled.Etheropt.code;
+  var abi = compiled.Etheropt.info.abiDefinition;
   web3.eth.defaultAccount = config.eth_addr;
   myContract = web3.eth.contract(abi);
   myContract = myContract.at(config.contract_market_addr);

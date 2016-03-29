@@ -104,7 +104,7 @@ Main.order = function(option, price, size, order) {
     size = size - matchSize;
     utility.proxyCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], matchSize], function(result) {
       if (result) {
-        utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 2000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+        utility.proxySend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 4000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
           txHash = result[0];
           nonce = result[1];
           Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
@@ -163,6 +163,7 @@ Main.order = function(option, price, size, order) {
   }
 }
 Main.selectAddress = function(i) {
+  nonce = undefined;
   selectedAddr = i;
   Main.refresh();
 }
@@ -219,7 +220,7 @@ Main.connectionTest = function() {
     web3.setProvider(undefined);
     connection = {connection: 'Proxy', provider: 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io', testnet: config.eth_testnet};
   }
-  connection.contract = '<a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+config.contract_market_addr+'" target="_blank">'+config.contract_market_addr+'</a>';
+  connection.contract = '<a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+config.contract_market_addr+'" target="_blank">'+config.contract_market_addr+'</a> (<a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+config.contract_market_addr+'#code" target="_blank">Verify</a>)';
   new EJS({url: config.home_url+'/'+'connection.ejs'}).update('connection', {connection: connection});
   Main.popovers();
   return connection;
@@ -375,8 +376,8 @@ web3.setProvider(new web3.providers.HttpProvider(config.eth_provider));
 var myContract = undefined;
 utility.readFile(config.contract_market+'.compiled', function(result){
   var compiled = JSON.parse(result);
-  var code = compiled.Market.code;
-  var abi = compiled.Market.info.abiDefinition;
+  var code = compiled.Etheropt.code;
+  var abi = compiled.Etheropt.info.abiDefinition;
   web3.eth.defaultAccount = config.eth_addr;
   myContract = web3.eth.contract(abi);
   myContract = myContract.at(config.contract_market_addr);
@@ -391,12 +392,12 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-config.home_url = 'http://localhost:8080';
-config.contract_market = 'market.sol';
-config.contract_market_addr = '0xa53a97035d0fe849ece2c14c74c7a468413426da';
+// config.home_url = 'http://localhost:8080';
+config.contract_market = 'etheropt.sol';
+config.contract_market_addr = '0xa3d4d7df3988d48c48728787cb5910a8a4cc4d26';
 config.domain = undefined;
 config.port = 8081;
-config.eth_testnet = true;
+config.eth_testnet = false;
 config.eth_provider = 'http://localhost:8545';
 config.eth_addr = '0x0000000000000000000000000000000000000000';
 config.eth_addr_pk = '';
@@ -61333,6 +61334,21 @@ function proxyGetBalance(web3, address, callback) {
   }
 }
 
+function testCall(web3, contract, address, functionName, args, callback) {
+  var options = {};
+  options.data = contract[functionName].getData.apply(null, args);
+  options.to = address;
+  web3.eth.call(options, function(err, result) {
+    if (!err) {
+      var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+      var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
+      callback(err, solidityFunction.unpackOutput(result));
+    } else {
+      callback(err, result);
+    }
+  });
+}
+
 function proxyCall(web3, contract, address, functionName, args, callback) {
   function proxy() {
     var web3 = new Web3();
@@ -61357,6 +61373,28 @@ function proxyCall(web3, contract, address, functionName, args, callback) {
   } catch(err) {
     proxy();
   }
+}
+
+function testSend(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
+  args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
+  var options = {};
+  var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+  var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
+  if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
+    args[args.length-1].gasPrice = 50000000000;
+    args[args.length-1].gasLimit = args[args.length-1].gas;
+    delete args[args.length-1].gas;
+  }
+  if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
+      options = args[args.length - 1];
+  }
+  var typeName = inputTypes.join();
+  options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
+  options.to = address;
+  options.from = fromAddress;
+  web3.eth.sendTransaction(options, function(err, result) {
+    callback(err, result);
+  });
 }
 
 function proxySend(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
@@ -61411,6 +61449,7 @@ function proxySend(web3, contract, address, functionName, args, fromAddress, pri
           } else {
             nonce = nonce + 1;
           }
+          console.log("Nonce:", nonce);
           options.nonce = nonce;
           options.to = address;
           var typeName = inputTypes.join();
@@ -61498,6 +61537,7 @@ function sign(web3, address, value, privateKey, callback) {
         if (v!=27 && v!=28) v+=27;
         callback({r: r, s: s, v: v});
       } catch (err) {
+        console.log(err);
         callback(undefined);
       }
     });
@@ -61750,6 +61790,20 @@ Array.prototype.min = function() {
   return Math.min.apply(null, this);
 };
 
+Array.prototype.equals = function(b) {
+  if (this === b) return true;
+  if (this == null || b == null) return false;
+  if (this.length != b.length) return false;
+
+  // If you don't care about the order of the elements inside
+  // the array, you should sort both arrays here.
+
+  for (var i = 0; i < this.length; ++i) {
+    if (this[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 exports.add = add;
 exports.multiply_by_number = multiply_by_number;
 exports.parse_to_digits_array = parse_to_digits_array;
@@ -61769,6 +61823,8 @@ exports.mean = mean;
 exports.proxyGetBalance = proxyGetBalance;
 exports.proxySend = proxySend;
 exports.proxyCall = proxyCall;
+exports.testSend = testSend;
+exports.testCall = testCall;
 exports.blockNumber = blockNumber;
 exports.sign = sign;
 exports.verify = verify;

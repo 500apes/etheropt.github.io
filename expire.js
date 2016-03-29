@@ -18,8 +18,8 @@ if (cli_options.help) {
   web3.setProvider(new web3.providers.HttpProvider(config.eth_provider));
 	utility.readFile(config.contract_market+'.compiled', function(result){
 	  var compiled = JSON.parse(result);
-	  var code = compiled.Market.code;
-	  var abi = compiled.Market.info.abiDefinition;
+	  var code = compiled.Etheropt.code;
+	  var abi = compiled.Etheropt.info.abiDefinition;
 	  web3.eth.defaultAccount = config.eth_addr;
 	  var myContract = web3.eth.contract(abi);
 	  myContract = myContract.at(config.contract_market_addr);

@@ -1,10 +1,5 @@
-contract Market {
+contract Etheropt {
 
-  struct Order {
-    uint price;
-    uint size;
-    address user;
-  }
   struct Option {
     int strike;
   }
@@ -41,13 +36,20 @@ contract Market {
   }
   mapping(uint => MarketMaker) marketMakers; //starts at 1
   uint public numMarketMakers = 0;
-  uint maxMarketMakers = 6;
   mapping(address => uint) marketMakerIDs;
   mapping(uint => Account) accounts;
-  uint numAccounts;
+  uint public numAccounts;
   mapping(address => uint) accountIDs; //starts at 1
 
   function Market() {
+  }
+
+  function getAccountID(address user) constant returns(uint) {
+    return accountIDs[user];
+  }
+
+  function getAccount(uint accountID) constant returns(address) {
+    return accounts[accountID].user;
   }
 
   function addFunds() {
@@ -63,7 +65,7 @@ contract Market {
 
   function withdrawFunds(uint amount) {
     if (accountIDs[msg.sender]>0) {
-      if (int(amount)<=getFunds(msg.sender, true)) {
+      if (int(amount)<=getFunds(msg.sender, true) && int(amount)>0) {
         accounts[accountIDs[msg.sender]].capital -= int(amount);
         msg.sender.send(amount);
       }
@@ -93,7 +95,7 @@ contract Market {
     } else {
       int funds = getFunds(marketMakers[i].user, false);
       uint marketMakerID = 0;
-      if (numMarketMakers<maxMarketMakers) {
+      if (numMarketMakers<6) {
         marketMakerID = ++numMarketMakers;
       } else {
         for (uint i=2; i<=numMarketMakers; i++) {
@@ -205,29 +207,25 @@ contract Market {
     }
   }
 
-  function addOptionChain(uint existingOptionChainID, uint expiration, string underlying, uint margin, uint realityID, bytes32 factHash, address ethAddr, int[] strikes) {
+  function addOptionChain(uint expiration, string underlying, uint margin, uint realityID, bytes32 factHash, address ethAddr, int[] strikes) {
     uint optionChainID = 6;
     if (numOptionChains<6) {
       optionChainID = numOptionChains++;
     } else {
       for (uint i=0; i < numOptionChains && optionChainID>=6; i++) {
-        if (optionChains[i].expired==true || optionChains[i].numOptions==0) {
+        if (optionChains[i].expired==true || optionChains[i].numPositions==0 || optionChains[i].numOptions==0) {
           optionChainID = i;
         }
       }
     }
     if (optionChainID<6) {
-      if (existingOptionChainID<6) {
-        optionChainID = existingOptionChainID;
-      } else {
-        delete optionChains[optionChainID];
-        optionChains[optionChainID].expiration = expiration;
-        optionChains[optionChainID].underlying = underlying;
-        optionChains[optionChainID].margin = margin;
-        optionChains[optionChainID].realityID = realityID;
-        optionChains[optionChainID].factHash = factHash;
-        optionChains[optionChainID].ethAddr = ethAddr;
-      }
+      delete optionChains[optionChainID];
+      optionChains[optionChainID].expiration = expiration;
+      optionChains[optionChainID].underlying = underlying;
+      optionChains[optionChainID].margin = margin;
+      optionChains[optionChainID].realityID = realityID;
+      optionChains[optionChainID].factHash = factHash;
+      optionChains[optionChainID].ethAddr = ethAddr;
       for (i=0; i < strikes.length; i++) {
         if (optionChains[optionChainID].numOptions<10) {
           uint optionID = optionChains[optionChainID].numOptions++;
@@ -295,6 +293,8 @@ contract Market {
           if (optionChains[i].options[s].strike<0) {
             if (uint(-optionChains[i].options[s].strike)>optionChains[i].margin) {
               settlement = uint(-optionChains[i].options[s].strike)-optionChains[i].margin;
+            } else {
+              settlement = 0;
             }
           } else {
             settlement = uint(optionChains[i].options[s].strike)+optionChains[i].margin;
