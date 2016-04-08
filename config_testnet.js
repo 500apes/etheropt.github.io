@@ -1,7 +1,7 @@
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-config.home_url = 'http://localhost:8080';
+// config.home_url = 'http://localhost:8080';
 config.contract_market = 'etheropt.sol';
 config.contract_addrs = [
   '0xf426b5a667e9730d92b93fe358346e988b01a4a9',
