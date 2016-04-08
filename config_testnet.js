@@ -4,6 +4,7 @@ config.home_url = 'http://etheropt.github.io';
 config.home_url = 'http://localhost:8080';
 config.contract_market = 'etheropt.sol';
 config.contract_addrs = [
+  '0xf426b5a667e9730d92b93fe358346e988b01a4a9',
   '0xc410dd2b4f77fc765537ba2676a645a6f12a7922',
   '0xdbfaaab8145e56d2127935a34888099e025dfb5f',
 ];

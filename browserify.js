@@ -8,9 +8,9 @@ function Main() {
 }
 //functions
 Main.alertInfo = function(message) {
-  $('#log-container').css('display', 'block');
-  $('#log').append($('<p>' + message + '</p>').hide().fadeIn(2000));
-  $('#log').animate({scrollTop: $('#log').prop("scrollHeight")}, 500);
+  $('#notifications-container').css('display', 'block');
+  $('#notifications').append($('<p>' + message + '</p>').hide().fadeIn(2000));
+  $('#notifications').animate({scrollTop: $('#log').prop("scrollHeight")}, 500);
   console.log(message);
 }
 Main.alertTxHash = function(txHash) {
@@ -69,12 +69,14 @@ Main.eraseCookie = function(name) {
   }
 }
 Main.logout = function() {
+  nonce = undefined;
   addrs = [config.eth_addr];
   pks = [config.eth_addr_pk];
   selectedAddr = 0;
   Main.refresh();
 }
 Main.createAddress = function() {
+  nonce = undefined;
   var newAddress = utility.createAddress();
   var addr = '0x'+newAddress[0].toString('hex');
   var pk = '0x'+newAddress[1].toString('hex');
@@ -82,6 +84,7 @@ Main.createAddress = function() {
   Main.alertInfo('You just created an Ethereum address: '+addr+'.');
 }
 Main.deleteAddress = function() {
+  nonce = undefined;
   addrs.splice(selectedAddr, 1);
   pks.splice(selectedAddr, 1);
   selectedAddr = 0;
@@ -490,7 +493,7 @@ Main.loadOptions = function(callback) {
     },
     function(err, options) {
       options = options.reduce(function(a, b) {return a.concat(b);}, []);
-      options.sort(function(a,b){ return a.expiration+(a.strike+10000000).toFixed(3).toString()+a.kind<b.expiration+(b.strike+10000000).toFixed(3).toString()+b.kind ? -1 : 1 });
+      options.sort(function(a,b){ return a.expiration+(a.strike+10000000).toFixed(3).toString()+(a.kind=='Put' ? '0' : '1')<b.expiration+(b.strike+10000000).toFixed(3).toString()+(b.kind=='Put' ? '0' : '1') ? -1 : 1 });
       callback(options);
     }
   );

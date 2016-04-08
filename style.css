@@ -37,11 +37,11 @@ body, html {
 
 }
 
-#log-container {
+#notifications-container {
   display: none;
   background: #cef;
 }
-#log {
+#notifications {
   height: 100px;
   overflow-y: auto;
 }
@@ -50,10 +50,10 @@ body, html {
   margin: 8px;
 }
 
-.events-container {
+.log-container {
 
 }
-.events {
+.log {
   height: 400px;
   overflow-y: auto;
 }
