@@ -1,34 +1,51 @@
-<% expiration_pairs = options.map(function(x){return x.expiration+" "+x.fromcur+"/"+x.tocur}).getUnique() %>
-<table class="table table-hover">
-<% expiration_pairs.forEach(function(expiration_pair) { %>
-    <tr>
-      <th>Option</th>
-      <th>Best bid</th>
-      <th>Best offer</th>
-      <th>My position</th>
-    </tr>
-    <% filtered_options = options.filter(function(x){return x.expiration+" "+x.fromcur+"/"+x.tocur==expiration_pair}) %>
-      <tr>
-        <td><strong><%= expiration_pair %> <br />(margin requirement: <%= filtered_options[0].margin %>)</strong></td>
-        <td></td>
-        <td></td>
-        <td>Cash: <%= bundle.utility.weiToEth(filtered_options[0].cash) %> eth</td>
-      </tr>
-      <% filtered_options.forEach(function(option){ %>
-        <tr>
-          <td><%= option.strike %> <%= option.kind %></td>
-          <td>
-            <%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.roundTo(option.buy_orders[0].price,4)+" ("+bundle.utility.weiToEth(option.buy_orders[0].size)+" eth)" : "N/A" %>
-            <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#sell_modal" data-price="<%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.roundTo(option.buy_orders[0].price,4) : "" %>" data-size="<%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.weiToEth(option.buy_orders[0].size) : "" %>" data-description="<%= option.expiration+" "+option.fromcur+"/"+option.tocur+" "+option.strike+" "+option.kind %>" data-option='<%= JSON.stringify(option) %>' data-order='<%= option.buy_orders && option.buy_orders.length>0 ? JSON.stringify(option.buy_orders[0].order) : '' %>'>Sell</button>
-          </td>
-          <td>
-            <%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.roundTo(option.sell_orders[0].price,4)+" ("+bundle.utility.weiToEth(option.sell_orders[0].size)+" eth)" : "N/A" %>
-            <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#buy_modal" data-price="<%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.roundTo(option.sell_orders[0].price,4) : "" %>" data-size="<%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.weiToEth(option.sell_orders[0].size) : "" %>" data-description="<%= option.expiration+" "+option.fromcur+"/"+option.tocur+" "+option.strike+" "+option.kind %>" data-option='<%= JSON.stringify(option) %>' data-order='<%= option.sell_orders && option.sell_orders.length>0 ? JSON.stringify(option.sell_orders[0].order) : '' %>'>Buy</button>
-          </td>
-          <td>
-            <%= bundle.utility.weiToEth(option.position) %> eth
-          </td>
-        </tr>
+<div>
+  <ul class="nav nav-tabs" role="tablist">
+    <% first = true %>
+    <% contracts.forEach(function(contract) { %>
+      <% filtered_options = options.filter(function(x){return x.contract_addr==contract.contract_addr}) %>
+      <li role="presentation"<% if (first) {%> class="active"<% }%>>
+        <a href="#<%= contract.contract_addr %>_tab" aria-controls="<%= contract.contract_addr %>_tab" role="tab" data-toggle="tab">
+          <i class="fa fa-calendar"></i>
+          <% if (filtered_options.length>0) {%>
+            <%= filtered_options[0].expiration+" "+filtered_options[0].fromcur+"/"+filtered_options[0].tocur %>
+          <% } else { %>
+            <%= contract.contract_addr.slice(0,12) %>...
+          <% } %>
+        </a>
+      </li>
+      <% first = false %>
     <% }); %>
-<% }); %>
-</table>
+  </ul>
+
+  <div class="tab-content">
+    <% first = true %>
+    <% contracts.forEach(function(contract) { %>
+      <div role="tabpanel" class="tab-pane<% if (first) {%> active<% }%>" id="<%= contract.contract_addr %>_tab">
+
+        <div id="<%= contract.contract_addr %>_nav">
+        </div>
+
+        <div class="row">
+          <div class="col-md-8">
+            <div id="<%= contract.contract_addr %>_prices">
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="panel panel-default events-container">
+              <div class="panel-heading">
+                <h3 class="panel-title">Transaction log</h3>
+              </div>
+              <div class="panel-body">
+                <div class="events">
+                  <div id="<%= contract.contract_addr %>_log">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <% first = false %>
+    <% }); %>
+</div>

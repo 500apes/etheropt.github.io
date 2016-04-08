@@ -4,6 +4,7 @@ var request = require('request');
 var async = (typeof(window) === 'undefined') ? require('async') : require('async/dist/async.min.js');
 var Web3 = require('web3');
 var SolidityFunction = require('web3/lib/web3/function.js');
+var SolidityEvent = require('web3/lib/web3/event.js');
 var coder = require('web3/lib/solidity/coder.js');
 var utils = require('web3/lib/utils/utils.js');
 var sha3 = require('web3/lib/utils/sha3.js');
@@ -63,9 +64,268 @@ function writeFile(filename, data) {
 	});
 }
 
-function proxyGetBalance(web3, address, callback) {
+function testCall(web3, contract, address, functionName, args, callback) {
+  var options = {};
+  options.data = contract[functionName].getData.apply(null, args);
+  options.to = address;
+  web3.eth.call(options, function(err, result) {
+    if (!err) {
+      var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+      var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
+      callback(err, solidityFunction.unpackOutput(result));
+    } else {
+      callback(err, result);
+    }
+  });
+}
+
+function call(web3, contract, address, functionName, args, callback) {
+  function proxy(retries) {
+    var web3 = new Web3();
+    var data = contract[functionName].getData.apply(null, args);
+    var result = undefined;
+    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_call&to='+address+'&data='+data;
+    request.get(url, function(err, httpResponse, body){
+      if (!err) {
+        try {
+          result = JSON.parse(body);
+          var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+          var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
+          callback(solidityFunction.unpackOutput(result['result']));
+        } catch (err) {
+          if (retries>0) {
+            setTimeout(function(){
+              proxy(retries-1);
+            }, 1000);
+          } else {
+            callback(undefined);
+          }
+        }
+      } else {
+        callback(undefined);
+      }
+    });
+  }
+  try {
+    if (web3.currentProvider) {
+      contract = contract.at(address);
+      callback(contract[functionName].call.apply(null, args));
+    } else {
+      proxy(1);
+    }
+  } catch(err) {
+    proxy(1);
+  }
+}
+
+function testSend(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
+  args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
+  var options = {};
+  var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+  var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
+  if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
+    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasLimit = args[args.length-1].gas;
+    delete args[args.length-1].gas;
+  }
+  if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
+      options = args[args.length - 1];
+  }
+  var typeName = inputTypes.join();
+  options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
+  options.to = address;
+  options.from = fromAddress;
+  web3.eth.sendTransaction(options, function(err, result) {
+    callback(err, result);
+  });
+}
+
+function send(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
+  if (privateKey && privateKey.substring(0,2)=='0x') {
+    privateKey = privateKey.substring(2,privateKey.length);
+  }
+  args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
+  var options = {};
+  var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+  var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
+  if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
+    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasLimit = args[args.length-1].gas;
+    delete args[args.length-1].gas;
+  }
+  if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
+      options = args[args.length - 1];
+  }
+  getNextNonce(web3, fromAddress, function(nextNonce){
+    if (nonce==undefined) {
+      nonce = nextNonce;
+    }
+    console.log("Nonce:", nonce);
+    options.nonce = nonce;
+    options.to = address;
+    var typeName = inputTypes.join();
+    options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
+    var tx = new Tx(options);
+    signTx(web3, fromAddress, tx, privateKey, function(tx){
+      if (tx) {
+        var serializedTx = tx.serialize().toString('hex');
+        function proxy() {
+          var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_sendRawTransaction&hex='+serializedTx;
+          request.get(url, function(err, httpResponse, body){
+            if (!err) {
+              try {
+                var result = JSON.parse(body);
+                if (result['result']) {
+                  callback([result['result'], nonce+1]);
+                } else if (result['error']) {
+                  console.log(result['error']['message']);
+                  callback([undefined, nonce]);
+                }
+              } catch (err) {
+                console.log('Failed to parse JSON response from proxy.');
+                callback([undefined, nonce]);
+              }
+            } else {
+              console.log(err);
+              callback([undefined, nonce]);
+            }
+          });
+        }
+        if (web3.currentProvider) {
+          try {
+            web3.eth.sendRawTransaction(serializedTx, function (err, hash) {
+              if (err) {
+                console.log(err);
+                callback([undefined, nonce]);
+              } else {
+                callback([hash, nonce+1]);
+              }
+            });
+          } catch (err) {
+            console.log('Attempting to send transaction through the proxy.');
+            proxy();
+          }
+        } else {
+          proxy();
+        }
+      } else {
+        callback([undefined, nonce]);
+        console.log('Failed to sign transaction.');
+      }
+    });
+  });
+}
+
+function estimateGas(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
+  if (privateKey && privateKey.substring(0,2)=='0x') {
+    privateKey = privateKey.substring(2,privateKey.length);
+  }
+  args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
+  var options = {};
+  var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+  var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
+  if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
+    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasLimit = args[args.length-1].gas;
+    delete args[args.length-1].gas;
+  }
+  if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
+      options = args[args.length - 1];
+  }
+  getNextNonce(web3, fromAddress, function(nextNonce){
+    if (nonce==undefined) {
+      nonce = nextNonce;
+    }
+    options.nonce = nonce;
+    options.to = address;
+    var typeName = inputTypes.join();
+    options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
+    var tx = new Tx(options);
+    signTx(web3, fromAddress, tx, privateKey, function(tx){
+      if (tx) {
+        var serializedTx = tx.serialize().toString('hex');
+        if (web3.currentProvider) {
+          try {
+            web3.eth.estimateGas(options, function (err, result) {
+              if (err) {
+                callback(undefined);
+              } else {
+                callback(result);
+              }
+            });
+          } catch (err) {
+            callback(undefined);
+          }
+        } else {
+          callback(undefined);
+        }
+      } else {
+        callback(undefined);
+      }
+    });
+  });
+}
+
+function logs(web3, contract, address, fromBlock, toBlock, callback) {
+  var options = {fromBlock: fromBlock, toBlock: toBlock, address: address};
+  function decodeEvent(item) {
+    eventAbis = contract.abi.filter(function(eventAbi){return eventAbi.type=='event' && item.topics[0]=='0x'+sha3(eventAbi.name+'('+eventAbi.inputs.map(function(x) {return x.type}).join()+')')});
+    if (eventAbis.length>0) {
+      var eventAbi = eventAbis[0];
+      var event = new SolidityEvent(web3, eventAbi, address);
+      var result = event.decode(item);
+      callback(result);
+    }
+  }
+  function proxy(retries) {
+    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=logs&action=getLogs&address='+address+'&fromBlock='+fromBlock+'&toBlock='+toBlock;
+    request.get(url, function(err, httpResponse, body){
+      if (!err) {
+        try {
+          var result = JSON.parse(body);
+          var items = result['result'];
+          async.each(items,
+            function(item, callback_foreach){
+              item.blockNumber = hex_to_dec(item.blockNumber);
+              item.logIndex = hex_to_dec(item.logIndex);
+              item.transactionIndex = hex_to_dec(item.transactionIndex);
+              decodeEvent(item);
+              callback_foreach();
+            },
+            function(err){
+              setTimeout(function(){
+                proxy(retries);
+              }, 30*1000);
+            }
+          );
+        } catch (err) {
+          if (retries>0) {
+            setTimeout(function(){
+              proxy(retries-1);
+            }, 1000);
+          }
+        }
+      }
+    });
+  }
+  try {
+    if (web3.currentProvider) {
+      web3.eth.filter(options, function(error, item){
+        if (!error) {
+          decodeEvent(item);
+        }
+      });
+    } else {
+      proxy(1);
+    }
+  } catch (err) {
+    proxy(1);
+  }
+}
+
+function getBalance(web3, address, callback) {
   function proxy(){
-    var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=balance&address='+address+'&tag=latest';
+    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=balance&address='+address+'&tag=latest';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         result = JSON.parse(body);
@@ -84,166 +344,33 @@ function proxyGetBalance(web3, address, callback) {
   }
 }
 
-function testCall(web3, contract, address, functionName, args, callback) {
-  var options = {};
-  options.data = contract[functionName].getData.apply(null, args);
-  options.to = address;
-  web3.eth.call(options, function(err, result) {
-    if (!err) {
-      var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-      var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
-      callback(err, solidityFunction.unpackOutput(result));
-    } else {
-      callback(err, result);
-    }
-  });
-}
-
-function proxyCall(web3, contract, address, functionName, args, callback) {
-  function proxy() {
-    var web3 = new Web3();
-    var data = contract[functionName].getData.apply(null, args);
-    var result = undefined;
-    var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_call&to='+address+'&data='+data;
+function getNextNonce(web3, address, callback) {
+  function proxy(){
+    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getTransactionCount&address='+address+'&tag=latest';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         result = JSON.parse(body);
-        var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-        var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
-        callback(solidityFunction.unpackOutput(result['result']));
+        var nextNonce = Number(result['result']);
+        callback(nextNonce);
       }
     });
   }
   try {
     if (web3.currentProvider) {
-      callback(contract[functionName].call.apply(null, args));
+      var nextNonce = Number(web3.eth.getTransactionCount(address));
+      //Note. initial nonce is 2^20 on testnet, but getTransactionCount already starts at 2^20.
+      callback(nextNonce);
     } else {
       proxy();
     }
   } catch(err) {
-    proxy();
-  }
-}
-
-function testSend(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
-  args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
-  var options = {};
-  var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-  var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
-  if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
-    args[args.length-1].gasPrice = 50000000000;
-    args[args.length-1].gasLimit = args[args.length-1].gas;
-    delete args[args.length-1].gas;
-  }
-  if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
-      options = args[args.length - 1];
-  }
-  var typeName = inputTypes.join();
-  options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
-  options.to = address;
-  options.from = fromAddress;
-  web3.eth.sendTransaction(options, function(err, result) {
-    callback(err, result);
-  });
-}
-
-function proxySend(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
-  function proxy(){
-    if (privateKey && privateKey.substring(0,2)=='0x') {
-      privateKey = privateKey.substring(2,privateKey.length);
-    }
-    var web3 = new Web3();
-    args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
-    var options = {};
-    var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-    var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
-    if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
-      args[args.length-1].gasPrice = 50000000000;
-      args[args.length-1].gasLimit = args[args.length-1].gas;
-      delete args[args.length-1].gas;
-    }
-    if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
-        options = args[args.length - 1];
-    }
-    if (nonce==undefined) {
-      var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=txlist&address='+fromAddress+'&sort=desc';
-      request.get(url, function(err, httpResponse, body){
-        if (!err) {
-          var result = JSON.parse(body);
-          try {
-            for (var i=0; i<result['result'].length; i++) {
-              if (nonce==undefined && result['result'][i]['from']==fromAddress) {
-                nonce = parseInt(result['result'][i]['nonce']);
-              }
-            }
-            if (nonce==undefined) {
-              nonce = -1;
-            }
-          } catch (err) {
-            nonce = -1;
-          }
-        }
-      });
-    }
-    async.whilst(
-      function () { return nonce==undefined; },
-      function (callback) {
-          setTimeout(function () {
-              callback(null);
-          }, 1000);
-      },
-      function (err) {
-        if (!err) {
-          if (nonce==undefined || nonce<0){
-            nonce = config.eth_testnet ? 1048576 : 0; //initial nonce is 2^20 for testnet, 0 for livenet
-          } else {
-            nonce = nonce + 1;
-          }
-          console.log("Nonce:", nonce);
-          options.nonce = nonce;
-          options.to = address;
-          var typeName = inputTypes.join();
-          options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
-          var tx = new Tx(options);
-          tx.sign(new Buffer(privateKey, 'hex'));
-          var serializedTx = tx.serialize().toString('hex');
-          var result = undefined;
-          var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_sendRawTransaction&hex='+serializedTx;
-          request.get(url, function(err, httpResponse, body){
-            if (!err) {
-              result = JSON.parse(body);
-              if (result['result']) {
-                callback([result['result'], nonce]);
-              } else if (result['error']) {
-                console.log(result['error']['message']);
-                callback([undefined, nonce]);
-              }
-            } else {
-              console.log(err);
-              callback([undefined, nonce]);
-            }
-          });
-        }
-      }
-    );
-  }
-  try {
-    if (web3.currentProvider) {
-      web3.eth.defaultAccount = fromAddress;
-      callback([contract[functionName].sendTransaction.apply(null, args),0]);
-    } else {
-      proxy();
-    }
-  } catch(err) {
-    console.log(err);
-    console.log('Attempting to send transaction through the proxy.');
     proxy();
   }
 }
 
 function blockNumber(web3, callback) {
   function proxy() {
-    var url = 'http://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
+    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         var result = JSON.parse(body);
@@ -264,8 +391,46 @@ function blockNumber(web3, callback) {
   }
 }
 
+function signTx(web3, address, tx, privateKey, callback) {
+  if (privateKey) {
+    tx.sign(new Buffer(privateKey, 'hex'));
+    callback(tx);
+  } else {
+    var msgHash = '0x'+tx.hash(false).toString('hex');
+    web3.eth.sign(address, msgHash, function(err, sig) {
+      if (!err) {
+        try {
+          function hex_to_uint8array(s) {
+            if (s.slice(0,2)=='0x') s=s.slice(2)
+            var ua = new Uint8Array(s.length);
+            for (var i = 0; i < s.length; i++) {
+              ua[i] = s.charCodeAt(i);
+            }
+            return ua;
+          }
+          var r = sig.slice(0, 66);
+          var s = '0x' + sig.slice(66, 130);
+          var v = web3.toDecimal('0x' + sig.slice(130, 132));
+          if (v!=27 && v!=28) v+=27;
+          sig = {r: hex_to_uint8array(r), s: hex_to_uint8array(s), v: hex_to_uint8array(v.toString(16))};
+          tx.r = r;
+          tx.s = s;
+          tx.v = v;
+          callback(tx);
+        } catch (err) {
+          console.log(err);
+          callback(undefined);
+        }
+      } else {
+        console.log(err);
+        callback(undefined);
+      }
+    });
+  }
+}
+
 function sign(web3, address, value, privateKey, callback) {
-  if (typeof(privateKey) != 'undefined') {
+  if (privateKey) {
     if (privateKey.substring(0,2)=='0x') privateKey = privateKey.substring(2,privateKey.length);
     if (value.substring(0,2)=='0x') value = value.substring(2,value.length);
     try {
@@ -425,6 +590,7 @@ function convert_base(str, fromBase, toBase) {
   for (var i = outArray.length - 1; i >= 0; i--) {
     out += outArray[i].toString(toBase);
   }
+  if (out=='') out = 0;
   return out;
 }
 
@@ -471,6 +637,12 @@ function multiply_by_number(num, x, base) {
   }
 
   return result;
+}
+
+if (!Object.prototype.find) {
+  Object.values = function(obj) {
+    return Object.keys(obj).map(function(key){return obj[key]});
+  };
 }
 
 if (!Array.prototype.find) {
@@ -570,11 +742,13 @@ exports.diffs = diffs;
 exports.std = std;
 exports.std_zero = std_zero;
 exports.mean = mean;
-exports.proxyGetBalance = proxyGetBalance;
-exports.proxySend = proxySend;
-exports.proxyCall = proxyCall;
+exports.getBalance = getBalance;
+exports.send = send;
+exports.call = call;
 exports.testSend = testSend;
 exports.testCall = testCall;
+exports.estimateGas = estimateGas;
+exports.logs = logs;
 exports.blockNumber = blockNumber;
 exports.sign = sign;
 exports.verify = verify;

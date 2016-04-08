@@ -6,6 +6,9 @@ var TestRPC = require('ethereumjs-testrpc');
 var fs = require('fs');
 var sha256 = require('js-sha256').sha256;
 var async = require('async');
+var BigNumber = require('bignumber.js');
+var utils = require('web3/lib/utils/utils.js');
+var coder = require('web3/lib/solidity/coder.js');
 
 var logger = {
   log: function(message) {
@@ -21,11 +24,23 @@ describe("Test", function(done) {
   var accounts;
   var compiled;
   var myContract;
+  var bytecode;
+  var abi;
+  var contract_addr;
+  var expiration = 1457676000;
+  var symbol = "ETH/USD";
+  var margin = Number(utility.ethToWei(5));
+  var realityID = 7573;
+  var factHash = '0x4c28f2fecb85003b84f3e93ae89d97925f217e5151aafe46d01d2a7434b481aa';
+  var ethAddr = '0x6fde387af081c37d9ffa762b49d340e6ae213395';
+  var strikes = [11, -11, 11.5, -11.5, 12, -12, 12.5, -12.5, 13, -13];
+  strikes = strikes.map(function(x){return Number(utility.ethToWei(x))});
 
   before("Initialize TestRPC server", function(done) {
     server = TestRPC.server(logger);
     server.listen(port, function() {
       config.eth_provider = "http://localhost:" + port;
+      config.eth_gas_cost = 20000000000;
       web3.setProvider(new Web3.providers.HttpProvider("http://localhost:" + port));
       done();
     });
@@ -40,66 +55,83 @@ describe("Test", function(done) {
     });
   });
 
-  before("Initialize contract", function(done){
-    utility.readFile(config.contract_market+'.compiled', function(result){
-      compiled = JSON.parse(result);
-      var code = compiled.Etheropt.code;
-      var abi = compiled.Etheropt.info.abiDefinition;
-      myContract = web3.eth.contract(abi);
-      done();
-    });
-  });
-
   after("Shutdown server", function(done) {
     server.close(done);
   });
 
   describe("Contract scenario", function() {
       var initialTransaction;
-      var contractAddress;
       it("Should add the contract to the network", function(done) {
-        web3.eth.sendTransaction({
-          from: accounts[0],
-          data: compiled.Etheropt.code
-        }, function(err, result) {
-          if (err) return done(err);
-          initialTransaction = result;
-          assert.deepEqual(initialTransaction.length, 66);
-          done();
+        utility.readFile(config.contract_market+'.bytecode', function(bytecode){
+          utility.readFile(config.contract_market+'.interface', function(abi){
+            abi = JSON.parse(abi);
+            bytecode = JSON.parse(bytecode);
+            myContract = web3.eth.contract(abi);
+            var options = {};
+            var arguments = [expiration, symbol, margin, realityID, factHash, ethAddr, strikes, {from: config.eth_addr, data: bytecode, gas: 4712388}];
+            var args = Array.prototype.slice.call(arguments);
+            var last = args[args.length - 1];
+            if (utils.isObject(last) && !utils.isArray(last)) {
+                options = args.pop();
+            }
+            function encodeConstructorParams(abi, params) {
+                return abi.filter(function (json) {
+                    return json.type === 'constructor' && json.inputs.length === params.length;
+                }).map(function (json) {
+                    return json.inputs.map(function (input) {
+                        return input.type;
+                    });
+                }).map(function (types) {
+                    return coder.encodeParams(types, params);
+                })[0] || '';
+            }
+            var bytes = encodeConstructorParams(abi, args);
+            options.data += bytes;
+            web3.eth.sendTransaction(
+              options,
+              function(err, result) {
+                if (err) {
+                  return done(err+" You are probably getting this error because ethereumjs-testrpc's block gas limit is too small (it hasn't been upgraded to the homestead block limit). Change line 95 of node_modules/ethereumjs-testrpc/lib/blockchain.js to block.header.gasLimit = '0x47e7c4';");
+                }
+                initialTransaction = result;
+                assert.deepEqual(initialTransaction.length, 66);
+                done();
+              }
+            );
+          });
         });
       });
       it("Should verify the transaction", function(done) {
         web3.eth.getTransactionReceipt(initialTransaction, function(err, receipt) {
           if (err) return done(err);
-          contractAddress = receipt.contractAddress;
-          config.contract_market_addr = contractAddress;
-          myContract = myContract.at(config.contract_market_addr);
+          contract_addr = receipt.contractAddress;
+          myContract = myContract.at(contract_addr);
           assert.notEqual(receipt, null, "Transaction receipt shouldn't be null");
-          assert.notEqual(contractAddress, null, "Transaction did not create a contract");
+          assert.notEqual(contract_addr, null, "Transaction did not create a contract");
           done();
         });
       });
       it("Should verify there's code at the address", function(done) {
-        web3.eth.getCode(contractAddress, function(err, result) {
+        web3.eth.getCode(contract_addr, function(err, result) {
           if (err) return done(err);
           assert.notEqual(result, null);
-          assert.notEqual(result, "0x");
+          assert.notEqual(result, "0x0");
           done();
         });
       });
       it("Should add and withdraw some funds", function(done) {
         var funds = utility.ethToWei(1500);
         var withdraw = utility.ethToWei(500);
-        utility.testSend(web3, myContract, config.contract_market_addr, 'addFunds', [{gas: 1000000, value: funds}], accounts[0], undefined, 0, function(err, result) {
+        utility.testSend(web3, myContract, contract_addr, 'addFunds', [{gas: 1000000, value: funds}], accounts[0], undefined, 0, function(err, result) {
           if (err) return done(err);
-          utility.testSend(web3, myContract, config.contract_market_addr, 'withdrawFunds', [withdraw, {gas: 1000000, value: 0}], accounts[0], undefined, 0, function(err, result) {
+          utility.testSend(web3, myContract, contract_addr, 'withdrawFunds', [withdraw, {gas: 1000000, value: 0}], accounts[0], undefined, 0, function(err, result) {
             if (err) return done(err);
-            utility.testCall(web3, myContract, config.contract_market_addr, 'getFundsAndAvailable', [accounts[0]], function(err, result) {
+            utility.testCall(web3, myContract, contract_addr, 'getFundsAndAvailable', [accounts[0]], function(err, result) {
               if (err) return done(err);
               if (result[0].toNumber() != funds-withdraw || result[1].toNumber() != funds-withdraw) return done("Funds are wrong")
-              utility.testSend(web3, myContract, config.contract_market_addr, 'addFunds', [{gas: 1000000, value: funds}], accounts[1], undefined, 0, function(err, result) {
+              utility.testSend(web3, myContract, contract_addr, 'addFunds', [{gas: 1000000, value: funds}], accounts[1], undefined, 0, function(err, result) {
                 if (err) return done(err);
-                utility.testCall(web3, myContract, config.contract_market_addr, 'getFundsAndAvailable', [accounts[1]], function(err, result) {
+                utility.testCall(web3, myContract, contract_addr, 'getFundsAndAvailable', [accounts[1]], function(err, result) {
                   if (err) return done(err);
                   if (result[0].toNumber() != funds || result[1].toNumber() != funds) return done("Funds are wrong")
                   done();
@@ -112,12 +144,12 @@ describe("Test", function(done) {
       it("Should become a market maker", function(done) {
         var funds = utility.ethToWei(1000);
         var server = "http://localhost:8081";
-        utility.testSend(web3, myContract, config.contract_market_addr, 'marketMaker', [server, {gas: 1000000, value: 0}], accounts[0], undefined, 0, function(err, result) {
+        utility.testSend(web3, myContract, contract_addr, 'marketMaker', [server, {gas: 1000000, value: 0}], accounts[0], undefined, 0, function(err, result) {
           if (err) return done(err);
-          utility.testCall(web3, myContract, config.contract_market_addr, 'getMarketMakers', [], function(err, result) {
+          utility.testCall(web3, myContract, contract_addr, 'getMarketMakers', [], function(err, result) {
             if (err) return done(err);
             if (result.equals([server, "", "", "", ""])) return done("Market maker doesn't match");
-            utility.testCall(web3, myContract, config.contract_market_addr, 'getMarketMakerFunds', [], function(err, result) {
+            utility.testCall(web3, myContract, contract_addr, 'getMarketMakerFunds', [], function(err, result) {
               if (err) return done(err);
               if (result.equals([funds, 0, 0, 0, 0])) return done("Market maker funds don't match");
               done();
@@ -125,25 +157,14 @@ describe("Test", function(done) {
           });
         });
       });
-      it("Should add an options chain", function(done) {
-        var expiration = 1457676000;
-        var symbol = "ETH/USD";
-        var margin = Number(utility.ethToWei(5));
-        var realityID = 7573;
-        var factHash = '0x4c28f2fecb85003b84f3e93ae89d97925f217e5151aafe46d01d2a7434b481aa';
-        var ethAddr = '0x6fde387af081c37d9ffa762b49d340e6ae213395';
-        var strikes = [11, -11, 11.5, -11.5, 12, -12, 12.5, -12.5, 13, -13];
-        strikes = strikes.map(function(x){return Number(utility.ethToWei(x))});
-        utility.testSend(web3, myContract, config.contract_market_addr, 'addOptionChain', [expiration, symbol, margin, realityID, factHash, ethAddr, strikes, {gas: 1000000, value: 0}], accounts[0], undefined, 0, function(err, result) {
+      it("Should check option chain", function(done) {
+        utility.testCall(web3, myContract, contract_addr, 'getMarket', [accounts[0]], function(err, result) {
           if (err) return done(err);
-          utility.testCall(web3, myContract, config.contract_market_addr, 'getMarket', [accounts[0]], function(err, result) {
-            if (err) return done(err);
-            if (!result[0].slice(0,10).map(function(x){return x.toNumber()}).equals([0,1,2,3,4,5,6,7,8,9])) return done("OptionIDs are wrong");
-            if (!result[1].slice(0,10).map(function(x){return x.toNumber()}).equals(strikes)) return done("Strikes are wrong");
-            if (!result[2].slice(0,10).map(function(x){return x.toNumber()}).equals([0,0,0,0,0,0,0,0,0,0])) return done("Positions are wrong");
-            if (!result[3].slice(0,10).map(function(x){return x.toNumber()}).equals([0,0,0,0,0,0,0,0,0,0])) return done("Cashes are wrong");
-            done();
-          });
+          if (!result[0].slice(0,10).map(function(x){return x.toNumber()}).equals([0,1,2,3,4,5,6,7,8,9])) return done("OptionIDs are wrong");
+          if (!result[1].slice(0,10).map(function(x){return x.toNumber()}).equals(strikes)) return done("Strikes are wrong");
+          if (!result[2].slice(0,10).map(function(x){return x.toNumber()}).equals([0,0,0,0,0,0,0,0,0,0])) return done("Positions are wrong");
+          if (!result[3].slice(0,10).map(function(x){return x.toNumber()}).equals([0,0,0,0,0,0,0,0,0,0])) return done("Cashes are wrong");
+          done();
         });
       });
       it("Should execute some trades", function(done) {
@@ -156,28 +177,28 @@ describe("Test", function(done) {
           var price = trade.price ? trade.price : utility.ethToWei(0.50000);
           var size = trade.size ? trade.size : utility.ethToWei(1.0000);
           var matchSize = trade.matchSize ? trade.matchSize : utility.ethToWei(-0.50000);
-          utility.testCall(web3, myContract, config.contract_market_addr, 'getMarket', [orderAccount], function(err, result) {
+          utility.testCall(web3, myContract, contract_addr, 'getMarket', [orderAccount], function(err, result) {
             if (err) callback(err);
             var initialPosition = result[2];
             var initialCash = result[3];
             web3.eth.getBlockNumber(function(err, blockNumber) {
               if (err) callback(err);
               blockExpires = blockNumber + blockExpires;
-              var option = {optionChainID: 0, optionID: optionID};
-              var condensed = utility.pack([option.optionChainID, option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256, 256]);
+              var option = {optionID: optionID};
+              var condensed = utility.pack([option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256]);
               var hash = sha256(new Buffer(condensed,'hex'));
               utility.sign(web3, orderAccount, hash, undefined, function(sig) {
                 if (!sig) callback("Signature failed");
-                var order = {optionChainID: option.optionChainID, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: orderAccount, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
-                utility.testCall(web3, myContract, config.contract_market_addr, 'orderMatchTest', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, counterpartyAccount, matchSize], function(err, result) {
+                var order = {optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: orderAccount, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+                utility.testCall(web3, myContract, contract_addr, 'orderMatchTest', [order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, counterpartyAccount, 0, matchSize], function(err, result) {
                   if (!result) callback("Order match failure");
-                  utility.testSend(web3, myContract, config.contract_market_addr, 'orderMatch', [order.optionChainID, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 4000000, value: 0}], counterpartyAccount, undefined, 0, function(err, result) {
+                  utility.testSend(web3, myContract, contract_addr, 'orderMatch', [order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 4000000, value: 0}], counterpartyAccount, undefined, 0, function(err, result) {
                     if (err) callback(err);
-                    utility.testCall(web3, myContract, config.contract_market_addr, 'getMarket', [orderAccount], function(err, result) {
+                    utility.testCall(web3, myContract, contract_addr, 'getMarket', [orderAccount], function(err, result) {
                       if (err) callback(err);
                       var finalPosition = result[2];
                       var finalCash = result[3];
-                      if (finalPosition[optionID].toNumber()-initialPosition[optionID].toNumber()!=-matchSize) callback("Position match failure");
+                      if (finalPosition[optionID].sub(initialPosition[optionID])!=-matchSize) callback("Position match failure");
                       callback();
                     });
                   });
@@ -210,11 +231,11 @@ describe("Test", function(done) {
         });
       });
       it("Should check position sums", function(done) {
-        utility.testCall(web3, myContract, config.contract_market_addr, 'getMarket', [accounts[0]], function(err, result) {
+        utility.testCall(web3, myContract, contract_addr, 'getMarket', [accounts[0]], function(err, result) {
           if (err) return done(err);
           var positions1 = result[2];
           var cashes1 = result[3];
-          utility.testCall(web3, myContract, config.contract_market_addr, 'getMarket', [accounts[1]], function(err, result) {
+          utility.testCall(web3, myContract, contract_addr, 'getMarket', [accounts[1]], function(err, result) {
             if (err) return done(err);
             var positions2 = result[2];
             var cashes2 = result[3];
@@ -227,16 +248,16 @@ describe("Test", function(done) {
         });
       });
       it("Should check available funds", function(done) {
-        utility.testCall(web3, myContract, config.contract_market_addr, 'getFundsAndAvailable', [accounts[0]], function(err, result) {
+        utility.testCall(web3, myContract, contract_addr, 'getFundsAndAvailable', [accounts[0]], function(err, result) {
           if (err) return done(err);
           var funds = result[0].toNumber();
           var available = result[1].toNumber();
-          utility.testCall(web3, myContract, config.contract_market_addr, 'getMarket', [accounts[0]], function(err, result) {
+          utility.testCall(web3, myContract, contract_addr, 'getMarket', [accounts[0]], function(err, result) {
             if (err) return done(err);
             var strikes = result[1].map(function(x){return x.toNumber()});
             var positions = result[2].map(function(x){return x.toNumber()});
             var cashes = result[3].map(function(x){return x.toNumber()});
-            utility.testCall(web3, myContract, config.contract_market_addr, 'getOptionChain', [0], function(err, result) {
+            utility.testCall(web3, myContract, contract_addr, 'getOptionChain', [], function(err, result) {
               var margin = result[2].toNumber();
               var realityID = result[3];
               var factHash = result[4];
@@ -277,8 +298,8 @@ describe("Test", function(done) {
         });
       });
       it("Should expire", function(done) {
-        utility.testCall(web3, myContract, config.contract_market_addr, 'getOptionChain', [0], function(err, result) {
-          var margin = result[2].toNumber();
+        utility.testCall(web3, myContract, contract_addr, 'getOptionChain', [], function(err, result) {
+          var margin = result[2];
           var realityID = result[3];
           var factHash = result[4];
           var ethAddr = result[5];
@@ -286,32 +307,49 @@ describe("Test", function(done) {
           var s = '0xb644a2bec11216221a403fe20f868a8aa18c49feb30b1e64ee4b398f15fcf694';
           var v = 28;
           var value = '0x0000000000000000000000000000000000000000000000009d140d4cd91b0000';
-          utility.testCall(web3, myContract, config.contract_market_addr, 'getFundsAndAvailable', [accounts[0]], function(err, result) {
+          utility.testCall(web3, myContract, contract_addr, 'getFundsAndAvailable', [accounts[0]], function(err, result) {
             if (err) return done(err);
-            var funds = result[0].toNumber();
-            var available = result[0].toNumber();
-            utility.testCall(web3, myContract, config.contract_market_addr, 'getMarket', [accounts[0]], function(err, result) {
+            var funds = result[0];
+            var available = result[0];
+            utility.testCall(web3, myContract, contract_addr, 'getMarket', [accounts[0]], function(err, result) {
               if (err) return done(err);
-              var strikes = result[1].map(function(x){return x.toNumber()});
-              var positions = result[2].map(function(x){return x.toNumber()});
-              var cashes = result[3].map(function(x){return x.toNumber()});
-              var expectedFunds = funds + cashes[0] / 1000000000000000000;
-              var settlement = utility.hex_to_dec(value);
+              var strikes = result[1];
+              var positions = result[2];
+              var cashes = result[3];
+              var expectedFundChange = funds.add(cashes[0].divToInt(1000000000000000000));
+              var settlement = new BigNumber(utility.hex_to_dec(value));
               for (var i=0; i<strikes.length; i++) {
-                if (strikes[i]>0 && settlement>strikes[i]) {
-                  expectedFunds += positions[i] * Math.min(margin, settlement - strikes[i]) / 1000000000000000000;
-                } else if (strikes[i]<0 && settlement<-strikes[i]) {
-                  expectedFunds += positions[i] * Math.min(margin, -strikes[i] - settlement) / 1000000000000000000;
+                if (strikes[i].gt(new BigNumber(0)) && settlement.gt(strikes[i])) {
+                  if (margin.gt(settlement.sub(strikes[i]))) {
+                    expectedFundChange = expectedFundChange.add(positions[i].mul(settlement.sub(strikes[i])).divToInt(1000000000000000000));
+                  } else {
+                    expectedFundChange = expectedFundChange.add(positions[i].mul(margin).divToInt(1000000000000000000));
+                  }
+                } else if (strikes[i].lt(new BigNumber(0)) && settlement.lt(strikes[i].neg())) {
+                  if (margin.gt(strikes[i].neg().sub(settlement))) {
+                    expectedFundChange = expectedFundChange.add(positions[i].mul(strikes[i].neg().sub(settlement)).divToInt(1000000000000000000));
+                  } else {
+                    expectedFundChange = expectedFundChange.add(positions[i].mul(margin).divToInt(1000000000000000000));
+                  }
                 }
               }
-              utility.testSend(web3, myContract, config.contract_market_addr, 'expire', [0, 0, v, r, s, value, {gas: 4000000, value: 0}], accounts[0], undefined, 0, function(err, result) {
+              web3.eth.getBalance(accounts[0], function(err, result) {
                 if (err) return done(err);
-                utility.testCall(web3, myContract, config.contract_market_addr, 'getFundsAndAvailable', [accounts[0]], function(err, result) {
+                var balanceBefore = result;
+                utility.testSend(web3, myContract, contract_addr, 'expire', [0, v, r, s, value, {gas: 4000000, value: 0}], accounts[1], undefined, 0, function(err, result) {
                   if (err) return done(err);
-                  var funds = result[0].toNumber();
-                  var available = result[0].toNumber();
-                  if (funds!=available || utility.roundTo(funds/1000000000000000000,6)!=utility.roundTo(expectedFunds/1000000000000000000,6)) return done("After expiration funds failure");
-                  done();
+                  utility.testCall(web3, myContract, contract_addr, 'getFundsAndAvailable', [accounts[0]], function(err, result) {
+                    if (err) return done(err);
+                    var funds = result[0].toNumber();
+                    var available = result[0].toNumber();
+                    if (funds!=0 || available!=0) return done("After expiration funds failure");
+                    web3.eth.getBalance(accounts[0], function(err, result) {
+                      if (err) return done(err);
+                      var balanceAfter = result;
+                      if (utility.roundTo(Number(utility.weiToEth(balanceAfter.sub(balanceBefore).toNumber())),6)!=utility.roundTo(Number(utility.weiToEth(expectedFundChange)),6)) return done("After expiration fund change failure");
+                      done();
+                    });
+                  });
                 });
               });
             });
@@ -319,12 +357,19 @@ describe("Test", function(done) {
         });
       });
       it("Should check option chain now expired", function(done) {
-        utility.testCall(web3, myContract, config.contract_market_addr, 'getMarket', [accounts[0]], function(err, result) {
+        utility.testCall(web3, myContract, contract_addr, 'getMarket', [accounts[0]], function(err, result) {
           if (err) return done(err);
           var strikes = result[1].map(function(x){return x.toNumber()});
           var positions = result[2].map(function(x){return x.toNumber()});
           var cashes = result[3].map(function(x){return x.toNumber()});
           if (strikes.filter(function(x){return x!=0}).length>0 || positions.filter(function(x){return x!=0}).length>0 || cashes.filter(function(x){return x!=0}).length>0) return done("Option chain not completely expired");
+          done();
+        });
+      });
+      it("Should check that contract balance is now zero", function(done){
+        web3.eth.getBalance(contract_addr, function(err, result) {
+          if (err) return done(err);
+          if (result.toNumber()!=0) done("Contract balance should be zero");
           done();
         });
       });

@@ -1,0 +1,37 @@
+<table class="table">
+  <% events.forEach(function(event){%>
+    <% if (event.event=="Deposit"){ %>
+      <tr>
+        <td>
+          <%= event.args.user.substring(0,12) %>... <span class="label label-info"><i class="fa fa-lg fa-plus-square-o"></i> deposited</span> <span class="badge"><%= bundle.utility.weiToEth(event.args.amount.toNumber()) %> eth</span> and increased balance to <span class="badge"><%= bundle.utility.weiToEth(event.args.balance.toNumber()) %> eth</span> [<a href="<%= event.tx_link %>" target="_blank"><%= event.transactionHash.slice(0,12) %>...</a>]
+        </td>
+      </tr>
+    <% } else if (event.event=="Withdraw"){ %>
+      <tr>
+        <td>
+          <%= event.args.user.substring(0,12) %>... <span class="label label-info"><i class="fa fa-lg fa-minus-square-o"></i> withdrew</span> <span class="badge"><%= bundle.utility.weiToEth(event.args.amount.toNumber()) %> eth</span> and decreased balance to <span class="badge"><%= bundle.utility.weiToEth(event.args.balance.toNumber()) %> eth</span> [<a href="<%= event.tx_link %>" target="_blank"><%= event.transactionHash.slice(0,12) %>...</a>]
+        </td>
+      </tr>
+    <% } else if (event.event=="OrderMatch"){ %>
+      <tr>
+        <td>
+          <% option = options.filter(function(x){return x.optionID==event.args.optionID}) %>
+          <%= event.args.matchUser.substring(0,12) %>... <span class="label <%= event.args.matchSize.toNumber()>0 ? 'label-success' : 'label-danger' %>"><i class="fa fa-lg fa-line-chart"></i> <%= event.args.matchSize.toNumber()>0 ? 'bought' : 'sold' %></span> <span class="badge"><%= bundle.utility.weiToEth(Math.abs(event.args.matchSize.toNumber())) %> eth</span> of the <span class="label label-primary"><%= option.length>0 ? option[0].strike+' '+option[0].kind : '???' %></span> for <span class="badge"><%= bundle.utility.weiToEth(event.args.price) %></span> <%= event.args.matchSize.toNumber()>0 ? 'from' : 'to' %> <%= event.args.orderUser.slice(0,12) %>... [<a href="<%= event.tx_link %>" target="_blank"><%= event.transactionHash.slice(0,12) %>...</a>]
+        </td>
+      </tr>
+    <% } else if (event.event=="OrderMatchFailure"){ %>
+      <tr>
+        <td>
+          <% option = options.filter(function(x){return x.orderID==event.args.orderID})[0] %>
+          <%= event.args.matchUser.substring(0,12) %>... attempted to <span class="label <%= event.args.matchSize.toNumber()>0 ? 'label-success' : 'label-danger' %>"><i class="fa fa-lg fa-line-chart"></i> <%= event.args.matchSize.toNumber()>0 ? 'buy' : 'sell' %></span> <span class="badge"><%= bundle.utility.weiToEth(Math.abs(event.args.matchSize.toNumber())) %> eth</span> of the <span class="label label-primary"><%= option.length>0 ? option[0].strike+' '+option[0].kind : '???' %></span> for <span class="badge"><%= bundle.utility.weiToEth(event.args.price) %></span> <%= event.args.matchSize.toNumber()>0 ? 'from' : 'to' %> <%= event.args.orderUser.slice(0,12) %>... [<a href="<%= event.tx_link %>" target="_blank"><%= event.transactionHash.slice(0,12) %>...</a>]
+        </td>
+      </tr>
+    <% } else if (event.event=="Expire"){ %>
+      <tr>
+        <td>
+          <%= event.args.caller.substring(0,12) %>... <span class="label label-info"><i class="fa fa-calendar"></i> ran expiration</span> for <%= event.args.user.slice(0,12) %>... [<a href="<%= event.tx_link %>" target="_blank"><%= event.transactionHash.slice(0,12) %>...</a>]
+        </td>
+      </tr>
+    <% } %>
+  <%});%>
+</table>

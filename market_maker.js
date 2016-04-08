@@ -27,7 +27,7 @@ if (cli_options.help) {
     },
     function(option, pricer_data) {
 			var today = Date.now();
-			var expiration = Date.parse(option.expiration+" 00:00:00 UTC");
+			var expiration = Date.parse(option.expiration+" 00:00:00 +0000");
 			var t_days = (expiration - today)/86400000.0;
 			var t = t_days / 365.0;
 

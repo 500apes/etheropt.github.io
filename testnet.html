@@ -5,9 +5,9 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="favicon.ico">
-    <link href="http://getbootstrap.com/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
-    <link href="http://getbootstrap.com/assets/css/ie10-viewport-bug-workaround.css" rel="stylesheet">
+    <link href="//getbootstrap.com/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css" rel="stylesheet">
+    <link href="//getbootstrap.com/assets/css/ie10-viewport-bug-workaround.css" rel="stylesheet">
     <link href="style.css" rel="stylesheet">
     <title>Etheropt TESTNET</title>
   </head>
@@ -16,63 +16,108 @@
 
     <div id="header">
       <img src="title.svg" /> TESTNET
+      <div style="float: right;">
+        <div id="addresses"></div>
+      </div>
     </div>
 
-    <nav class="navbar navbar-default">
-      <div class="container-fluid">
-          <div id="funds"></div>
-          <div id="addresses"></div>
+    <div class="row">
+      <div class="col-md-8">
+        <div id="content">
+          <div class="panel-group" id="accordionHelp" role="tablist" aria-multiselectable="true">
+            <div class="panel panel-default">
+              <div class="panel-heading" role="tab" id="headingHelp">
+                <h4 class="panel-title">
+                  <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordionHelp" href="#collapseHelp" aria-expanded="false" aria-controls="collapseHelp">
+                    Getting started guides <i class="fa fa-caret-down"></i>
+                  </a>
+                </h4>
+              </div>
+              <div id="collapseHelp" class="panel-collapse collapse" role="tabpanel" aria-labelledby="headingHelp">
+                <div class="panel-body">
+                  <div>
+                    <ul class="nav nav-tabs" role="tablist">
+                      <li role="presentation" class="active"><a href="#create-account" aria-controls="create-account" role="tab" data-toggle="tab">Create an account</a></li>
+                      <li role="presentation"><a href="#options-guide" aria-controls="options-guide" role="tab" data-toggle="tab">How options work</a></li>
+                    </ul>
+                    <div class="tab-content">
+                      <div role="tabpanel" class="tab-pane active" id="create-account">
+                        <h3>How to create an account</h3>
+                        <ol>
+                          <li>Click the account dropdown in the upper right and choose "Create new account." You now have a new Ethereum account to use with Etheropt. Click the account dropdown and choose "Export private key." Write your private key down somewhere safe.</li>
+                          <li>Send Ether to the newly created address. If you don't have Ether, click the account dropdown and choose "Deposit with ShapeShift.io." This will let you convert Bitcoin or any other cryptocurrency into Ether and have it deposited into your new account.</li>
+                          <li>Pick an expiration you want to trade and click on "Funds." This will let you deposit Ether from your Ethereum account into the Etheropt smart contract for the expiration you want to trade. You will have to wait an average of 15 seconds for the funds to appear.</li>
+                          <li>Now you are ready to place an order. Choose an option and click "Buy" or "Sell."</li>
+                        </ol>
+                      </div>
+                      <div role="tabpanel" class="tab-pane" id="options-guide">
+                        <h3>How options work</h3>
+                        <p>This guide will generally assume you know nothing about options, but it's still a good idea to search for your own reading material on options outside of this guide. This guide will talk about features of options that are specific to Etheropt without necessarily introducing them as such.</p>
+                        <p>Every option has a strike and an expiration. There are two kinds of options: calls and puts. A call option pays off if the underlying (ETH/USD) expires above the strike, while a put option pays off if the underlying expires below the strike. Every option has a price (also known as a premium), which is paid by the buyer and collected by the seller. If an option expires in-the-money (above the strike for a call, below the strike for a put), the seller pays the difference between the strike and the underlying to the buyer. Each expiration has an in-the-money limit that sets a cap on the amount by which an option can be in-the-money.</p>
+                        <h4>Payoff diagrams</h4>
+                        <p>For example, suppose you buy 100 eth of the 12.5 call for 1.5, and the in-the-money limit is 5. Your max loss is 100 eth * (1.5) = 150 eth when ETH/USD expires at or below 12.5. Your max gain is 100 eth * (5 - 1.5) = 350 eth when ETH/USD expires at or above 17.5 (since the in-the-money limit is 5). The payoff diagram looks like this:</p>
+                        <p><div id="buy_call"></div></p>
+                        <p>The payoff diagram for the seller of this call looks like this:</p>
+                        <p><div id="sell_call"></div></p>
+                        <p>Now let's look at a put. Suppose you buy 10 eth of the 8.5 put for 0.5, and the in-the-money limit is 5. Your max loss is 10 eth * (0.5) = 5 eth when ETH/USD expires at or above 8.5. Your max gain is 10 eth * (5 - 0.5) = 45 eth when ETH/USD expires at or below 3.5 (since the in-the-money limit is 5). The payoff diagram looks like this:</p>
+                        <p><div id="buy_put"></div></p>
+                        <p>The payoff diagram for the seller of this put looks like this:</p>
+                        <p><div id="sell_put"></div></p>
+                        <h4>Funding trades</h4>
+                        <p>In order to trade an option, you need to have enough funds in your account to cover your maximum loss. The smart contract considers your entire option position when calculating the maximum loss. For example, if you sell the 11 call for 1.25 and buy the 12 call for 0.75, your maximum loss is 0.5, which occurs when ETH/USD expires at or above 12. Your available balance is equal to your total funds minus your maximum possible loss. You can never withdraw more than your available balance.</p>
+                        <h4>Cash and position</h4>
+                        <p>Whenever you trade an option, the smart contract updates your position and your cash. Your cash is an aggregate of all the premium you have paid or received for the entire expiration. For example, if you buy 10 eth of the 12 call for 0.5, your position on the 12 call increases by 10 eth, and your cash decreases by 10 eth * 0.5 = 5 eth. If you sell the same option, your position decreases by 10 eth, and your cash usage increases by 5 eth.</p>
+                        <h4>Expiration</h4>
+                        <p>When expiration is run on the smart contract, your funds will automatically change by the cash in your account plus any in-the-money payoffs. For example, if you buy 10 eth of the 12 call for 0.5, your position is 10 eth and your cash usage is -5 eth. If ETH/USD expires at 14, your funds will change by -5 eth + 10 eth * (2) = 15 eth. At expiration time, your funds will automatically be sent to your Ethereum address.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <p>Need help? Join the <a href="https://gitter.im/etheropt/etheropt.github.io" target="_blank"><img src="https://badges.gitter.im/etheropt/etheropt.github.io.svg" alt="Chat on Gitter" />.</a></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel panel-default" id="log-container">
+            <div class="panel-heading">
+              <h3 class="panel-title">Notification log</h3>
+            </div>
+            <div class="panel-body">
+              <div id="log"></div>
+            </div>
+          </div>
+
+          <div id="market-spinner"><i class="fa fa-circle-o-notch fa-spin fa-3x"></i></div>
+          <div id="market">
+          </div>
+
+        </div>
       </div>
-    </nav>
-
-    <div id="content">
-
-      <div id="splash-container">
-
+      <div class="col-md-4">
         <div class="panel panel-default">
-          <button type="button" class="close clickable pad" data-effect="fadeOut" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+          <div class="panel-heading">
+            Introduction
+          </div>
           <div class="panel-body">
             <p>Etheropt is a decentralized options exchange built on <a href="https://ethereum.org/" target="_blank">Ethereum</a>. The options are vanilla call and put options on the price of Ethereum in USD as reported by <a href="https://poloniex.com/exchange#btc_eth" target="_blank">Poloniex</a> and <a href="http://www.coindesk.com/price/" target="_blank">Coindesk</a> and verified by <a href="https://www.realitykeys.com/" target="_blank">Reality Keys</a>. Etheropt has no owner. Its entire operation is described and executed by an Ethereum <a href="https://github.com/etheropt/etheropt.github.io/blob/master/etheropt.sol" target="_blank">smart contract</a>. Etheropt does not make any money as the smart contract does not charge any fees &#8212; not for trading, not for adding funds, not for withdrawing, not for anything.</p>
           </div>
         </div>
-
         <div class="panel panel-default">
-          <button type="button" class="close clickable pad" data-effect="fadeOut" aria-label="Close"><span aria-hidden="true">&times;</span></button>
           <div class="panel-heading">
-              <h3 class="panel-title">How to get started</h3>
+            From <a href="https://twitter.com/etheropt" target="_blank">@etheropt</a>
           </div>
           <div class="panel-body">
-            <ol>
-              <li>Click the account dropdown in the upper right of the top bar and choose "Create new account." You now have a new Ethereum account to use with Etheropt. Click the account dropdown and choose "Export private key." Write your private key down somewhere safe.</li>
-              <li>Send Ether to the newly created address. If you don't have Ether, click the account dropdown and choose "Deposit with ShapeShift.io." This will let you convert Bitcoin or any other cryptocurrency into Ether and have it deposited into your new account.</li>
-              <li>Click on the "Funds" on the top bar. This will let you deposit Ether from your Ethereum account into the Etheropt smart contract. You will have to wait an average of 15 seconds for the funds to appear. Click "Refresh" to check for your new funds.</li>
-              <li>Now you are ready to place an order. Choose an option and click "Buy" or "Sell."</li>
-              <li>For more information about how Etheropt works, please refer to the <a href="https://github.com/etheropt/etheropt.github.io/blob/master/README.md" target="_blank">manual</a>. Need help? Come <a href="https://gitter.im/etheropt/etheropt.github.io" target="_blank">chat</a>.</li>
-            </ol>
+            <div id="twitter"></div>
           </div>
         </div>
-
       </div>
-
-      <div class="panel panel-default" id="log-container">
-        <div class="panel-heading">
-          <h3 class="panel-title">Transaction log</h3>
-        </div>
-        <div class="panel-body">
-          <div id="log"></div>
-        </div>
-      </div>
-
-      <div id="market-spinner"><i class="fa fa-circle-o-notch fa-spin fa-3x"></i></div>
-      <div id="market">
-      </div>
-
     </div>
 
     <div id="footer">
-      <p><img src="http://etheropt.github.io/logo.svg" style="height: 1em;" /> <a href="http://etheropt.github.io" target="_blank">Etheropt</a> is open source on <a href="https://github.com/etheropt/etheropt.github.io" target="_blank">GitHub</a>. Read the <a href="https://github.com/etheropt/etheropt.github.io/blob/master/README.md" target="_blank">manual</a>.</p>
-      <p><img src="http://etherboost.github.io/images/logo.svg" style="height: 1em;" /> Produced by <a href="http://etherboost.github.io" target="_blank">Etherboost</a>. Come <a href="https://gitter.im/etheropt/etheropt.github.io" target="_blank">chat on Gitter</a>.</p>
       <div id="connection"></div>
+      <p><img src="http://etheropt.github.io/logo.svg" style="height: 1em;" /> <a href="http://etheropt.github.io" target="_blank">Etheropt</a> is open source on <a href="https://github.com/etheropt/etheropt.github.io" target="_blank">GitHub</a>. Read the <a href="https://github.com/etheropt/etheropt.github.io/blob/master/README.md" target="_blank">manual</a>.</p>
+      <p><img src="http://etherboost.github.io/images/logo.svg" style="height: 1em;" /> Produced by <a href="http://etherboost.github.io" target="_blank">Etherboost</a>.</p>
+      <p><a href="https://gitter.im/etheropt/etheropt.github.io" target="_blank"><img src="https://badges.gitter.im/etheropt/etheropt.github.io.svg" /></a></p>
     </div>
 
     <!-- Address -->
@@ -111,10 +156,11 @@
         <div class="modal-content">
           <div class="modal-header">
             <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-            <h4 class="modal-title" id="myModalLabel">Add funds</h4>
+            <h4 class="modal-title" id="myModalLabel">Deposit funds</h4>
           </div>
           <div class="modal-body">
             <form>
+              <input type="hidden" id="fund_contract_addr" value="">
               <div class="form-group">
                 <input type="text" class="form-control" id="fund_amount" placeholder="Amount (eth)" />
               </div>
@@ -122,7 +168,7 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary" id="fund_submit">Add funds</button>
+            <button type="button" class="btn btn-primary" id="fund_submit">Deposit funds</button>
           </div>
         </div>
       </div>
@@ -138,6 +184,7 @@
           </div>
           <div class="modal-body">
             <form>
+              <input type="hidden" id="withdraw_contract_addr" value="">
               <div class="form-group">
                 <input type="text" class="form-control" id="withdraw_amount" placeholder="Amount (eth)" />
               </div>
@@ -169,11 +216,45 @@
               </div>
               <div class="form-group">
                 <label for="buy_size">Size</label>
-                <input type="text" class="form-control" id="buy_size" placeholder="Size (eth)" />
+                <input type="text" class="form-control" id="buy_size" placeholder="Size (eth)" onchange="buy_margin();" />
               </div>
               <div class="form-group">
                 <label for="buy_price">Price</label>
-                <input type="text" class="form-control" id="buy_price" placeholder="Price" />
+                <input type="text" class="form-control" id="buy_price" placeholder="Price" onchange="buy_margin();" />
+              </div>
+              <div class="form-group">
+                <label for="buy_graph">Profit/loss graph</label>
+                <div id="buy_graph" style="width: 100%; overflow: hidden;"></div>
+              </div>
+              <div class="form-group">
+                <label for="buy_margin">Funds required</label>
+                <p><div id="buy_margin"></div></p>
+                <p>This is equivalent to the max loss of the trade. If you have trades that offset this trade, the actual funds required may be less.</p>
+              </div>
+              <div class="panel-group" id="accordionAdvancedBuy" role="tablist" aria-multiselectable="true">
+                <div class="panel panel-default">
+                  <div class="panel-heading" role="tab" id="headingAdvancedBuy">
+                    <h4 class="panel-title">
+                      <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordionAdvancedBuy" href="#collapseAdvancedBuy" aria-expanded="false" aria-controls="collapseAdvancedBuy">
+                        Advanced options <i class="fa fa-caret-down"></i>
+                      </a>
+                    </h4>
+                  </div>
+                  <div id="collapseAdvancedBuy" class="panel-collapse collapse" role="tabpanel" aria-labelledby="headingAdvancedBuy">
+                    <div class="panel-body">
+                      <div class="form-group">
+                        <label for="buy_price">Good for N blocks</label>
+                        <p>1 block &#8776; 15 seconds</p>
+                        <input type="text" class="form-control" id="buy_expires" placeholder="Blocks" value="10" />
+                      </div>
+                      <div class="form-group">
+                        <label for="buy_price">Gas</label>
+                        <p>This is the transaction fee charged by Ethereum.</p>
+                        <input type="text" class="form-control" id="buy_gas" placeholder="" value="1000000" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </form>
           </div>
@@ -203,11 +284,45 @@
               </div>
               <div class="form-group">
                 <label for="sell_size">Size</label>
-                <input type="text" class="form-control" id="sell_size" placeholder="Size (eth)" />
+                <input type="text" class="form-control" id="sell_size" placeholder="Size (eth)" onchange="sell_margin();" />
               </div>
               <div class="form-group">
                 <label for="sell_price">Price</label>
-                <input type="text" class="form-control" id="sell_price" placeholder="Price" />
+                <input type="text" class="form-control" id="sell_price" placeholder="Price" onchange="sell_margin();" />
+              </div>
+              <div class="form-group">
+                <label for="sell_graph">Profit/loss graph</label>
+                <div id="sell_graph" style="width: 100%; overflow: hidden;"></div>
+              </div>
+              <div class="form-group">
+                <label for="sell_margin">Funds required</label>
+                <p><div id="sell_margin"></div></p>
+                <p>This is equivalent to the max loss of the trade. If you have trades that offset this trade, the actual funds required may be less.</p>
+              </div>
+              <div class="panel-group" id="accordionAdvancedSell" role="tablist" aria-multiselectable="true">
+                <div class="panel panel-default">
+                  <div class="panel-heading" role="tab" id="headingAdvancedSell">
+                    <h4 class="panel-title">
+                      <a class="collapsed" role="button" data-toggle="collapse" data-parent="#accordionAdvancedSell" href="#collapseAdvancedSell" aria-expanded="false" aria-controls="collapseAdvancedSell">
+                        Advanced options <i class="fa fa-caret-down"></i>
+                      </a>
+                    </h4>
+                  </div>
+                  <div id="collapseAdvancedSell" class="panel-collapse collapse" role="tabpanel" aria-labelledby="headingAdvancedSell">
+                    <div class="panel-body">
+                      <div class="form-group">
+                        <label for="buy_price">Good for N blocks</label>
+                        <p>1 block &#8776; 15 seconds</p>
+                        <input type="text" class="form-control" id="sell_expires" placeholder="Blocks" value="10" />
+                      </div>
+                      <div class="form-group">
+                        <label for="buy_price">Gas</label>
+                        <p>This is the transaction fee charged by Ethereum.</p>
+                        <input type="text" class="form-control" id="sell_gas" placeholder="" value="1000000" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </form>
           </div>
@@ -218,12 +333,31 @@
         </div>
       </div>
     </div>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1/jquery.js" type="text/javascript"></script>
-    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
+    <script src="https://www.gstatic.com/charts/loader.js" type="text/javascript"></script>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1/jquery.js" type="text/javascript"></script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
     <script src="ejs_production.js" type="text/javascript"></script>
     <script src="config_testnet.js" type="text/javascript"></script>
     <script src="bundle.js" type="text/javascript"></script>
     <script src="script.js" type="text/javascript"></script>
+    <script src="tweecool.min.js"></script>
+    <script>
+      google.charts.setOnLoadCallback(function() {
+        bundle.Main.draw_option_chart('buy_call', {strike: 12.5, kind: 'Call', margin: 5.0}, 1.5, 100.0);
+        bundle.Main.draw_option_chart('sell_call', {strike: 12.5, kind: 'Call', margin: 5.0}, 1.5, -100.0);
+        bundle.Main.draw_option_chart('buy_put', {strike: 8.5, kind: 'Put', margin: 5.0}, 0.5, 10.0);
+        bundle.Main.draw_option_chart('sell_put', {strike: 8.5, kind: 'Put', margin: 5.0}, 0.5, -10.0);
+      });
+    </script>
+    <script>
+      $(document).ready(function() {
+        $('#twitter').tweecool({
+          username: 'Etheropt',
+          limit: 5,
+          profile_image: false,
+        });
+      });
+    </script>
     <script>
       (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
       (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
