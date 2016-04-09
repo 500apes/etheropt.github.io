@@ -230,7 +230,7 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 						},
 						function(err, options){
 							options = options.reduce(function(a, b) {return a.concat(b);}, []);
-							options.sort(function(a,b){ return a.expiration+(a.strike+10000000).toFixed(3).toString()+a.kind<b.expiration+(b.strike+10000000).toFixed(3).toString()+b.kind ? -1 : 1 });
+							options.sort(function(a,b){ return a.expiration+(a.strike+10000000).toFixed(3).toString()+(a.kind=='Put' ? '0' : '1')<b.expiration+(b.strike+10000000).toFixed(3).toString()+(b.kind=='Put' ? '0' : '1') ? -1 : 1 });
 							self.options = options;
 							setTimeout(function () { next(); }, 30*1000);
 						}
