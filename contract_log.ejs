@@ -22,7 +22,7 @@
     <% } else if (event.event=="OrderMatchFailure"){ %>
       <tr>
         <td>
-          <% option = options.filter(function(x){return x.optionID==event.args.optionID})[0] %>
+          <% option = options.filter(function(x){return x.optionID==event.args.optionID}) %>
           <%= event.args.matchUser.substring(0,12) %>... attempted to <span class="label <%= event.args.matchSize.toNumber()>0 ? 'label-success' : 'label-danger' %>"><i class="fa fa-lg fa-line-chart"></i> <%= event.args.matchSize.toNumber()>0 ? 'buy' : 'sell' %></span> <span class="badge"><%= bundle.utility.weiToEth(Math.abs(event.args.matchSize.toNumber())) %> eth</span> of the <span class="label label-primary"><%= option.length>0 ? option[0].strike+' '+option[0].kind : '???' %></span> for <span class="badge"><%= bundle.utility.weiToEth(event.args.price) %></span> <%= event.args.matchSize.toNumber()>0 ? 'from' : 'to' %> <%= event.args.orderUser.slice(0,12) %>... [<a href="<%= event.tx_link %>" target="_blank"><%= event.transactionHash.slice(0,12) %>...</a>]
         </td>
       </tr>
