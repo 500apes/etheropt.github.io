@@ -1,4 +1,4 @@
-var config = require('./config.js');
+var config = require('./config_testnet.js');
 var server = require('./server.js');
 var utility = require('./utility.js');
 var Web3 = require('web3');
@@ -25,7 +25,7 @@ if (cli_options.help) {
     function (existing_pricer_data, callback) {
       callback();
     },
-    function(option, pricer_data) {
+    function(option, pricer_data, funds_data, events) {
 			var today = Date.now();
 			var expiration = Date.parse(option.expiration+" 00:00:00 +0000");
 			var t_days = (expiration - today)/86400000.0;

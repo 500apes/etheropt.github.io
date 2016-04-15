@@ -1,14 +1,11 @@
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-// config.home_url = 'http://localhost:8080';
+config.home_url = 'http://localhost:8080';
 config.contract_market = 'etheropt.sol';
-config.contract_addrs = [
-  '0xf426b5a667e9730d92b93fe358346e988b01a4a9',
-  '0xc410dd2b4f77fc765537ba2676a645a6f12a7922',
-  '0xdbfaaab8145e56d2127935a34888099e025dfb5f',
-];
-config.contract_addr = config.contract_addrs[0];
+config.contract_contracts = 'etheropt_contracts.sol';
+config.contract_addrs = [];
+config.contract_contracts_addr = '0x94968f0f86e5000d3d4e093a680dc01a10b3d1ea';
 config.domain = undefined;
 config.port = 8082;
 config.eth_testnet = true;

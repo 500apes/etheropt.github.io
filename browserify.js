@@ -2,6 +2,7 @@ var Web3 = require('web3');
 var utility = require('./utility.js');
 var request = require('request');
 var sha256 = require('js-sha256').sha256;
+require('datejs');
 var async = (typeof(window) === 'undefined') ? require('async') : require('async/dist/async.min.js');
 
 function Main() {
@@ -219,10 +220,133 @@ Main.fund = function(amount, contract_addr) {
 }
 Main.withdraw = function(amount, contract_addr) {
   amount = utility.ethToWei(amount);
-  utility.send(web3, myContract, contract_addr, 'withdrawFunds', [amount, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+  utility.call(web3, myContract, contract_addr, 'getFundsAndAvailable', [addrs[selectedAddr]], function(result) {
+    if (result) {
+      var fundsAvailable = result[1].toNumber();
+      if (amount>fundsAvailable) amount = fundsAvailable;
+    }
+    if (amount>0) {
+      utility.send(web3, myContract, contract_addr, 'withdrawFunds', [amount, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+        txHash = result[0];
+        nonce = result[1];
+        Main.alertTxHash(txHash);
+      });
+    }
+  });
+}
+Main.expireCheck = function(contract_addr, callback) {
+  var realityID = options_cache.filter(function(x){return x.contract_addr==contract_addr})[0].realityID;
+  request.get('https://www.realitykeys.com/api/v1/exchange/'+realityID+'?accept_terms_of_service=current', function(err, httpResponse, body){
+    if (!err) {
+      result = JSON.parse(body);
+      var signed_hash = '0x'+result.signature_v2.signed_hash;
+      var value = '0x'+result.signature_v2.signed_value;
+      var fact_hash = '0x'+result.signature_v2.fact_hash;
+      var sig_r = '0x'+result.signature_v2.sig_r;
+      var sig_s = '0x'+result.signature_v2.sig_s;
+      var sig_v = result.signature_v2.sig_v;
+      var settlement = result.winner_value;
+      var machine_settlement = result.machine_resolution_value;
+      if (sig_r && sig_s && sig_v && value) {
+        callback([true, settlement]);
+      } else if (machine_settlement) {
+        callback([false, machine_settlement]);
+      } else if (settlement) {
+        callback([false, settlement]);
+      } else {
+        callback([false, undefined]);
+      }
+    }
+  });
+}
+Main.expire = function(contract_addr) {
+  var contract = contracts_cache.filter(function(x){return x.contract_addr==contract_addr})[0];
+  var realityID = contract.realityID;
+  request.get('https://www.realitykeys.com/api/v1/exchange/'+realityID+'?accept_terms_of_service=current', function(err, httpResponse, body){
+    if (!err) {
+      result = JSON.parse(body);
+      var signed_hash = '0x'+result.signature_v2.signed_hash;
+      var value = '0x'+result.signature_v2.signed_value;
+      var fact_hash = '0x'+result.signature_v2.fact_hash;
+      var sig_r = '0x'+result.signature_v2.sig_r;
+      var sig_s = '0x'+result.signature_v2.sig_s;
+      var sig_v = result.signature_v2.sig_v;
+      var settlement = result.winner_value;
+      if (sig_r && sig_s && sig_v && value) {
+        Main.alertInfo("Expiring "+expiration+" using settlement price: "+settlement);
+        utility.send(web3, myContract, contract_addr, 'expire', [0, sig_v, sig_r, sig_s, value, {gas: 1000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+          txHash = result[0];
+          nonce = result[1];
+          console.log(txHash);
+        });
+      }
+    }
+  });
+}
+Main.publishExpiration = function(address) {
+  utility.send(web3, contractsContract, config.contract_contracts_addr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
     txHash = result[0];
     nonce = result[1];
     Main.alertTxHash(txHash);
+  });
+}
+Main.disableExpiration = function(address) {
+  utility.send(web3, contractsContract, config.contract_contracts_addr, 'disableContract', [address, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+    txHash = result[0];
+    nonce = result[1];
+    Main.alertTxHash(txHash);
+  });
+}
+Main.newExpiration = function(date, calls, puts, margin) {
+  var fromcur = "ETH";
+  var tocur = "USD";
+  margin = Number(margin);
+  var expiration = date;
+  var expiration_timestamp = Date.parse(expiration+" 00:00:00 +0000").getTime()/1000;
+  var strikes = calls.split(",").map(function(x){return Number(x)}).slice(0,5).concat(puts.split(",").map(function(x){return -Number(x)}).slice(0,5));
+  strikes.sort(function(a,b){return Math.abs(b)>Math.abs(a) ? -1 : (Math.abs(b)==Math.abs(a) ? (a>b ? -1 : 1) : 1)});
+  request.post('https://www.realitykeys.com/api/v1/exchange/new', {form: {fromcur: fromcur, tocur: tocur, settlement_date: expiration, objection_period_secs: '86400', accept_terms_of_service: 'current', use_existing: '1'}}, function(err, httpResponse, body){
+    if (!err) {
+      result = JSON.parse(body);
+      var realityID = result.id;
+      var factHash = '0x'+result.signature_v2.fact_hash;
+      var ethAddr = '0x'+result.signature_v2.ethereum_address;
+      var original_strikes = strikes;
+      var scaled_strikes = strikes.map(function(strike) { return strike*1000000000000000000 });
+      var scaled_margin = margin*1000000000000000000;
+      Main.alertInfo("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
+      utility.send(web3, myContract, undefined, 'constructor', [expiration_timestamp, fromcur+"/"+tocur, scaled_margin, realityID, factHash, ethAddr, scaled_strikes, {from: addrs[selectedAddr], data: bytecode, gas: 4712388, gasPrice: config.eth_gas_price}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+        if(result) {
+          txHash = result[0];
+          nonce = result[1];
+          Main.alertTxHash(txHash);
+          var address = undefined;
+          async.whilst(
+              function () { return address==undefined; },
+              function (callback_whilst) {
+                  setTimeout(function () {
+                    utility.txReceipt(web3, txHash, function(receipt) {
+                      if (receipt) {
+                        address = receipt.contractAddress;
+                      }
+                      console.log("Waiting for contract creation to complete.");
+                      callback_whilst(null);
+                    });
+                  }, 10*1000);
+              },
+              function (err) {
+                Main.alertInfo("Here is the new contract address: "+address+". We will now send a transaction to the contract that keeps track of expirations so that the new expiration will show up on Etheropt.");
+                //notify contracts contract of new contract
+                utility.send(web3, contractsContract, config.contract_contracts_addr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+                  txHash = result[0];
+                  nonce = result[1];
+                  Main.alertTxHash(txHash);
+                });
+              }
+          );
+        }
+      });
+    }
   });
 }
 Main.connectionTest = function() {
@@ -262,6 +386,7 @@ Main.loadAddresses = function() {
 }
 Main.displayMarket = function(callback) {
   if (contracts_cache && options_cache) {
+    contracts_cache.sort(function(a,b){return options_cache.filter(function(x){return x.contract_addr==a.contract_addr}).length==0 || options_cache.filter(function(x){return x.contract_addr==a.contract_addr})[0].expiration>options_cache.filter(function(x){return x.contract_addr==b.contract_addr})[0].expiration ? 1 : -1});
     new EJS({url: config.home_url+'/'+'market.ejs'}).update('market', {options: options_cache, contracts: contracts_cache});
     contracts_cache.forEach(function(contract){
       new EJS({url: config.home_url+'/'+'contract_nav.ejs'}).update(contract.contract_addr+'_nav', {contract: contract, options: options_cache});
@@ -472,6 +597,7 @@ Main.loadOptions = function(callback) {
                       option.fromcur = optionChainDescription.fromcur;
                       option.tocur = optionChainDescription.tocur;
                       option.margin = optionChainDescription.margin;
+                      option.realityID = realityID;
                       callback_map(null, option);
                     },
                     function(err, options) {
@@ -595,16 +721,34 @@ var contracts_cache = undefined;
 var options_cache = undefined;
 //web3
 var web3 = new Web3();
-var myContract = undefined;
 web3.eth.defaultAccount = config.eth_addr;
 web3.setProvider(new web3.providers.HttpProvider(config.eth_provider));
-utility.readFile(config.contract_market+'.bytecode', function(bytecode){
-  utility.readFile(config.contract_market+'.interface', function(abi){
-    abi = JSON.parse(abi);
-    bytecode = JSON.parse(bytecode);
-    myContract = web3.eth.contract(abi);
-    myContract = myContract.at(config.contract_addr);
-    Main.init(); //iniital load
+
+//get contracts
+var contractsContract = undefined;
+var myContract = undefined;
+var bytecode = undefined;
+var abi = undefined;
+utility.readFile(config.contract_contracts+'.bytecode', function(result){
+  bytecode = JSON.parse(result);
+  utility.readFile(config.contract_contracts+'.interface', function(result){
+    abi = JSON.parse(result);
+    contractsContract = web3.eth.contract(abi);
+    contractsContract = contractsContract.at(config.contract_contracts_addr);
+    utility.call(web3, contractsContract, config.contract_contracts_addr, 'getContracts', [], function(result) {
+      if (result) {
+        config.contract_addrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
+        utility.readFile(config.contract_market+'.bytecode', function(result){
+          bytecode = JSON.parse(result);
+          utility.readFile(config.contract_market+'.interface', function(result){
+            abi = JSON.parse(result);
+            myContract = web3.eth.contract(abi);
+            myContract = myContract.at(config.contract_addr);
+            Main.init(); //iniital load
+          });
+        });
+      }
+    });
   });
 });
 

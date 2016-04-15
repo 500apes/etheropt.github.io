@@ -56,7 +56,7 @@ Cash usage and expiration
 ----------
 Etheropt keeps track of your cash usage for each expiration. When you buy an option, your cash usage becomes more negative. When you sell an option, your cash usage becomes more positive. For example, if you buy 10 eth worth of the 5 call expiring March 1 for 0.2000, your cash usage decreases by 2 eth. If you sell the option, your cash usage increases by 2 eth.
 
-The contracts belonging to an expiration must be manually expired using the smart contract's expire function. Anyone can do this using the [expire.js](expire.js) script, or one person can do it for everyone.
+The contracts belonging to an expiration must be manually expired using the smart contract's expire function. Anyone can do this through the GUI.
 
 It is worth noting how exactly expiration works. For example, if you buy 10 eth worth of the 5 call expiring March 1 for 0.2000, your cash usage becomes -2 eth and your position is 10 eth. If ETH/USD expires at 6.0000, your funds change by 10 eth * (-0.2000 + (6.0000 - 5.0000)) = 8 eth. If ETH/USD expires below the strike, your funds change by 10 eth * (-0.2000) = -2 eth. Similarly, if you are short the option, your funds will change by -8 eth if ETH/USD expires at 6.0000 and +2 eth if ETH/USD expires below the strike.
 

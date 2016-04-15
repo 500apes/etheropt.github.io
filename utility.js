@@ -144,17 +144,26 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
   if (privateKey && privateKey.substring(0,2)=='0x') {
     privateKey = privateKey.substring(2,privateKey.length);
   }
+  function encodeConstructorParams(abi, params) {
+      return abi.filter(function (json) {
+        return json.type === 'constructor' && json.inputs.length === params.length;
+      }).map(function (json) {
+        return json.inputs.map(function (input) {
+          return input.type;
+        });
+      }).map(function (types) {
+        return coder.encodeParams(types, params);
+      })[0] || '';
+  }
   args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
   var options = {};
-  var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-  var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
   if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
     args[args.length-1].gasPrice = config.eth_gas_price;
     args[args.length-1].gasLimit = args[args.length-1].gas;
     delete args[args.length-1].gas;
   }
-  if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
-      options = args[args.length - 1];
+  if (utils.isObject(args[args.length -1])) {
+    options = args.pop();
   }
   getNextNonce(web3, fromAddress, function(nextNonce){
     if (nonce==undefined) {
@@ -162,9 +171,18 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
     }
     console.log("Nonce:", nonce);
     options.nonce = nonce;
-    options.to = address;
-    var typeName = inputTypes.join();
-    options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
+    if (functionName=="constructor") {
+      if (options.data.slice(0,2)!="0x") {
+        options.data = '0x' + options.data;
+      }
+      options.data += encodeConstructorParams(contract.abi, args);
+    } else {
+      options.to = address;
+      var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+      var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
+      var typeName = inputTypes.join();
+      options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
+    }
     var tx = new Tx(options);
     signTx(web3, fromAddress, tx, privateKey, function(tx){
       if (tx) {
@@ -264,6 +282,27 @@ function estimateGas(web3, contract, address, functionName, args, fromAddress, p
       }
     });
   });
+}
+
+function txReceipt(web3, txHash, callback) {
+  function proxy(){
+    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getTransactionReceipt&txhash='+txHash;
+    request.get(url, function(err, httpResponse, body){
+      if (!err) {
+        result = JSON.parse(body);
+        callback(result['result']);
+      }
+    });
+  }
+  try {
+    if (web3.currentProvider) {
+      callback(web3.eth.getTransactionReceipt(txHash));
+    } else {
+      proxy();
+    }
+  } catch(err) {
+    proxy();
+  }
 }
 
 function logs(web3, contract, address, fromBlock, toBlock, callback) {
@@ -494,10 +533,13 @@ function diffs(data) {
   return result;
 }
 
-function rets(data) {
+function rets(data, direction) {
+  if (typeof(direction)=="undefined") direction=0;
   var result = [];
   for (var i=1; i<data.length; i++) {
-    result.push((data[i]-data[i-1])/data[i-1]);
+    if (direction==0 || (direction>0 && data[i]-data[i-1]>0) || (direction<0 && data[i]-data[i-1]<0)) {
+      result.push((data[i]-data[i-1])/data[i-1]);
+    }
   }
   return result;
 }
@@ -748,6 +790,7 @@ exports.call = call;
 exports.testSend = testSend;
 exports.testCall = testCall;
 exports.estimateGas = estimateGas;
+exports.txReceipt = txReceipt;
 exports.logs = logs;
 exports.blockNumber = blockNumber;
 exports.sign = sign;

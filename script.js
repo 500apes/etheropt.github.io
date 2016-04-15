@@ -1,5 +1,5 @@
 $(function () {
-  google.charts.load('current', {packages: ['corechart', 'line']});
+    google.charts.load('current', {packages: ['corechart', 'line']});
 });
 $(function () {
     $('body').on('click', '#address_submit', function (e) {
@@ -9,14 +9,61 @@ $(function () {
     });
 });
 $(function () {
+    $('body').on('click', '#new_expiration_submit', function (e) {
+        e.preventDefault();
+        $('#new_expiration_modal').modal('hide');
+        bundle.Main.newExpiration($('#new_expiration_date').val(),$('#new_expiration_call_strikes').val(),$('#new_expiration_put_strikes').val(),$('#new_expiration_margin').val());
+    });
+});
+$(function () {
+    $('body').on('click', '#publish_expiration_submit', function (e) {
+        e.preventDefault();
+        $('#publish_expiration_modal').modal('hide');
+        bundle.Main.publishExpiration($('#publish_expiration_address').val());
+    });
+    $('body').on('click', '#disable_expiration_submit', function (e) {
+        e.preventDefault();
+        $('#disable_expiration_modal').modal('hide');
+        bundle.Main.disableExpiration($('#disable_expiration_address').val());
+    });
+});
+$(function () {
+    $('body').on('click', '#expire_submit', function (e) {
+        e.preventDefault();
+        $('#expire_modal').modal('hide');
+        bundle.Main.expire($('#expire_contract_addr').val());
+    });
+    $('#expire_modal').on('show.bs.modal', function(e) {
+      $('#expire_submit').hide();
+      $("#expire_message").html('<i class="fa fa-circle-o-notch fa-spin"></i>');
+      var contract_addr = $(e.relatedTarget).data('contract');
+      $(e.currentTarget).find('input[id="expire_contract_addr"]').val(contract_addr);
+      bundle.Main.expireCheck(contract_addr, function(result){
+        var ready = result[0];
+        var settlement = result[1];
+        if (ready) $('#expire_submit').show();
+        var message = "";
+        if (ready && settlement) {
+          $('#expire_submit').show();
+          message = "This contract is ready to expire. The settlement price is "+settlement+". Only one person needs to send the expiration transaction. If you are ready to be that person, press 'Expire.'";
+        } else if (settlement) {
+          message = "This contract is not ready to expire. The settlement price will be "+settlement+".";
+        } else {
+          message = "This contract is not ready to expire."
+        }
+        $("#expire_message").html(message);
+      });
+    });
+});
+$(function () {
     $('body').on('click', '#fund_submit', function (e) {
         e.preventDefault();
         $('#fund_modal').modal('hide');
         bundle.Main.fund($('#fund_amount').val(),$('#fund_contract_addr').val());
     });
     $('#fund_modal').on('show.bs.modal', function(e) {
-      var option = $(e.relatedTarget).data('contract');
-      $(e.currentTarget).find('input[id="fund_contract_addr"]').val(option);
+      var contract_addr = $(e.relatedTarget).data('contract');
+      $(e.currentTarget).find('input[id="fund_contract_addr"]').val(contract_addr);
     });
 });
 $(function () {
@@ -26,8 +73,8 @@ $(function () {
         bundle.Main.withdraw($('#withdraw_amount').val(),$('#withdraw_contract_addr').val());
     });
     $('#withdraw_modal').on('show.bs.modal', function(e) {
-      var option = $(e.relatedTarget).data('contract');
-      $(e.currentTarget).find('input[id="withdraw_contract_addr"]').val(option);
+      var contract_addr = $(e.relatedTarget).data('contract');
+      $(e.currentTarget).find('input[id="withdraw_contract_addr"]').val(contract_addr);
     });
 });
 function buy_margin() {
@@ -90,5 +137,10 @@ $(function() {
     $('.clickable').on('click',function(){
         var effect = $(this).data('effect');
         $(this).closest('.panel')[effect]();
+    });
+});
+$(function() {
+    $('#clear-log').click(function(){
+        $('#notifications').empty();
     });
 });
