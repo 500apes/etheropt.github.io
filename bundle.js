@@ -426,7 +426,9 @@ Main.loadPrices = function(options, callback) {
         options_filtered[0].timer = setInterval(function () {
           function pad(val) {return val > 9 ? val : "0" + val;}
           var sec = Math.ceil((Date.now() - options_filtered[0].last_updated) / 1000);
-          document.getElementById(contract_addr+"_updated").innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
+          if ($('#'+contract_addr+"_updated")) {
+            $('#'+contract_addr+"_updated").innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
+          }
         }, 1000);
 
         var market_makers = options_filtered[0].market_makers;
