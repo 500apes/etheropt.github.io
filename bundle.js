@@ -388,7 +388,7 @@ Main.loadAddresses = function() {
 }
 Main.displayMarket = function(callback) {
   if (contracts_cache && options_cache) {
-    contracts_cache.sort(function(a,b){return (options_cache.filter(function(x){return x.contract_addr==a.contract_addr}).length==0 ? new Date(2020,0,1) : options_cache.filter(function(x){return x.contract_addr==a.contract_addr})[0].expiration) > (options_cache.filter(function(x){return x.contract_addr==b.contract_addr}).length==0 ? new Date(2020,0,1) : options_cache.filter(function(x){return x.contract_addr==b.contract_addr})[0].expiration) ? 1 : -1});
+    contracts_cache.sort(function(a,b){return (options_cache.filter(function(x){return x.contract_addr==a.contract_addr}).length==0 ? "2020-01-01" : options_cache.filter(function(x){return x.contract_addr==a.contract_addr})[0].expiration) > (options_cache.filter(function(x){return x.contract_addr==b.contract_addr}).length==0 ? "2020-01-01" : options_cache.filter(function(x){return x.contract_addr==b.contract_addr})[0].expiration) ? 1 : -1});
     new EJS({url: config.home_url+'/'+'market.ejs'}).update('market', {options: options_cache, contracts: contracts_cache});
     contracts_cache.forEach(function(contract){
       new EJS({url: config.home_url+'/'+'contract_nav.ejs'}).update(contract.contract_addr+'_nav', {contract: contract, options: options_cache});
@@ -764,7 +764,7 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-// config.home_url = 'http://localhost:8080';
+config.home_url = 'http://localhost:8080';
 config.contract_market = 'etheropt.sol';
 config.contract_contracts = 'etheropt_contracts.sol';
 config.contract_addrs = [];
