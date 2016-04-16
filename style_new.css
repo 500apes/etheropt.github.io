@@ -1,0 +1,70 @@
+html,body {
+  margin:0;
+  padding:0;
+  height:100%;
+  width:100%;
+}
+body {
+  display:table;
+}
+#header {
+  width: 100%;
+  display:table-row;
+  font-size: 18px;
+  height: 80px;
+  padding: 0;
+  margin-bottom: 8px;
+}
+#header img {
+  height: 80px;
+  vertical-align: middle;
+}
+#layout-container{
+  background: #fff;
+  height:100%;
+}
+
+.lm_content{
+  overflow: scroll;
+  background: #fff;
+}
+
+#connection {
+  clear: both;
+}
+
+#market-spinner {
+  margin-bottom: 12px;
+}
+#market {
+
+}
+
+#notifications-container {
+  display: none;
+  background: #cef;
+}
+#notifications {
+  height: 100px;
+  overflow-y: auto;
+}
+.padding, .pad {
+  margin: 12px;
+}
+
+.log-container {
+
+}
+.log {
+  height: 400px;
+  overflow-y: auto;
+}
+
+.list-spacing li {
+  margin-bottom: 12px;
+}
+
+#twitter ul {
+  list-style-position: inside;
+  padding-left:0;
+}

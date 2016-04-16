@@ -1,60 +1,6 @@
 $(function () {
     google.charts.load('current', {packages: ['corechart', 'line']});
 });
-// $(function () {
-//   var period = 1800; //30 minute bars
-//   var days_data = 10; //10 days
-//   var start = Math.ceil(Date.now()/1000 - days_data*86400);
-//   var end = Math.ceil(Date.now()/1000);
-//   var addingPoint = false;
-//   Highcharts.setOptions({
-//     global: {timezoneOffset: (new Date()).getTimezoneOffset()}
-//   });
-//   $.getJSON('http://api.coindesk.com/v1/bpi/currentprice/USD.json', function(result) {
-//     var btc = result.bpi.USD.rate;
-//     $.getJSON('https://poloniex.com/public?command=returnChartData&currencyPair=BTC_ETH&start='+start+'&end='+end+'&period='+period, function(eth) {
-//       var data = eth.map(function(x){return [x["date"]*1000, x["open"]*btc, x["high"]*btc, x["low"]*btc, x["close"]*btc]});
-//
-//       $('#chart').highcharts('StockChart', {
-//         title: {
-//           text: 'ETH/USD'
-//         },
-//         exporting: {
-//           enabled: false
-//         },
-//         chart : {
-//           events : {
-//             load : function () {
-//               var series = this.series[0];
-//               var data_points = [];
-//               Array.prototype.max = function() {return Math.max.apply(null, this);}
-//               Array.prototype.min = function() {return Math.min.apply(null, this);}
-//               setInterval(function () {
-//                 if (addingPoint) {
-//                   series.removePoint(series.data.length-1);
-//                 }
-//                 data_points.push(Math.random() * 8.0);
-//                 series.addPoint([(new Date()).getTime(), data_points[0], data_points.max(), data_points.min(), data_points[]], true, true);
-//                 if (Date.now() - series.data[series.data.length-1].x > period*1000) {
-//                   addingPoint = false;
-//                   data_points = [];
-//                 } else {
-//                   addingPoint = true;
-//                 }
-//               }, 1000);
-//             }
-//           }
-//         },
-//         rangeSelector: {
-//           buttons : [{type: 'day', count: 1, text: '1D'}, {type: 'day', count: 5, text: '5D'}, {type: 'all', count: 1, text: 'All'}],
-//           selected: 0,
-//           inputEnabled: false
-//         },
-//         series: [{name: 'ETH/USD', type: 'candlestick', data : data, tooltip: {valueDecimals: 2}}]
-//       });
-//     });
-//   });
-// });
 $(function () {
     $('body').on('click', '#address_submit', function (e) {
         e.preventDefault();

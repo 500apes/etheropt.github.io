@@ -237,7 +237,8 @@ Main.withdraw = function(amount, contract_addr) {
   });
 }
 Main.expireCheck = function(contract_addr, callback) {
-  var realityID = options_cache.filter(function(x){return x.contract_addr==contract_addr})[0].realityID;
+  var first_option = options_cache.filter(function(x){return x.contract_addr==contract_addr})[0]
+  var realityID = first_option.realityID;
   request.get('https://www.realitykeys.com/api/v1/exchange/'+realityID+'?accept_terms_of_service=current', function(err, httpResponse, body){
     if (!err) {
       result = JSON.parse(body);
@@ -262,8 +263,8 @@ Main.expireCheck = function(contract_addr, callback) {
   });
 }
 Main.expire = function(contract_addr) {
-  var contract = contracts_cache.filter(function(x){return x.contract_addr==contract_addr})[0];
-  var realityID = contract.realityID;
+  var first_option = options_cache.filter(function(x){return x.contract_addr==contract_addr})[0]
+  var realityID = first_option.realityID;
   request.get('https://www.realitykeys.com/api/v1/exchange/'+realityID+'?accept_terms_of_service=current', function(err, httpResponse, body){
     if (!err) {
       result = JSON.parse(body);
@@ -275,11 +276,11 @@ Main.expire = function(contract_addr) {
       var sig_v = result.signature_v2.sig_v;
       var settlement = result.winner_value;
       if (sig_r && sig_s && sig_v && value) {
-        Main.alertInfo("Expiring "+expiration+" using settlement price: "+settlement);
+        Main.alertInfo("Expiring "+first_option.expiration+" using settlement price: "+settlement);
         utility.send(web3, myContract, contract_addr, 'expire', [0, sig_v, sig_r, sig_s, value, {gas: 1000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
           txHash = result[0];
           nonce = result[1];
-          console.log(txHash);
+          Main.alertTxHash(txHash);
         });
       }
     }
@@ -764,7 +765,7 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'http://etheropt.github.io';
-config.home_url = 'http://localhost:8080';
+// config.home_url = 'http://localhost:8080';
 config.contract_market = 'etheropt.sol';
 config.contract_contracts = 'etheropt_contracts.sol';
 config.contract_addrs = [];
