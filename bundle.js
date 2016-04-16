@@ -524,7 +524,7 @@ Main.loadLog = function(events, callback) {
       utility.logs(web3, myContract, contract_addr, 0, 'latest', function(event) {
         if (!events[contract_addr]) events[contract_addr] = {};
         event.tx_link = 'http://'+(config.eth_testnet ? 'morden' : 'live')+'.ether.camp/transaction/'+event.transactionHash;
-        events[contract_addr][event.transactionHash] = event;
+        events[contract_addr][event.transactionHash+event.logIndex] = event;
         var events_unique = Object.values(events[contract_addr]);
         events_unique.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
         new EJS({url: config.home_url+'/'+'contract_log.ejs'}).update(contract_addr+'_log', {events: events_unique, options: options_cache.filter(function(x){return x.contract_addr==contract_addr})});
@@ -764,7 +764,7 @@ module.exports = {Main: Main, utility: utility};
 (function (global){
 var config = {};
 
-config.home_url = 'http://etheropt.github.io';
+config.home_url = 'https://etheropt.github.io';
 // config.home_url = 'http://localhost:8080';
 config.contract_market = 'etheropt.sol';
 config.contract_contracts = 'etheropt_contracts.sol';

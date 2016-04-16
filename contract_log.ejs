@@ -29,7 +29,7 @@
     <% } else if (event.event=="Expire"){ %>
       <tr>
         <td>
-          <%= event.args.caller.substring(0,12) %>... <span class="label label-info"><i class="fa fa-calendar"></i> ran expiration</span> for <%= event.args.user.slice(0,12) %>... [<a href="<%= event.tx_link %>" target="_blank"><%= event.transactionHash.slice(0,12) %>...</a>]
+          <%= event.args.caller.substring(0,12) %>... <span class="label label-info"><i class="fa fa-calendar"></i> ran expiration</span> [<a href="<%= event.tx_link %>" target="_blank"><%= event.transactionHash.slice(0,12) %>...</a>]
         </td>
       </tr>
     <% } %>
