@@ -64,9 +64,11 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 		client.externalIp(function(err, ip) {
 			self.domain = ip;
 			self.url = 'http://'+self.domain+':'+self.port;
+			console.log(self.url);
 		});
 	} else {
 		this.url = 'http://'+this.domain+':'+this.port;
+		console.log(this.url);
 	}
 
   this.app = express();
