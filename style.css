@@ -33,14 +33,6 @@ body {
   clear: both;
 }
 
-#notifications-container {
-  display: none;
-  background: #cef;
-}
-#notifications {
-  height: 100px;
-  overflow-y: auto;
-}
 .padding, .pad {
   margin: 12px;
 }

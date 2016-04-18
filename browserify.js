@@ -10,8 +10,7 @@ function Main() {
 //functions
 Main.alertInfo = function(message) {
   $('#notifications-container').css('display', 'block');
-  $('#notifications').append($('<p>' + message + '</p>').hide().fadeIn(2000));
-  $('#notifications').animate({scrollTop: $('#log').prop("scrollHeight")}, 500);
+  $('#notifications').prepend($('<p>' + message + '</p>').hide().fadeIn(2000));
   console.log(message);
 }
 Main.alertTxHash = function(txHash) {

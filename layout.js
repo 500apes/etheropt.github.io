@@ -22,6 +22,7 @@ $(function(){
             content: [
               {
                 type: 'stack',
+                height: 75,
                 content:[
                   {
                     type: 'component',
@@ -31,6 +32,13 @@ $(function(){
                     componentState: { id: 'guides', type: 'ejs' }
                   }
                 ]
+              },
+              {
+                type: 'component',
+                componentName: 'layout',
+                isClosable: false,
+                title:'Notification log',
+                componentState: { id: 'notifications', type: 'ejs' }
               }
             ]
           },
