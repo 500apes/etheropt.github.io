@@ -15,7 +15,7 @@ $(function () {
   Highcharts.setOptions({
     global: {timezoneOffset: (new Date()).getTimezoneOffset()}
   });
-  $.getJSON('http://api.coindesk.com/v1/bpi/currentprice/USD.json', function(result) {
+  $.getJSON('https://api.coindesk.com/v1/bpi/currentprice/USD.json', function(result) {
     var btc = result.bpi.USD.rate;
     $.getJSON('https://poloniex.com/public?command=returnChartData&currencyPair=BTC_ETH&start='+start+'&end='+end+'&period='+period, function(eth) {
       var data = eth.map(function(x){return [x["date"]*1000, x["open"]*btc, x["high"]*btc, x["low"]*btc, x["close"]*btc]});
