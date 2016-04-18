@@ -14,6 +14,7 @@ var cli = commandLineArgs([
   { name: 'armed', type: Boolean, defaultValue: false },
 	{ name: 'domain', type: String, defaultValue: config.domain },
   { name: 'port', type: String, defaultValue: config.port },
+	{ name: 'url', type: String, defaultValue: config.url },
 	{ name: 'punch', type: Boolean, defaultValue: true },
 	{ name: 'eth_addr', type: String, defaultValue: config.eth_addr }
 ]);
@@ -22,7 +23,7 @@ var cli_options = cli.parse()
 if (cli_options.help) {
 	console.log(cli.getUsage());
 } else {
-	var server = new server.Server(cli_options.domain, cli_options.port, cli_options.punch, cli_options.eth_addr, cli_options.armed,
+	var server = new server.Server(cli_options.domain, cli_options.port, cli_options.url, cli_options.punch, cli_options.eth_addr, cli_options.armed,
     function (existing_pricer_data, callback) {
       callback();
     },

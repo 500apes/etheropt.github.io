@@ -8,6 +8,7 @@ config.contract_addrs = [];
 config.contract_contracts_addr = '0xed0171e5d133cef766edfe5461becac0156d4611';
 config.domain = undefined;
 config.port = 8082;
+config.url = undefined;
 config.eth_testnet = false;
 config.eth_provider = 'http://localhost:8545';
 config.eth_gas_price = 20000000000;

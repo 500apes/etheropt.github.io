@@ -12,7 +12,7 @@ var commandLineArgs = require('command-line-args');
 var sha256 = require('js-sha256').sha256;
 require('datejs');
 
-function Server(domain, port, punch, eth_addr, armed, pricer_data_fn, pricer_fn) {
+function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, pricer_fn) {
 	//self
 	var self = this;
 
@@ -64,16 +64,16 @@ function Server(domain, port, punch, eth_addr, armed, pricer_data_fn, pricer_fn)
 			//get external ip
 			client.externalIp(function(err, ip) {
 				self.domain = ip;
-				self.url = 'http://'+self.domain+':'+self.port;
+				self.url = url ? url : 'http://'+self.domain+':'+self.port;
 				console.log(self.url);
 			});
 		} else {
 			this.domain = ip;
-			this.url = 'http://'+this.domain+':'+this.port;
+			this.url = url ? url : 'http://'+this.domain+':'+this.port;
 			console.log(this.url);
 		}
 	} else {
-		this.url = 'http://'+this.domain+':'+this.port;
+		this.url = url ? url : 'http://'+this.domain+':'+this.port;
 		console.log(this.url);
 	}
 
