@@ -330,7 +330,15 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 																	var hash = sha256(new Buffer(condensed,'hex'));
 																	utility.sign(web3, self.eth_addr, hash, undefined, function(sig){
 																		if (sig) {
-																			orders.push({contract_addr: option.contract_addr, optionID: option.optionID, price: buy_price, size: buy_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash});
+																			var order = {contract_addr: option.contract_addr, optionID: option.optionID, price: buy_price, size: buy_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+																			utility.call(web3, myContract, order.contract_addr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(result) {
+																				if (result && Number(funds_data[order.contract_addr].funds) + Number(result.toString())>0) {
+																					orders.push(order);
+																				} else {
+																					console.log("Need more funds for this order.");
+																					orders.push(undefined);
+																				}
+																			});
 																		} else {
 																			console.log("Failed to sign order.");
 																			orders.push(undefined);
@@ -341,7 +349,15 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 																	var hash = sha256(new Buffer(condensed,'hex'));
 																	utility.sign(web3, self.eth_addr, hash, undefined, function(sig) {
 																		if (sig) {
-																			orders.push({contract_addr: option.contract_addr, optionID: option.optionID, price: sell_price, size: -sell_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash});
+																			var order = {contract_addr: option.contract_addr, optionID: option.optionID, price: sell_price, size: -sell_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+																			utility.call(web3, myContract, order.contract_addr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(result) {
+																				if (result && Number(funds_data[order.contract_addr].funds) + Number(result.toString())>0) {
+																					orders.push(order);
+																				} else {
+																					console.log("Need more funds for this order.");
+																					orders.push(undefined);
+																				}
+																			});
 																		} else {
 																			console.log("Failed to sign order.");
 																			orders.push(undefined);
