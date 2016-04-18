@@ -166,7 +166,7 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 															function() { return self.url==undefined; },
 															function(callback) { setTimeout(function () { callback(null); }, 1000); },
 															function(err) {
-																if (market_makers.indexOf(self.url)<0 && funds>=min_funds) {
+																if (market_makers.indexOf(self.url)<0 && funds>=min_funds && options.filter(function(x){return x.contract_addr==contract_addr}).length>0) {
 																	console.log('Need to announce server to blockchain.');
 																	if (self.armed) {
 																		utility.send(web3, myContract, contract_addr, 'marketMaker', [self.url, {gas: 3141592, value: 0}], self.eth_addr, undefined, nonce, function(result) {
