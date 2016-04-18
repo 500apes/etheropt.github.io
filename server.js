@@ -48,7 +48,6 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 		  }
 		}
 		var ip = ips[0];
-		console.log(ip);
 		//upnp punch the port
 		client.portMapping(
       {
@@ -61,12 +60,15 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
       function(err) {
 		  }
     );
-		//get external ip
-		client.externalIp(function(err, ip) {
-			self.domain = ip;
-			self.url = 'http://'+self.domain+':'+self.port;
-			console.log(self.url);
-		});
+		// //get external ip
+		// client.externalIp(function(err, ip) {
+		// 	self.domain = ip;
+		// 	self.url = 'http://'+self.domain+':'+self.port;
+		// 	console.log(self.url);
+		// });
+		this.domain = ip;
+		this.url = 'http://'+this.domain+':'+this.port;
+		console.log(this.url);
 	} else {
 		this.url = 'http://'+this.domain+':'+this.port;
 		console.log(this.url);
