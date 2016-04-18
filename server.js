@@ -48,6 +48,7 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 		  }
 		}
 		var ip = ips[0];
+		console.log(ip);
 		//upnp punch the port
 		client.portMapping(
       {
