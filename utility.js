@@ -681,6 +681,16 @@ function multiply_by_number(num, x, base) {
   return result;
 }
 
+function sign(x) {
+  if (x>0) {
+    return 1;
+  } else if (x<0) {
+    return -1;
+  } else if (x==1) {
+    return 0;
+  }
+}
+
 if (!Object.prototype.find) {
   Object.values = function(obj) {
     return Object.keys(obj).map(function(key){return obj[key]});
@@ -803,3 +813,4 @@ exports.roundTo = roundTo;
 exports.weiToEth = weiToEth;
 exports.ethToWei = ethToWei;
 exports.roundToNearest = roundToNearest;
+exports.sign = sign;
