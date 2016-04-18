@@ -363,7 +363,7 @@ Main.connectionTest = function() {
   } catch(err) {
     web3.setProvider(undefined);
   }
-  new EJS({url: config.home_url+'/'+'connection.ejs'}).update('connection', {connection: connection});
+  new EJS({url: config.home_url+'/'+'connection_description.ejs'}).update('connection', {connection: connection});
   Main.popovers();
   return connection;
 }
@@ -390,10 +390,19 @@ Main.loadAddresses = function() {
 Main.displayMarket = function(callback) {
   if (contracts_cache && options_cache) {
     contracts_cache.sort(function(a,b){return (options_cache.filter(function(x){return x.contract_addr==a.contract_addr}).length==0 ? "2020-01-01" : options_cache.filter(function(x){return x.contract_addr==a.contract_addr})[0].expiration) > (options_cache.filter(function(x){return x.contract_addr==b.contract_addr}).length==0 ? "2020-01-01" : options_cache.filter(function(x){return x.contract_addr==b.contract_addr})[0].expiration) ? 1 : -1});
-    new EJS({url: config.home_url+'/'+'market.ejs'}).update('market', {options: options_cache, contracts: contracts_cache});
     contracts_cache.forEach(function(contract){
+      var filtered_options = options_cache.filter(function(x){return x.contract_addr==contract.contract_addr});
+      var item = {
+        type: 'component',
+        componentName: 'layout',
+        isClosable: false,
+        title: filtered_options.length>0 ? filtered_options[0].expiration : contract.contract_addr.slice(0,12)+'...',
+        componentState: { id: 'contract', type: 'ejs', data: {contract: contract} }
+      };
+      myLayout.root.contentItems[0].contentItems[0].contentItems[0].addChild( item );
       new EJS({url: config.home_url+'/'+'contract_nav.ejs'}).update(contract.contract_addr+'_nav', {contract: contract, options: options_cache});
       new EJS({url: config.home_url+'/'+'contract_prices.ejs'}).update(contract.contract_addr+'_prices', {contract: contract, options: options_cache, addr: addrs[selectedAddr]});
+      myLayout.root.contentItems[0].contentItems[0].contentItems[0].setActiveContentItem(myLayout.root.contentItems[0].contentItems[0].contentItems[0].contentItems[1]);
     });
     $('#market-spinner').hide();
     Main.tooltips();
@@ -427,8 +436,8 @@ Main.loadPrices = function(options, callback) {
         options_filtered[0].timer = setInterval(function () {
           function pad(val) {return val > 9 ? val : "0" + val;}
           var sec = Math.ceil((Date.now() - options_filtered[0].last_updated) / 1000);
-          if ($('#'+contract_addr+"_updated")) {
-            $('#'+contract_addr+"_updated").innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
+          if ($('#'+contract_addr+"_updated").length) {
+            $('#'+contract_addr+"_updated")[0].innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
           }
         }, 1000);
 
@@ -765,7 +774,7 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'https://etheropt.github.io';
-// config.home_url = 'http://localhost:8080';
+config.home_url = 'http://localhost:8080';
 config.contract_market = 'etheropt.sol';
 config.contract_contracts = 'etheropt_contracts.sol';
 config.contract_addrs = [];

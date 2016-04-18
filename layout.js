@@ -1,24 +1,36 @@
 $(function(){
   var config = {
+    settings:{
+        hasHeaders: true,
+        constrainDragToContainer: true,
+        reorderEnabled: false,
+        selectionEnabled: true,
+        popoutWholeStack: false,
+        blockedPopoutsThrowError: true,
+        closePopoutsOnUnload: true,
+        showPopoutIcon: false,
+        showMaximiseIcon: false,
+        showCloseIcon: false
+    },
     content: [
       {
         type: 'row',
         content:[
           {
-            type: 'stack',
+            type: 'column',
             width: 60,
-            content:[
+            content: [
               {
-                type: 'component',
-                componentName: 'layout',
-                title:'Guides',
-                componentState: { id: 'guides', type: 'ejs' }
-              },
-              {
-                type: 'component',
-                componentName: 'layout',
-                title:'Component 2',
-                componentState: { id: 'expiration' }
+                type: 'stack',
+                content:[
+                  {
+                    type: 'component',
+                    componentName: 'layout',
+                    isClosable: false,
+                    title:'Guides',
+                    componentState: { id: 'guides', type: 'ejs' }
+                  }
+                ]
               }
             ]
           },
@@ -27,19 +39,34 @@ $(function(){
             content:[
               {
                 type: 'stack',
-                width: 60,
                 content:[
                   {
                     type: 'component',
                     componentName: 'layout',
+                    isClosable: false,
                     title:'Etheropt',
                     componentState: { id: 'introduction', type: 'ejs' }
+                  },
+                  {
+                    type: 'component',
+                    componentName: 'layout',
+                    isClosable: false,
+                    title:'Connection',
+                    componentState: { id: 'connection', type: 'ejs' }
+                  },
+                  {
+                    type: 'component',
+                    componentName: 'layout',
+                    isClosable: false,
+                    title:'Create expiration',
+                    componentState: { id: 'create_expiration', type: 'ejs' }
                   }
                 ]
               },
               {
                 type: 'component',
                 componentName: 'layout',
+                isClosable: false,
                 title:'Chart',
                 componentState: { id: 'chart', type: 'ejs' }
               }
@@ -50,10 +77,10 @@ $(function(){
     ]
   };
 
-  var myLayout = new GoldenLayout( config, $('#layout-container') );
+  myLayout = new GoldenLayout( config, $('#layout-container') );
   myLayout.registerComponent( 'layout', function( container, state ){
     if (state.type=='ejs') {
-      var html = new EJS({url: state.id+'.ejs'}).render({});
+      var html = new EJS({url: state.id+'.ejs'}).render(state.data);
       container.getElement().html( html );
     }
   });

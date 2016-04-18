@@ -1,11 +1,15 @@
-body, html {
-  width: 100%;
-  margin: 0 auto;
-  padding: 8px;
+html,body {
+  margin:0;
+  padding:0;
+  height:100%;
+  width:100%;
 }
-
+body {
+  display:table;
+}
 #header {
   width: 100%;
+  display:table-row;
   font-size: 18px;
   height: 80px;
   padding: 0;
@@ -15,26 +19,18 @@ body, html {
   height: 80px;
   vertical-align: middle;
 }
-
-#content {
-  padding-bottom: 12px;
+#layout-container{
+  background: #fff;
+  height:100%;
 }
 
-#footer {
-  background: #eee;
-  padding: 1em;
-  border-top: 1px solid #ccc;
+.lm_content{
+  overflow: scroll;
+  background: #fff;
 }
 
 #connection {
   clear: both;
-}
-
-#market-spinner {
-  margin-bottom: 12px;
-}
-#market {
-
 }
 
 #notifications-container {
@@ -45,8 +41,8 @@ body, html {
   height: 100px;
   overflow-y: auto;
 }
-.pad {
-  margin: 8px;
+.padding, .pad {
+  margin: 12px;
 }
 
 .log-container {
@@ -58,5 +54,36 @@ body, html {
 }
 
 .list-spacing li {
-  margin-bottom: 1em;
+  margin-bottom: 12px;
+}
+
+#twitter ul {
+  list-style-position: inside;
+  padding-left:0;
+}
+
+/* Absolute Center Spinner */
+#market-spinner {
+  position: fixed;
+  z-index: 999;
+  height: 2em;
+  width: 2em;
+  overflow: show;
+  margin: auto;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+}
+
+/* Transparent Overlay */
+#market-spinner:before {
+  content: '';
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.3);
 }

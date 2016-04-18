@@ -39,7 +39,7 @@
       <ol>
         <li>The recommended way to connect to the Ethereum network is by running Geth on your computer. When you do this, Etheropt will connect to Geth to query the smart contracts and send transactions on your behalf. If you do not wish to use Geth, Etheropt will automatically use the Etherscan API to connect to the Ethereum network and send transactions on your behalf.</li>
         <li>To run Geth locally in such a way that Etheropt can connect to it, run Geth with these options: <code>geth --rpc --rpccorsdomain 'http://etheropt.github.io' console</code>. Once the Geth console has started up, run <code>personal.unlockAccount("YOUR_ETHEREUM_ACCOUNT", "YOUR_PASSWORD")</code> to unlock your account so that Etheropt can send transactions on your behalf.</li>
-        <li>Your current connection will be shown in the footer of Etheropt, so you can tell if you are connected to Geth or the Etherscan proxy.</li>
+        <li>Your current connection will be shown in the "Connection" tab, so you can tell if you are connected to Geth or the Etherscan proxy.</li>
       </ol>
     </div>
     <div role="tabpanel" class="tab-pane" id="understand-options">

@@ -198,7 +198,7 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 								function(contract_addr, callback_each){
 									utility.logs(web3, myContract, contract_addr, 0, 'latest', function(event) {
 										event.tx_link = 'http://'+(config.eth_testnet ? 'morden' : 'live')+'.ether.camp/transaction/'+event.transactionHash;
-										self.events_hash[event.transactionHash] = event;
+										self.events_hash[event.transactionHash+event.logIndex] = event;
 										var events_list = Object.values(self.events_hash);
 										events_list.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
 										self.events = events_list;

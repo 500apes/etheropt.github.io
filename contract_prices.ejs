@@ -1,34 +1,68 @@
 <% filtered_options = options.filter(function(x){return x.contract_addr==contract.contract_addr}) %>
+<% strikes = filtered_options.map(function(x){return x.strike}).getUnique() %>
 <% if (filtered_options.length>0) {%>
   <div id="<%= contract.contract_addr %>_prices">
     <table class="table table-hover">
       <tr>
-        <th colspan="2">Prices last updated: <span id="<%= contract.contract_addr %>_updated">00:00</span></th>
-        <th>In-the-money limit: <%= filtered_options[0].margin %></th>
-        <th>Cash <%= bundle.utility.weiToEth(filtered_options[0].cash) %> eth</th>
+        <td colspan="2">Prices last updated: <span id="<%= contract.contract_addr %>_updated">00:00</span></td>
+        <td colspan="3">In-the-money limit: <%= filtered_options[0].margin %></td>
+        <td colspan="2">Cash <%= bundle.utility.weiToEth(filtered_options[0].cash) %> eth</td>
       </tr>
       <tr>
-        <th>Option</th>
+        <th colspan="3">Call</th>
+        <th></th>
+        <th colspan="3">Put</th>
+      </tr>
+      <tr>
+        <th>Best bid</th>
+        <th>Best offer</th>
+        <th>My position</th>
+        <th>Strike</th>
         <th>Best bid</th>
         <th>Best offer</th>
         <th>My position</th>
       </tr>
-      <% filtered_options.forEach(function(option){ %>
+      <% strikes.forEach(function(strike){%>
         <tr>
-          <td><%= option.strike %> <%= option.kind %></td>
-          <td>
-            <span style="<%= option.buy_orders && option.buy_orders.length>0 && option.buy_orders[0].order.addr==addr ? 'background: #9ff' : ''%>"><%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.roundTo(option.buy_orders[0].price,4)+" ("+bundle.utility.weiToEth(option.buy_orders[0].size)+" eth)" : "N/A" %></span>
-            <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#sell_modal" data-price="<%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.roundTo(option.buy_orders[0].price,4) : "" %>" data-size="<%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.weiToEth(option.buy_orders[0].size) : "" %>" data-description="<%= option.expiration+" "+option.fromcur+"/"+option.tocur+" "+option.strike+" "+option.kind+"<br />(in-the-money-limit: "+(option.margin)+")" %>" data-option='<%= JSON.stringify(option) %>' data-order='<%= option.buy_orders && option.buy_orders.length>0 ? JSON.stringify(option.buy_orders[0].order) : '' %>'>Sell</button>
-          </td>
-          <td>
-            <span style="<%= option.sell_orders && option.sell_orders.length>0 && option.sell_orders[0].order.addr==addr ? 'background: #9ff' : ''%>"><%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.roundTo(option.sell_orders[0].price,4)+" ("+bundle.utility.weiToEth(option.sell_orders[0].size)+" eth)" : "N/A" %></span>
-            <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#buy_modal" data-price="<%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.roundTo(option.sell_orders[0].price,4) : "" %>" data-size="<%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.weiToEth(option.sell_orders[0].size) : "" %>" data-description="<%= option.expiration+" "+option.fromcur+"/"+option.tocur+" "+option.strike+" "+option.kind+"<br />(in-the-money-limit: "+(option.margin)+")" %>" data-option='<%= JSON.stringify(option) %>' data-order='<%= option.sell_orders && option.sell_orders.length>0 ? JSON.stringify(option.sell_orders[0].order) : '' %>'>Buy</button>
-          </td>
-          <td>
-            <%= bundle.utility.weiToEth(option.position) %> eth
-          </td>
+          <% option = filtered_options.filter(function(x){return x.strike==strike && x.kind=='Call'})[0] %>
+          <% if (option) { %>
+            <td>
+              <span style="<%= option.buy_orders && option.buy_orders.length>0 && option.buy_orders[0].order.addr==addr ? 'background: #9ff' : ''%>"><%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.roundTo(option.buy_orders[0].price,4)+" ("+bundle.utility.weiToEth(option.buy_orders[0].size)+" eth)" : "N/A" %></span>
+              <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#sell_modal" data-price="<%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.roundTo(option.buy_orders[0].price,4) : "" %>" data-size="<%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.weiToEth(option.buy_orders[0].size) : "" %>" data-description="<%= option.expiration+" "+option.fromcur+"/"+option.tocur+" "+option.strike+" "+option.kind+"<br />(in-the-money-limit: "+(option.margin)+")" %>" data-option='<%= JSON.stringify(option) %>' data-order='<%= option.buy_orders && option.buy_orders.length>0 ? JSON.stringify(option.buy_orders[0].order) : '' %>'>Sell</button>
+            </td>
+            <td>
+              <span style="<%= option.sell_orders && option.sell_orders.length>0 && option.sell_orders[0].order.addr==addr ? 'background: #9ff' : ''%>"><%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.roundTo(option.sell_orders[0].price,4)+" ("+bundle.utility.weiToEth(option.sell_orders[0].size)+" eth)" : "N/A" %></span>
+              <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#buy_modal" data-price="<%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.roundTo(option.sell_orders[0].price,4) : "" %>" data-size="<%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.weiToEth(option.sell_orders[0].size) : "" %>" data-description="<%= option.expiration+" "+option.fromcur+"/"+option.tocur+" "+option.strike+" "+option.kind+"<br />(in-the-money-limit: "+(option.margin)+")" %>" data-option='<%= JSON.stringify(option) %>' data-order='<%= option.sell_orders && option.sell_orders.length>0 ? JSON.stringify(option.sell_orders[0].order) : '' %>'>Buy</button>
+            </td>
+            <td>
+              <%= bundle.utility.weiToEth(option.position) %> eth
+            </td>
+          <% } else { %>
+            <td></td>
+            <td></td>
+            <td></td>
+          <% } %>
+          <td><%= strike %></td>
+          <% option = filtered_options.filter(function(x){return x.strike==strike && x.kind=='Put'})[0] %>
+          <% if (option) { %>
+            <td>
+              <span style="<%= option.buy_orders && option.buy_orders.length>0 && option.buy_orders[0].order.addr==addr ? 'background: #9ff' : ''%>"><%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.roundTo(option.buy_orders[0].price,4)+" ("+bundle.utility.weiToEth(option.buy_orders[0].size)+" eth)" : "N/A" %></span>
+              <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#sell_modal" data-price="<%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.roundTo(option.buy_orders[0].price,4) : "" %>" data-size="<%= option.buy_orders && option.buy_orders.length>0 ? bundle.utility.weiToEth(option.buy_orders[0].size) : "" %>" data-description="<%= option.expiration+" "+option.fromcur+"/"+option.tocur+" "+option.strike+" "+option.kind+"<br />(in-the-money-limit: "+(option.margin)+")" %>" data-option='<%= JSON.stringify(option) %>' data-order='<%= option.buy_orders && option.buy_orders.length>0 ? JSON.stringify(option.buy_orders[0].order) : '' %>'>Sell</button>
+            </td>
+            <td>
+              <span style="<%= option.sell_orders && option.sell_orders.length>0 && option.sell_orders[0].order.addr==addr ? 'background: #9ff' : ''%>"><%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.roundTo(option.sell_orders[0].price,4)+" ("+bundle.utility.weiToEth(option.sell_orders[0].size)+" eth)" : "N/A" %></span>
+              <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#buy_modal" data-price="<%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.roundTo(option.sell_orders[0].price,4) : "" %>" data-size="<%= option.sell_orders && option.sell_orders.length>0 ? bundle.utility.weiToEth(option.sell_orders[0].size) : "" %>" data-description="<%= option.expiration+" "+option.fromcur+"/"+option.tocur+" "+option.strike+" "+option.kind+"<br />(in-the-money-limit: "+(option.margin)+")" %>" data-option='<%= JSON.stringify(option) %>' data-order='<%= option.sell_orders && option.sell_orders.length>0 ? JSON.stringify(option.sell_orders[0].order) : '' %>'>Buy</button>
+            </td>
+            <td>
+              <%= bundle.utility.weiToEth(option.position) %> eth
+            </td>
+          <% } else { %>
+            <td></td>
+            <td></td>
+            <td></td>
+          <% } %>
         </tr>
-      <% }); %>
+      <%})%>
     </table>
   </div>
 <% } else { %>
