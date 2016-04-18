@@ -12,7 +12,7 @@ var commandLineArgs = require('command-line-args');
 var sha256 = require('js-sha256').sha256;
 require('datejs');
 
-function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
+function Server(domain, port, punch, eth_addr, armed, pricer_data_fn, pricer_fn) {
 	//self
 	var self = this;
 
@@ -49,26 +49,29 @@ function Server(domain, port, eth_addr, armed, pricer_data_fn, pricer_fn) {
 		}
 		var ip = ips[0];
 		//upnp punch the port
-		client.portMapping(
-      {
-  			public: { host: '', port: self.port },
-  			private: { host: ip, port: self.port },
-  			protocol: 'tcp',
-  			ttl: 0,
-  			description: 'Etheropt'
-		  },
-      function(err) {
-		  }
-    );
-		// //get external ip
-		// client.externalIp(function(err, ip) {
-		// 	self.domain = ip;
-		// 	self.url = 'http://'+self.domain+':'+self.port;
-		// 	console.log(self.url);
-		// });
-		this.domain = ip;
-		this.url = 'http://'+this.domain+':'+this.port;
-		console.log(this.url);
+		if (punch) {
+			client.portMapping(
+	      {
+	  			public: { host: '', port: self.port },
+	  			private: { host: ip, port: self.port },
+	  			protocol: 'tcp',
+	  			ttl: 0,
+	  			description: 'Etheropt'
+			  },
+	      function(err) {
+			  }
+	    );
+			//get external ip
+			client.externalIp(function(err, ip) {
+				self.domain = ip;
+				self.url = 'http://'+self.domain+':'+self.port;
+				console.log(self.url);
+			});
+		} else {
+			this.domain = ip;
+			this.url = 'http://'+this.domain+':'+this.port;
+			console.log(this.url);
+		}
 	} else {
 		this.url = 'http://'+this.domain+':'+this.port;
 		console.log(this.url);
