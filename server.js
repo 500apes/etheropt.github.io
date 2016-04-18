@@ -330,6 +330,7 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 																	var hash = sha256(new Buffer(condensed,'hex'));
 																	utility.sign(web3, self.eth_addr, hash, undefined, function(sig){
 																		if (sig) {
+																			console.log(sig);
 																			orders.push({contract_addr: option.contract_addr, optionID: option.optionID, price: buy_price, size: buy_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash});
 																		} else {
 																			console.log("Failed to sign order.");
@@ -341,6 +342,7 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 																	var hash = sha256(new Buffer(condensed,'hex'));
 																	utility.sign(web3, self.eth_addr, hash, undefined, function(sig) {
 																		if (sig) {
+																			console.log(sig);
 																			orders.push({contract_addr: option.contract_addr, optionID: option.optionID, price: sell_price, size: -sell_size, orderID: orderID, blockExpires: blockExpires, addr: self.eth_addr, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash});
 																		} else {
 																			console.log("Failed to sign order.");
