@@ -444,7 +444,7 @@ Main.loadPrices = function(options, callback) {
         var market_makers = options_filtered[0].market_makers;
         async.reduce(market_makers, [],
           function(memo, market_maker, callback_reduce) {
-            request.get(market_maker+'/'+contract_addr, function(err, httpResponse, body) {
+            request.get(market_maker+'/'+contract_addr, {timeout: 1500}, function(err, httpResponse, body) {
               try {
                 callback_reduce(null, memo.concat(JSON.parse(body)));
               } catch (err) {
@@ -774,13 +774,14 @@ module.exports = {Main: Main, utility: utility};
 var config = {};
 
 config.home_url = 'https://etheropt.github.io';
-config.home_url = 'http://localhost:8080';
+// config.home_url = 'http://localhost:8080';
 config.contract_market = 'etheropt.sol';
 config.contract_contracts = 'etheropt_contracts.sol';
 config.contract_addrs = [];
 config.contract_contracts_addr = '0xed0171e5d133cef766edfe5461becac0156d4611';
 config.domain = undefined;
 config.port = 8082;
+config.url = undefined;
 config.eth_testnet = false;
 config.eth_provider = 'http://localhost:8545';
 config.eth_gas_price = 20000000000;
@@ -86006,6 +86007,16 @@ function multiply_by_number(num, x, base) {
   return result;
 }
 
+function sign(x) {
+  if (x>0) {
+    return 1;
+  } else if (x<0) {
+    return -1;
+  } else if (x==1) {
+    return 0;
+  }
+}
+
 if (!Object.prototype.find) {
   Object.values = function(obj) {
     return Object.keys(obj).map(function(key){return obj[key]});
@@ -86128,6 +86139,7 @@ exports.roundTo = roundTo;
 exports.weiToEth = weiToEth;
 exports.ethToWei = ethToWei;
 exports.roundToNearest = roundToNearest;
+exports.sign = sign;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
 },{"./config.js":2,"async":11,"async/dist/async.min.js":10,"bignumber.js":14,"buffer":346,"ethereumjs-tx":93,"ethereumjs-util":94,"fs":299,"keythereum":153,"request":196,"web3":247,"web3/lib/solidity/coder.js":254,"web3/lib/utils/sha3.js":266,"web3/lib/utils/utils.js":267,"web3/lib/web3/event.js":274,"web3/lib/web3/function.js":278}],299:[function(_dereq_,module,exports){
