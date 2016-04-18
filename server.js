@@ -168,7 +168,8 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 															function(err) {
 																console.log(contract_addr, self.url, funds, min_funds);
 																console.log(market_makers);
-																console.log(market_makers.indexOf(self.url)<0, funds>=min_funds, options.filter(function(x){return x.contract_addr==contract_addr}).length>0);
+																console.log(market_makers.indexOf(self.url));
+																console.log(options.filter(function(x){return x.contract_addr==contract_addr}).length);
 																if (market_makers.indexOf(self.url)<0 && funds>=min_funds && options.filter(function(x){return x.contract_addr==contract_addr}).length>0) {
 																	console.log('Need to announce server to blockchain.');
 																	if (self.armed) {
