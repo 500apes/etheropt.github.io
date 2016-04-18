@@ -681,7 +681,7 @@ function multiply_by_number(num, x, base) {
   return result;
 }
 
-function sign(x) {
+function math_sign(x) {
   if (x>0) {
     return 1;
   } else if (x<0) {
@@ -813,4 +813,4 @@ exports.roundTo = roundTo;
 exports.weiToEth = weiToEth;
 exports.ethToWei = ethToWei;
 exports.roundToNearest = roundToNearest;
-exports.sign = sign;
+exports.math_sign = math_sign;

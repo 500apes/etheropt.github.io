@@ -86007,7 +86007,7 @@ function multiply_by_number(num, x, base) {
   return result;
 }
 
-function sign(x) {
+function math_sign(x) {
   if (x>0) {
     return 1;
   } else if (x<0) {
@@ -86139,7 +86139,7 @@ exports.roundTo = roundTo;
 exports.weiToEth = weiToEth;
 exports.ethToWei = ethToWei;
 exports.roundToNearest = roundToNearest;
-exports.sign = sign;
+exports.math_sign = math_sign;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
 },{"./config.js":2,"async":11,"async/dist/async.min.js":10,"bignumber.js":14,"buffer":346,"ethereumjs-tx":93,"ethereumjs-util":94,"fs":299,"keythereum":153,"request":196,"web3":247,"web3/lib/solidity/coder.js":254,"web3/lib/utils/sha3.js":266,"web3/lib/utils/utils.js":267,"web3/lib/web3/event.js":274,"web3/lib/web3/function.js":278}],299:[function(_dereq_,module,exports){
