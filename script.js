@@ -7,11 +7,6 @@ $(function () {
     bundle.Main.draw_option_chart('sell_put', {strike: 8.5, kind: 'Put', margin: 5.0}, 0.5, -10.0);
   });
 });
-$(function() {
-  ((window.gitter = {}).chat = {}).options = {
-    room: 'etheropt/etheropt.github.io'
-  };
-})
 $(function () {
   var period = 1800; //30 minute bars
   var days_data = 10; //10 days
