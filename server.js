@@ -159,7 +159,7 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 										utility.call(web3, myContract, contract_addr, 'getMarketMakerFunds', [], function(result) {
 											if (result) {
 												var min_funds = result.map(function(x){return x.toNumber()}).min();
-												utility.call(web3, myContract, contract_addr, 'getFundsAndAvailable', [], function(result) {
+												utility.call(web3, myContract, contract_addr, 'getFundsAndAvailable', [eth_addr], function(result) {
 													if (result) {
 														var funds = result[0].toNumber();
 														async.whilst(
@@ -168,6 +168,7 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 															function(err) {
 																console.log(contract_addr, self.url, funds, min_funds);
 																console.log(market_makers);
+																console.log(market_makers.indexOf(self.url)<0, funds>=min_funds, options.filter(function(x){return x.contract_addr==contract_addr}).length>0);
 																if (market_makers.indexOf(self.url)<0 && funds>=min_funds && options.filter(function(x){return x.contract_addr==contract_addr}).length>0) {
 																	console.log('Need to announce server to blockchain.');
 																	if (self.armed) {
