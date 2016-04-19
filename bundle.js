@@ -443,7 +443,7 @@ Main.loadPrices = function(options, callback) {
         var market_makers = options_filtered[0].market_makers;
         async.reduce(market_makers, [],
           function(memo, market_maker, callback_reduce) {
-            request.get(market_maker+'/'+contract_addr, {timeout: 1500}, function(err, httpResponse, body) {
+            request.get(market_maker+'/'+contract_addr, {timeout: 2500}, function(err, httpResponse, body) {
               try {
                 callback_reduce(null, memo.concat(JSON.parse(body)));
               } catch (err) {
