@@ -449,7 +449,6 @@ function signTx(web3, address, tx, privateKey, callback) {
     callback(tx);
   } else {
     var msgHash = '0x'+tx.hash(false).toString('hex');
-    console.log(msgHash, address);
     web3.eth.sign(address, msgHash, function(err, sig) {
       if (!err) {
         try {
