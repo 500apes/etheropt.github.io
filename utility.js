@@ -108,8 +108,16 @@ function call(web3, contract, address, functionName, args, callback) {
   }
   try {
     if (web3.currentProvider) {
-      contract = contract.at(address);
-      callback(contract[functionName].call.apply(null, args));
+      var data = contract[functionName].getData.apply(null, args);
+      web3.eth.call({to: address, data: data}, function(err, result){
+        if (!err) {
+          var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+          var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
+          callback(solidityFunction.unpackOutput(result));
+        } else {
+          proxy(1);
+        }
+      });
     } else {
       proxy(1);
     }
