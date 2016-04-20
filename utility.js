@@ -113,6 +113,7 @@ function call(web3, contract, address, functionName, args, callback) {
         if (!err) {
           var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
           var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
+          console.log(result);
           callback(solidityFunction.unpackOutput(result));
         } else {
           proxy(1);
