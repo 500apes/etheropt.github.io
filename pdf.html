@@ -107,18 +107,20 @@
 
       paper.view.onMouseMove = function(event) {
         var mousePos = event.point;
-        if (mousePos.x>maxX) {
-          if (path.segments.length>1) path.removeSegment(path.segments.length-1);
-          maxX = mousePos.x;
-          path.add(new paper.Point(mousePos.x, mousePos.y));
-          path.add(new paper.Point(mousePos.x, paper.view.bounds.bottomRight.y));
-        }
-        if (mousePos.x>=paper.view.bounds.bottomRight.x-1) {
-          if (path.segments.length>1) path.removeSegment(path.segments.length-1);
-          path.add(new paper.Point(paper.view.bounds.bottomRight.x, paper.view.bounds.bottomRight.y));
-          maxX = paper.view.bounds.bottomRight.x;
-          calculate_pdf();
-          input_json();
+        if (maxX<paper.view.bounds.bottomRight.x) {
+          if (mousePos.x>maxX) {
+            if (path.segments.length>1) path.removeSegment(path.segments.length-1);
+            maxX = mousePos.x;
+            path.add(new paper.Point(mousePos.x, mousePos.y));
+            path.add(new paper.Point(mousePos.x, paper.view.bounds.bottomRight.y));
+          }
+          if (mousePos.x>=paper.view.bounds.bottomRight.x-1) {
+            if (path.segments.length>1) path.removeSegment(path.segments.length-1);
+            path.add(new paper.Point(paper.view.bounds.bottomRight.x, paper.view.bounds.bottomRight.y));
+            maxX = paper.view.bounds.bottomRight.x;
+            calculate_pdf();
+            input_json();
+          }
         }
       }
       function calculate_pdf() {
