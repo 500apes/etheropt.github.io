@@ -1,18 +1,23 @@
 <% filtered_options = options.filter(function(x){return x.contract_addr==contract.contract_addr}) %>
 <nav>
   <div class="navbar-form navbar-left">
-    <button type="button" class="btn btn-default" onclick="bundle.Main.refresh();"><i class="fa fa-refresh"></i> Refresh</button>
+    <button type="button" class="btn btn-default btn-xs" onclick="bundle.Main.refresh();"><i class="fa fa-refresh"></i> Refresh</button>
   </div>
   <div class="navbar-form navbar-left">
-    <button type="button" class="btn btn-default" onclick="window.open('<%= contract.contract_link %>');"><i class="fa fa-file-text"></i> Smart contract</button>
+    <button type="button" class="btn btn-default btn-xs" onclick="window.open('<%= contract.contract_link %>');"><i class="fa fa-file-text"></i> Smart contract</button>
   </div>
   <div class="navbar-form navbar-left">
-    <button type="button" class="btn btn-default" data-toggle="modal" data-target="#fund_modal" data-contract="<%= contract.contract_addr%>">Funds <span class="badge"><%= bundle.utility.weiToEth(contract.funds) %> eth</span></button>
+    <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#fund_modal" data-contract="<%= contract.contract_addr%>">Funds <span class="badge"><%= bundle.utility.weiToEth(contract.funds) %> eth</span></button>
   </div>
   <div class="navbar-form navbar-left">
-    <button type="button" class="btn btn-default" data-toggle="modal" data-target="#withdraw_modal" data-contract="<%= contract.contract_addr%>">Available <span class="badge"><%= bundle.utility.weiToEth(contract.fundsAvailable) %> eth</span></button>
+    <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#withdraw_modal" data-contract="<%= contract.contract_addr%>">Available <span class="badge"><%= bundle.utility.weiToEth(contract.fundsAvailable) %> eth</span></button>
   </div>
-  <div class="navbar-form navbar-left">
-    <button type="button" class="btn btn-default" data-toggle="modal" data-target="#expire_modal" data-contract="<%= contract.contract_addr%>"><i class="fa fa-calendar"></i> Expire</button>
-  </div>
+  <% if (filtered_options.length>0) { %>
+    <div class="navbar-form navbar-left">
+      <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#expire_modal" data-contract="<%= contract.contract_addr%>"><i class="fa fa-calendar"></i> Expire</button>
+    </div>
+    <div class="navbar-form navbar-left">
+      <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#market_make_modal" data-contract="<%= contract.contract_addr%>" data-limit="<%= filtered_options[0].margin%>" data-strikes="<%= filtered_options.map(function(x){return x.kind=='Call' ? x.strike : -x.strike}).join(',') %>" data-range="0,30"><i class="fa fa-usd"></i> Market make</button>
+    </div>
+  <% } %>
 </nav>

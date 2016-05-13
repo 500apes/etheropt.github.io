@@ -7,16 +7,14 @@ var async = (typeof(window) === 'undefined') ? require('async') : require('async
 
 function Main() {
 }
-//functions
 Main.alertInfo = function(message) {
   $('#notifications-container').css('display', 'block');
   $('#notifications').prepend($('<p>' + message + '</p>').hide().fadeIn(2000));
   console.log(message);
 }
 Main.alertTxHash = function(txHash) {
-  // $('#splash-container').css('display', 'none');
   if (txHash) {
-    Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'morden' : 'live')+'.ether.camp/transaction/'+txHash+'" target="_blank">'+txHash+'</a>.');
+    Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet' : '')+'.etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
   } else {
     Main.alertInfo('You tried to send an Ethereum transaction but there was an error. Check the Javascript console for details.');
   }
@@ -69,14 +67,15 @@ Main.eraseCookie = function(name) {
   }
 }
 Main.logout = function() {
-  nonce = undefined;
   addrs = [config.eth_addr];
   pks = [config.eth_addr_pk];
   selectedAddr = 0;
+  nonce = undefined;
+  market_makers = {};
+  browser_orders = [];
   Main.refresh();
 }
 Main.createAddress = function() {
-  nonce = undefined;
   var newAddress = utility.createAddress();
   var addr = '0x'+newAddress[0].toString('hex');
   var pk = '0x'+newAddress[1].toString('hex');
@@ -84,101 +83,19 @@ Main.createAddress = function() {
   Main.alertInfo('You just created an Ethereum address: '+addr+'.');
 }
 Main.deleteAddress = function() {
-  nonce = undefined;
   addrs.splice(selectedAddr, 1);
   pks.splice(selectedAddr, 1);
   selectedAddr = 0;
+  nonce = undefined;
+  market_makers = {};
+  browser_orders = [];
   Main.refresh();
 }
-Main.order = function(option, price, size, order, expires, gas) {
-  option = JSON.parse(option);
-  order = JSON.parse(order);
-  size = utility.ethToWei(size);
-  price = price * 1000000000000000000;
-  gas = Number(gas);
-  expires = Number(expires);
-  var matchSize = 0;
-  if (order && ((size>0 && order.size<0 && price>=order.price) || (size<0 && order.size>0 && price<=order.price))) {
-    if (Math.abs(size)<=Math.abs(order.size)) {
-      matchSize = size;
-    } else {
-      matchSize = -order.size;
-    }
-    size = size - matchSize;
-    var deposit = utility.ethToWei(0);
-    utility.call(web3, myContract, option.contract_addr, 'orderMatchTest', [order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, addrs[selectedAddr], deposit, matchSize], function(result) {
-      if (result) {
-        utility.send(web3, myContract, option.contract_addr, 'orderMatch', [order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: gas, value: deposit}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-          txHash = result[0];
-          nonce = result[1];
-          Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order. ');
-          Main.alertTxHash(txHash);
-        });
-      } else {
-        Main.alertInfo('You tried to match against a resting order but the order match failed. This can be because the order expired or traded already, or either you or the counterparty do not have enough funds to cover the trade. ');
-      }
-    });
-  }
-  logMessage = '';
-  if (size!=0) {
-    utility.call(web3, myContract, option.contract_addr, 'getMarketMakers', [], function(result) {
-      var market_makers = result.filter(function(x){return x!=''});
-      utility.blockNumber(web3, function(blockNumber) {
-        var orderID = utility.getRandomInt(0,Math.pow(2,64));
-        var blockExpires = blockNumber + expires;
-        var condensed = utility.pack([option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256]);
-        var hash = sha256(new Buffer(condensed,'hex'));
-        utility.sign(web3, addrs[selectedAddr], hash, pks[selectedAddr], function(sig) {
-          if (!sig) {
-            logMessage += 'You tried sending an order to the order book, but it could not be signed. ';
-            Main.alertInfo(logMessage);
-          } else {
-            var order = {contract_addr: option.contract_addr, optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
-            condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
-            hash = '0x'+sha256(new Buffer(condensed,'hex'));
-            var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
-            utility.call(web3, myContract, option.contract_addr, 'getFunds', [order.addr, false], function(result) {
-              var balance = result.toNumber();
-              utility.call(web3, myContract, option.contract_addr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(result) {
-                balance = balance + result.toNumber();
-                if (!verified) {
-                  logMessage += 'You tried sending an order to the order book, but signature verification failed. ';
-                  Main.alertInfo(logMessage);
-                } else if (balance<=0) {
-                  logMessage += 'You tried sending an order to the order book, but you do not have enough funds to place your order. You need to add '+(utility.weiToEth(-balance))+" eth to your account to cover this trade. ";
-                  Main.alertInfo(logMessage);
-                } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
-                  setTimeout(function () {
-                    Main.loadPrices(options_cache, function(options) {
-                      options_cache = options;
-                      contracts_cache.forEach(function(contract){
-                        new EJS({url: config.home_url+'/'+'contract_prices.ejs'}).update(contract.contract_addr+'_prices', {contract: contract, options: options_cache, addr: addrs[selectedAddr]});
-                      });
-                    });
-                  }, 2000);
-                  async.each(market_makers,
-                    function(market_maker, callback) {
-                      request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
-                        callback();
-                      });
-                    },
-                    function(err) {
-                      logMessage += 'Some of your order ('+utility.weiToEth(Math.abs(size))+' eth) could not be matched immediately so it was sent to the order book. ';
-                      Main.alertInfo(logMessage);
-                    }
-                  );
-                }
-              });
-            });
-          }
-        });
-      });
-    });
-  }
-}
 Main.selectAddress = function(i) {
-  nonce = undefined;
   selectedAddr = i;
+  nonce = undefined;
+  market_makers = {};
+  browser_orders = [];
   Main.refresh();
 }
 Main.addAddress = function(addr, pk) {
@@ -192,6 +109,9 @@ Main.addAddress = function(addr, pk) {
     addrs.push(addr);
     pks.push(pk);
     selectedAddr = addrs.length-1;
+    nonce = undefined;
+    market_makers = {};
+    browser_orders = [];
     Main.refresh();
   }
 }
@@ -209,6 +129,195 @@ Main.shapeshift_click = function(a,e) {
   var link=a.href;
   window.open(link,'1418115287605','width=700,height=500,toolbar=0,menubar=0,location=0,status=1,scrollbars=1,resizable=0,left=0,top=0');
   return false;
+}
+Main.processOrders = function(callback) {
+  utility.blockNumber(web3, function(blockNumber) {
+    //process orders
+    browser_orders = browser_orders.filter(function(browser_order){return blockNumber<browser_order.blockNumber+browser_order.expires && browser_order.size!=0});
+    async.eachSeries(browser_orders,
+      function(browser_order, callback_browser_order) {
+        if (blockNumber>=browser_order.last_updated+browser_order.update) {
+          browser_order.last_updated = blockNumber;
+          //update option
+          browser_order.option = options_cache.filter(function(option){return option.contract_addr == browser_order.option.contract_addr && option.optionID == browser_order.option.optionID})[0];
+          if (browser_order.position_lock!=undefined) {
+            browser_order.size -= (browser_order.option.position-browser_order.position_lock); //update remaining size based on change in position
+          }
+          browser_order.position_lock = browser_order.option.position;
+          if ((browser_order.price_above==undefined || price>browser_order.price_above) && (browser_order.price_below==undefined || price<browser_order.price_below) && (Date.now()-price_updated<30*1000)) {
+            browser_order.price_tied = browser_order.price;
+            if (browser_order.tie!=undefined && browser_order.delta!=undefined) {
+              browser_order.price_tied = browser_order.price + browser_order.delta * 1000000000000000000 * (price - browser_order.tie);
+            }
+            //market maker order
+            if (browser_order.market_maker) {
+              var market_maker = market_makers[browser_order.market_maker];
+              if (market_maker) {
+                var theo = 0;
+                for (var i=0; i<market_maker.pdf.length; i++) {
+                  theo += (browser_order.option.kind=='Call' ? Math.max(0,Math.min(browser_order.option.margin, market_maker.pdf[i][0]-browser_order.option.strike)) : Math.max(0,Math.min(browser_order.option.margin, browser_order.option.strike-market_maker.pdf[i][0]))) * market_maker.pdf[i][1];
+                }
+                if (browser_order.size>0) {
+                  browser_order.size = market_maker.size;
+                  browser_order.price = utility.roundTo(Math.max(0,theo-market_maker.width/2),2)*1000000000000000000;
+                } else {
+                  browser_order.size = -market_maker.size;
+                  browser_order.price = utility.roundTo(Math.max(0,theo+market_maker.width/2),2)*1000000000000000000;
+                }
+                browser_order.price_tied = browser_order.price;
+              } else {
+                browser_order.size = 0;
+              }
+            }
+            //send the remainder of the order to rest on the order book
+            function send_to_order_book() {
+              if (browser_order.size-cumulative_match_size!=0) {
+                browser_order.price_tied = utility.roundToNearest(browser_order.price_tied, 1000000);
+                utility.blockNumber(web3, function(blockNumber) {
+                  var orderID = utility.getRandomInt(0,Math.pow(2,64));
+                  var blockExpires = blockNumber + browser_order.update;
+                  var condensed = utility.pack([browser_order.option.optionID, browser_order.price_tied, browser_order.size-cumulative_match_size, orderID, blockExpires], [256, 256, 256, 256, 256]);
+                  var hash = sha256(new Buffer(condensed,'hex'));
+                  utility.sign(web3, addrs[selectedAddr], hash, pks[selectedAddr], function(sig) {
+                    if (!sig) {
+                      Main.alertInfo('You tried sending an order to the order book, but it could not be signed.');
+                      callback_browser_order();
+                    } else {
+                      var order = {contract_addr: browser_order.option.contract_addr, optionID: browser_order.option.optionID, price: browser_order.price_tied, size: browser_order.size-cumulative_match_size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+                      condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
+                      hash = '0x'+sha256(new Buffer(condensed,'hex'));
+                      var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+                      utility.call(web3, myContract, browser_order.option.contract_addr, 'getFunds', [order.addr, false], function(result) {
+                        var balance = result.toNumber();
+                        utility.call(web3, myContract, browser_order.option.contract_addr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(result) {
+                          balance = balance + result.toNumber();
+                          if (!verified) {
+                            Main.alertInfo('You tried sending an order to the order book, but signature verification failed.');
+                            callback_browser_order();
+                          } else if (balance<=0) {
+                            Main.alertInfo('You tried sending an order to the order book, but you do not have enough funds to place your order. You need to add '+(utility.weiToEth(-balance))+' eth to your account to cover this trade. ');
+                            callback_browser_order();
+                          } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+                            async.each(browser_order.option.market_makers,
+                              function(market_maker, callback_market_maker) {
+                                request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
+                                  callback_market_maker();
+                                });
+                              },
+                              function(err) {
+                                //finished sending order to order book
+                                callback_browser_order();
+                              }
+                            );
+                          } else {
+                            callback_browser_order();
+                          }
+                        });
+                      });
+                    }
+                  });
+                });
+              } else {
+                callback_browser_order();
+              }
+            }
+            //match against existing orders
+            var cumulative_match_size = 0;
+            if (browser_order.post_only==false) { //as long as post_only isn't set
+              var match_orders = browser_order.size>0 ? browser_order.option.sell_orders : browser_order.option.buy_orders;
+              async.each(match_orders,
+                function(match_order, callback_match_order) {
+                  if ((browser_order.size>0 && browser_order.price_tied>=match_order.order.price) || (browser_order.size<0 && browser_order.price_tied<=match_order.order.price)) {
+                    var match_size = 0;
+                    if (Math.abs(cumulative_match_size)>=Math.abs(browser_order.size)) {
+                      //we've attempted to match enough size already
+                    } else if (Math.abs(browser_order.size-cumulative_match_size)>=Math.abs(match_order.size)) { //the order is bigger than the match order
+                      match_size = -match_order.order.size;
+                    } else { //the match order covers the order
+                      match_size = browser_order.size-cumulative_match_size;
+                    }
+                    if (match_size!=0) {
+                      cumulative_match_size += match_size; //let's assume the order will go through
+                      var deposit = utility.ethToWei(0);
+                      utility.call(web3, myContract, browser_order.option.contract_addr, 'orderMatchTest', [match_order.order.optionID, match_order.order.price, match_order.order.size, match_order.order.orderID, match_order.order.blockExpires, match_order.order.addr, addrs[selectedAddr], deposit, match_size], function(test) {
+                        if (test && blockNumber<match_order.order.blockExpires-1) {
+                          utility.send(web3, myContract, browser_order.option.contract_addr, 'orderMatch', [match_order.order.optionID, match_order.order.price, match_order.order.size, match_order.order.orderID, match_order.order.blockExpires, match_order.order.addr, match_order.order.v, match_order.order.r, match_order.order.s, match_size, {gas: browser_order.gas, value: deposit}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+                            txHash = result[0];
+                            nonce = result[1];
+                            Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(match_size))+' eth) was sent to the blockchain to match against a resting order.');
+                            Main.alertTxHash(txHash);
+                            callback_match_order();
+                          });
+                        } else {
+                          Main.alertInfo('You tried to match against a resting order but the order match failed. This can be because the order expired or traded already, or either you or the counterparty do not have enough funds to cover the trade.');
+                          callback_match_order();
+                        }
+                      });
+                    } else {
+                      callback_match_order();
+                    }
+                  } else {
+                    callback_match_order();
+                  }
+                },
+                function(err) {
+                  send_to_order_book();
+                }
+              );
+            } else {
+              send_to_order_book();
+            }
+          }
+        } else {
+          callback_browser_order();
+        }
+      },
+      function(err) {
+        //update display
+        new EJS({url: config.home_url+'/'+'orders_table.ejs'}).update('orders', {orders: browser_orders, utility: utility, blockNumber: blockNumber});
+        callback();
+      }
+    );
+  });
+}
+Main.order = function(option, price, size, expires, update, gas, price_above, price_below, delta, tie, post_only) {
+  option = JSON.parse(option);
+  size = utility.ethToWei(size);
+  price = price * 1000000000000000000;
+  gas = Number(gas);
+  expires = Number(expires);
+  update = Number(update);
+  price_above = price_above ? Number(price_above) : undefined;
+  price_below = price_below ? Number(price_below) : undefined;
+  delta = delta ? Number(delta) : undefined;
+  tie = tie ? Number(tie) : undefined;
+  post_only = post_only=='true' ? true : false;
+  utility.blockNumber(web3, function(blockNumber) {
+    var order = {option: option, price: price, size: size, expires: expires, update: update, gas: gas, price_above: price_above, price_below: price_below, delta: delta, tie: tie, post_only: post_only, blockNumber: blockNumber, last_updated: 0};
+    browser_orders.push(order);
+    Main.refresh();
+  });
+}
+Main.marketMakeStart = function(contract_addr, pdf, size, width, post_only) {
+  utility.blockNumber(web3, function(blockNumber) {
+    size = utility.ethToWei(size);
+    pdf = JSON.parse(pdf);
+    width = Number(width);
+    post_only = post_only=='true' ? true : false;
+    market_makers[contract_addr] = {pdf: pdf, size: size, contract_addr: contract_addr, width: width};
+    browser_orders = browser_orders.filter(function(browser_order){return browser_order.market_maker!=contract_addr});
+    options_cache.filter(function(option) {return option.contract_addr==contract_addr}).forEach(function(option) {
+      var order_buy = {market_maker: contract_addr, option: option, price: undefined, size: 1, expires: 1000000, update: 5, gas: 1000000, price_above: undefined, price_below: undefined, delta: undefined, tie: undefined, post_only: post_only, blockNumber: blockNumber, last_updated: 0};
+      browser_orders.push(order_buy);
+      var order_sell = {market_maker: contract_addr, option: option, price: undefined, size: -1, expires: 1000000, update: 5, gas: 1000000, price_above: undefined, price_below: undefined, delta: undefined, tie: undefined, post_only: post_only, blockNumber: blockNumber, last_updated: 0};
+      browser_orders.push(order_sell);
+    });
+    Main.processOrders(function(){});
+  });
+}
+Main.marketMakeStop = function(contract_addr) {
+  delete market_makers[contract_addr];
+  browser_orders = browser_orders.filter(function(browser_order){return browser_order.market_maker!=contract_addr});
 }
 Main.fund = function(amount, contract_addr) {
   utility.send(web3, myContract, contract_addr, 'addFunds', [{gas: 200000, value: utility.ethToWei(amount)}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
@@ -462,8 +571,14 @@ Main.loadPrices = function(options, callback) {
         function(option, callback_map){
           var orders = markets.filter(function(x){return x.contract_addr==option.contract_addr && x.optionID==option.optionID});
           orders = orders.map(function(x){return {size: Math.abs(x.size), price: x.price/1000000000000000000, order: x}});
-          option.buy_orders = orders.filter(function(x){return x.order.size>0});
-          option.sell_orders = orders.filter(function(x){return x.order.size<0});
+          var new_buy_orders = {};
+          var new_sell_orders = {};
+          for (var i=0; i<orders.length; i++) {
+            if (orders[i].order.size>0) new_buy_orders[orders[i].order.orderID] = orders[i];
+            if (orders[i].order.size<0) new_sell_orders[orders[i].order.orderID] = orders[i];
+          }
+          option.buy_orders = Object.values(new_buy_orders);
+          option.sell_orders = Object.values(new_sell_orders);
           option.buy_orders.sort(function(a, b) {return b.price > a.price ? 1 : (b.price == a.price ? (b.size > a.size ? 1 : -1) : -1)});
           option.sell_orders.sort(function(a, b) {return b.price < a.price ? 1 : (b.price == a.price ? (b.size > a.size ? 1 : -1) : -1)});
           callback_map(null, option);
@@ -525,15 +640,12 @@ Main.loadPositions = function(options_original, callback) {
   );
 }
 Main.loadLog = function(events, callback) {
-  async.each(config.contract_addrs,
+  async.eachSeries(config.contract_addrs,
     function(contract_addr, callback_each){
       utility.logs(web3, myContract, contract_addr, 0, 'latest', function(event) {
-        if (!events[contract_addr]) events[contract_addr] = {};
-        event.tx_link = 'http://'+(config.eth_testnet ? 'morden' : 'live')+'.ether.camp/transaction/'+event.transactionHash;
-        events[contract_addr][event.transactionHash+event.logIndex] = event;
-        var events_unique = Object.values(events[contract_addr]);
-        events_unique.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
-        new EJS({url: config.home_url+'/'+'contract_log.ejs'}).update(contract_addr+'_log', {events: events_unique, options: options_cache.filter(function(x){return x.contract_addr==contract_addr})});
+        event.tx_link = 'http://'+(config.eth_testnet ? 'testnet' : '')+'.etherscan.io/tx/'+event.transactionHash;
+        events[event.transactionHash+event.logIndex] = event;
+        Main.refresh();
       });
       callback_each();
     },
@@ -549,7 +661,7 @@ Main.loadContractsFunds = function(callback) {
         if (result) {
           var funds = result[0].toString();
           var fundsAvailable = result[1].toString();
-          var contract_link = 'http://'+(config.eth_testnet ? 'morden' : 'live')+'.ether.camp/account/'+contract_addr;
+          var contract_link = 'http://'+(config.eth_testnet ? 'testnet' : '')+'.etherscan.io/address/'+contract_addr;
           callback(null, {contract_addr: contract_addr, contract_link: contract_link, funds: funds, fundsAvailable: fundsAvailable});
         } else {
           callback(null, undefined);
@@ -681,36 +793,60 @@ Main.draw_option_chart = function(element, option, price, size) {
     Main.draw_chart(element, action+" "+Math.abs(size)+" eth of the "+option.strike+" Put "+" for "+price, data, "ETH/USD price", "Net profit (eth)", [{type: 'number', role: null}, {type: 'string', role: 'annotation'}, {type: 'string', role: 'annotationText'}]);
   }
 }
-Main.refresh = function() {
-  Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAddr": selectedAddr}), 999);
-  Main.connectionTest();
-  Main.loadAddresses();
-  Main.loadContractsFunds(function(contracts){
-    contracts_cache = contracts;
-    Main.loadPositions(options_cache, function(options){
-      options_cache = options;
-      contracts_cache.forEach(function(contract){
-        new EJS({url: config.home_url+'/'+'contract_nav.ejs'}).update(contract.contract_addr+'_nav', {contract: contract, options: options_cache});
-        new EJS({url: config.home_url+'/'+'contract_prices.ejs'}).update(contract.contract_addr+'_prices', {contract: contract, options: options_cache, addr: addrs[selectedAddr]});
-      });
+Main.updatePrice = function(callback) {
+  $.getJSON('https://poloniex.com/public?command=returnTicker', function(result) {
+    var eth_btc = result.BTC_ETH.last;
+    $.getJSON('http://api.coindesk.com/v1/bpi/currentprice/USD.json', function(result) {
+      var btc_usd = result.bpi.USD.rate;
+      price = Number(eth_btc * btc_usd);
+      price_updated = Date.now();
+      callback();
     });
   });
+}
+Main.getPrice = function() {
+  return price;
+}
+Main.refresh = function() {
+  if (!refreshing || Date.now()-last_refresh>60*1000) {
+    refreshing = true;
+    Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAddr": selectedAddr}), 999);
+    Main.connectionTest();
+    Main.loadAddresses();
+    var events = Object.values(events_cache);
+    events.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
+    new EJS({url: config.home_url+'/'+'events_table.ejs'}).update('events', {events: events, options: options_cache});
+    Main.updatePrice(function(){
+      Main.loadContractsFunds(function(contracts){
+        contracts_cache = contracts;
+        Main.loadPositions(options_cache, function(options){
+          options_cache = options;
+          Main.processOrders(function(){
+            Main.loadPrices(options_cache, function(options) {
+              options_cache = options;
+              contracts_cache.forEach(function(contract){
+                new EJS({url: config.home_url+'/'+'contract_nav.ejs'}).update(contract.contract_addr+'_nav', {contract: contract, options: options_cache});
+                new EJS({url: config.home_url+'/'+'contract_prices.ejs'}).update(contract.contract_addr+'_prices', {contract: contract, options: options_cache, addr: addrs[selectedAddr]});
+              });
+              refreshing = false;
+              last_refresh = Date.now();
+            });
+          });
+        });
+      });
+    });
+  }
 }
 Main.init = function() {
   Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAddr": selectedAddr}), 999);
   Main.connectionTest();
   Main.loadAddresses();
   Main.displayMarket(function(){
-    function priceLoop() {
-      Main.loadPrices(options_cache, function(options) {
-        options_cache = options;
-        contracts_cache.forEach(function(contract){
-          new EJS({url: config.home_url+'/'+'contract_prices.ejs'}).update(contract.contract_addr+'_prices', {contract: contract, options: options_cache, addr: addrs[selectedAddr]});
-        });
-        setTimeout(priceLoop, 10*1000);
-      });
+    function mainLoop() {
+      Main.refresh();
+      setTimeout(mainLoop, 10*1000);
     }
-    priceLoop();
+    mainLoop();
   });
 }
 
@@ -730,6 +866,12 @@ var nonce = undefined;
 var events_cache = {};
 var contracts_cache = undefined;
 var options_cache = undefined;
+var browser_orders = [];
+var market_makers = {};
+var refreshing = false;
+var last_refresh = Date.now();
+var price = undefined;
+var price_updated = Date.now();
 //web3
 var web3 = new Web3();
 web3.eth.defaultAccount = config.eth_addr;

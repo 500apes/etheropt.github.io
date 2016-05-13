@@ -22,7 +22,7 @@ $(function(){
             content: [
               {
                 type: 'stack',
-                height: 75,
+                height: 55,
                 content:[
                   {
                     type: 'component',
@@ -31,6 +31,25 @@ $(function(){
                     title:'Guides',
                     componentState: { id: 'guides', type: 'ejs' }
                   }
+                ]
+              },
+              {
+                type: 'stack',
+                content: [
+                  {
+                    type: 'component',
+                    componentName: 'layout',
+                    isClosable: false,
+                    title:'Trade log',
+                    componentState: { id: 'events', type: 'ejs' }
+                  },
+                  {
+                    type: 'component',
+                    componentName: 'layout',
+                    isClosable: false,
+                    title:'My orders',
+                    componentState: { id: 'orders', type: 'ejs' }
+                  },
                 ]
               },
               {

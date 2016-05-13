@@ -91,7 +91,8 @@ function call(web3, contract, address, functionName, args, callback) {
           result = JSON.parse(body);
           var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
           var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
-          callback(solidityFunction.unpackOutput(result['result']));
+          var result = solidityFunction.unpackOutput(result['result']);
+          callback(result);
         } catch (err) {
           if (retries>0) {
             setTimeout(function(){
@@ -179,7 +180,7 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
     options = args.pop();
   }
   getNextNonce(web3, fromAddress, function(nextNonce){
-    if (nonce==undefined) {
+    if (nonce==undefined || nonce<nextNonce) {
       nonce = nextNonce;
     }
     console.log("Nonce:", nonce);

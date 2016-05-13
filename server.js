@@ -30,7 +30,6 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
   this.received_orders = [];
   this.mm_orders = [];
 	this.events_hash = {};
-	this.events = [];
 
 	//upnp punch
 	if (this.domain==undefined) {
@@ -202,14 +201,11 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 							);
 
 							//load log
-							async.each(config.contract_addrs,
+							async.eachSeries(config.contract_addrs,
 								function(contract_addr, callback_each){
 									utility.logs(web3, myContract, contract_addr, 0, 'latest', function(event) {
 										event.tx_link = 'http://'+(config.eth_testnet ? 'morden' : 'live')+'.ether.camp/transaction/'+event.transactionHash;
 										self.events_hash[event.transactionHash+event.logIndex] = event;
-										var events_list = Object.values(self.events_hash);
-										events_list.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
-										self.events = events_list;
 									});
 									callback_each();
 								},
@@ -306,6 +302,8 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 													});
 												},
 												function(err, funds_data){
+													var events = Object.values(self.events_hash);
+													events.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
 													var today = Date.now();
 													utility.blockNumber(web3, function(blockNumber) {
 														var orderID = utility.getRandomInt(0,Math.pow(2,64));
@@ -315,7 +313,7 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 																var expiration = Date.parse(option.expiration+" 00:00:00 UTC");
 																var t_days = (expiration - today)/86400000.0;
 																var t = t_days / 365.0;
-																var result = self.pricer_fn(option, self.pricer_data, funds_data, self.events);
+																var result = self.pricer_fn(option, self.pricer_data, funds_data, events);
 																if (result) {
 																	console.log(option.expiration, option.kind, option.strike, ((result.buy_price)+" ("+(utility.weiToEth(result.buy_size))+" eth) @ "+(result.sell_price)+" ("+(utility.weiToEth(result.sell_size))+" eth)"));
 																	var buy_price = result.buy_price * 1000000000000000000;

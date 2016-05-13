@@ -33,20 +33,16 @@ $(function () {
         chart : {
           events : {
             load : function () {
-              var new_point_interval = 30;
+              var new_point_interval = 5;
               var chart = this;
               function new_point() {
-                $.getJSON('https://poloniex.com/public?command=returnTicker', function(result) {
-      						var eth_btc = result.BTC_ETH.last;
-                  $.getJSON('http://api.coindesk.com/v1/bpi/currentprice/USD.json', function(result) {
-        						var btc_usd = result.bpi.USD.rate;
-                    var data_point = eth_btc * btc_usd;
-                    chart.setTitle({text: "ETH/USD "+data_point.toFixed(2)});
-                    setTimeout(function () {
-                      new_point();
-                    }, new_point_interval*1000);
-          				});
-        				});
+                var price = bundle.Main.getPrice();
+                if (price) {
+                  chart.setTitle({text: "ETH/USD "+price.toFixed(2)});
+                }
+                setTimeout(function () {
+                  new_point();
+                }, new_point_interval*1000);
               }
               new_point();
             }
@@ -117,6 +113,26 @@ $(function () {
     });
 });
 $(function () {
+    $('body').on('click', '#market_make_start', function (e) {
+        e.preventDefault();
+        $('#market_make_modal').modal('hide');
+        bundle.Main.marketMakeStart($('#market_make_contract_addr').val(),$('#market_make_pdf').val(),$('#market_make_size').val(),$('#market_make_width').val(),$('#market_make_post_only').val());
+    });
+    $('body').on('click', '#market_make_stop', function (e) {
+        e.preventDefault();
+        $('#market_make_modal').modal('hide');
+        bundle.Main.marketMakeStop($('#market_make_contract_addr').val());
+    });
+    $('#market_make_modal').on('show.bs.modal', function(e) {
+      var contract_addr = $(e.relatedTarget).data('contract');
+      var strikes = $(e.relatedTarget).data('strikes');
+      var limit = $(e.relatedTarget).data('limit');
+      var range = $(e.relatedTarget).data('range');
+      $(e.currentTarget).find('a[id="market_make_pdf_link"]').attr('href', '/pdf?strikes='+strikes+'&itm_limit='+limit+'&range='+range);
+      $(e.currentTarget).find('input[id="market_make_contract_addr"]').val(contract_addr);
+    });
+});
+$(function () {
     $('body').on('click', '#fund_submit', function (e) {
         e.preventDefault();
         $('#fund_modal').modal('hide');
@@ -150,7 +166,7 @@ $(function () {
     $('body').on('click', '#buy_submit', function (e) {
         e.preventDefault();
         $('#buy_modal').modal('hide');
-        bundle.Main.order($('#buy_option').val(), $('#buy_price').val(), $('#buy_size').val(), $('#buy_order').val(), $('#buy_expires').val(), $('#buy_gas').val());
+        bundle.Main.order($('#buy_option').val(), $('#buy_price').val(), $('#buy_size').val(), $('#buy_expires').val(), $('#buy_update').val(), $('#buy_gas').val(), $('#buy_price_above').val(), $('#buy_price_below').val(), $('#buy_delta').val(), $('#buy_tie').val(), $('#buy_post_only').val());
     });
     $('#buy_modal').on('show.bs.modal', function(e) {
         var option = JSON.stringify($(e.relatedTarget).data('option'));
@@ -178,7 +194,7 @@ $(function () {
     $('body').on('click', '#sell_submit', function (e) {
         e.preventDefault();
         $('#sell_modal').modal('hide');
-        bundle.Main.order($('#sell_option').val(), $('#sell_price').val(), -$('#sell_size').val(), $('#sell_order').val(), $('#sell_expires').val(), $('#sell_gas').val());
+        bundle.Main.order($('#sell_option').val(), $('#sell_price').val(), -$('#sell_size').val(), $('#sell_expires').val(), $('#sell_update').val(), $('#sell_gas').val(), $('#sell_price_above').val(), $('#sell_price_below').val(), $('#sell_delta').val(), $('#sell_tie').val(), $('#sell_post_only').val());
     });
     $('#sell_modal').on('show.bs.modal', function(e) {
         var option = JSON.stringify($(e.relatedTarget).data('option'));
