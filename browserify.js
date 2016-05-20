@@ -14,7 +14,7 @@ Main.alertInfo = function(message) {
 }
 Main.alertTxHash = function(txHash) {
   if (txHash) {
-    Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet' : '')+'.etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
+    Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
   } else {
     Main.alertInfo('You tried to send an Ethereum transaction but there was an error. Check the Javascript console for details.');
   }
@@ -643,7 +643,7 @@ Main.loadLog = function(events, callback) {
   async.eachSeries(config.contract_addrs,
     function(contract_addr, callback_each){
       utility.logs(web3, myContract, contract_addr, 0, 'latest', function(event) {
-        event.tx_link = 'http://'+(config.eth_testnet ? 'testnet' : '')+'.etherscan.io/tx/'+event.transactionHash;
+        event.tx_link = 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
         events[event.transactionHash+event.logIndex] = event;
         Main.refresh();
       });
@@ -661,7 +661,7 @@ Main.loadContractsFunds = function(callback) {
         if (result) {
           var funds = result[0].toString();
           var fundsAvailable = result[1].toString();
-          var contract_link = 'http://'+(config.eth_testnet ? 'testnet' : '')+'.etherscan.io/address/'+contract_addr;
+          var contract_link = 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+contract_addr;
           callback(null, {contract_addr: contract_addr, contract_link: contract_link, funds: funds, fundsAvailable: fundsAvailable});
         } else {
           callback(null, undefined);
