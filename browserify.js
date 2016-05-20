@@ -796,7 +796,7 @@ Main.draw_option_chart = function(element, option, price, size) {
 Main.updatePrice = function(callback) {
   $.getJSON('https://poloniex.com/public?command=returnTicker', function(result) {
     var eth_btc = result.BTC_ETH.last;
-    $.getJSON('http://api.coindesk.com/v1/bpi/currentprice/USD.json', function(result) {
+    $.getJSON('https://api.coindesk.com/v1/bpi/currentprice/USD.json', function(result) {
       var btc_usd = result.bpi.USD.rate;
       price = Number(eth_btc * btc_usd);
       price_updated = Date.now();
