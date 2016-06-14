@@ -4,20 +4,20 @@ Etheropt
 
 Etheropt is a decentralized options exchange built on [Ethereum](https://ethereum.org/). The options you see here are vanilla call and put options on the price of Ethereum in USD as reported by [Poloniex](https://poloniex.com/exchange#btc_eth) and [Coindesk](http://www.coindesk.com/price) and verified by [Reality Keys](https://www.realitykeys.com). Etheropt has no owner. Its entire operation is described and executed by an Ethereum [smart contract](etheropt.sol). Etheropt does not make any money as the smart contract does not charge any fees -- not for trading, not for adding funds, not for withdrawing, not for anything.
 
-This document is meant to serve as a technical guide to Etheropt. The main Etheropt page ([http://etheropt.github.io](http://etheropt.github.io)) has a series of how-to guides tailored to first-time users of the Etheropt GUI. Some of that information is reiterated here.
+This document is meant to serve as a technical guide to Etheropt. The main Etheropt page ([http://etheropt.github.io](https://etheropt.github.io)) has a series of how-to guides tailored to first-time users of the Etheropt GUI. Some of that information is reiterated here.
 
 Installation
 ----------
 In order to ease interaction with the smart contract, Etheropt has a graphical user interface (GUI).
 
-There is no installation necessary to use the GUI. Just go to the main Etheropt page ([http://etheropt.github.io](http://etheropt.github.io)) and the GUI will be running in your Web browser. You can also choose to download the GitHub repository and run the GUI locally. The GUI stores your account in the browser only and does not store anything remotely. The only remote servers it interacts with are the Ethereum network (through Geth or through a Web proxy), and the market makers (a collection of servers that are responsible for making markets and maintaining a distributed order book of resting orders).
+There is no installation necessary to use the GUI. Just go to the main Etheropt page ([http://etheropt.github.io](https://etheropt.github.io)) and the GUI will be running in your Web browser. You can also choose to download the GitHub repository and run the GUI locally. The GUI stores your account in the browser only and does not store anything remotely. The only remote servers it interacts with are the Ethereum network (through Geth or through a Web proxy), and the market makers (a collection of servers that are responsible for making markets and maintaining a distributed order book of resting orders).
 
 Ethereum network
 ----------
 The GUI can connect to the Ethereum network in one of two ways. If you have Geth running locally in RPC mode (at http://localhost:8545), Etheropt will automatically connect to it. You must run Geth with --rpc and --rpccorsdomain, like this:
 
 ```
-geth --rpc --rpccorsdomain 'http://etheropt.github.io' console
+geth --rpc --rpccorsdomain 'https://etheropt.github.io' console
 ```
 
 If you don't have Geth running locally, Etheropt will connect to the Ethereum network through the public API provided by Etherscan. You can find out whether you are connected to Geth or Etherscan at the bottom of the page.

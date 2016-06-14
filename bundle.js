@@ -85685,6 +85685,7 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
                 callback([undefined, nonce]);
               }
             } else {
+              console.log(url);
               console.log(err);
               callback([undefined, nonce]);
             }
