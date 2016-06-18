@@ -79,8 +79,8 @@ Main.logout = function() {
 }
 Main.createAddress = function() {
   var newAddress = utility.createAddress();
-  var addr = '0x'+newAddress[0].toString('hex');
-  var pk = '0x'+newAddress[1].toString('hex');
+  var addr = newAddress[0];
+  var pk = newAddress[1];
   Main.addAddress(addr, pk);
   Main.alertInfo('You just created an Ethereum address: '+addr+'.');
 }
@@ -85685,7 +85685,6 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
                 callback([undefined, nonce]);
               }
             } else {
-              console.log(url);
               console.log(err);
               callback([undefined, nonce]);
             }
@@ -85997,6 +85996,8 @@ function createAddress() {
   var dk = keythereum.create();
   var pk = dk.privateKey;
   var addr = ethUtil.privateToAddress(pk);
+  addr = ethUtil.toChecksumAddress(addr.toString('hex'));
+  pk = pk.toString('hex');
   return [addr, pk];
 }
 
@@ -86004,7 +86005,7 @@ function verifyPrivateKey(addr, privateKey) {
   if (privateKey && privateKey.substring(0,2)!='0x') {
     privateKey = '0x'+privateKey;
   }
-  return addr == '0x'+ethUtil.privateToAddress(privateKey).toString('hex');
+  return addr == ethUtil.toChecksumAddress('0x'+ethUtil.privateToAddress(privateKey).toString('hex'));
 }
 
 function diffs(data) {

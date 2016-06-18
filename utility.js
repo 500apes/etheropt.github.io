@@ -529,6 +529,8 @@ function createAddress() {
   var dk = keythereum.create();
   var pk = dk.privateKey;
   var addr = ethUtil.privateToAddress(pk);
+  addr = ethUtil.toChecksumAddress(addr.toString('hex'));
+  pk = pk.toString('hex');
   return [addr, pk];
 }
 
@@ -536,7 +538,7 @@ function verifyPrivateKey(addr, privateKey) {
   if (privateKey && privateKey.substring(0,2)!='0x') {
     privateKey = '0x'+privateKey;
   }
-  return addr == '0x'+ethUtil.privateToAddress(privateKey).toString('hex');
+  return addr == ethUtil.toChecksumAddress('0x'+ethUtil.privateToAddress(privateKey).toString('hex'));
 }
 
 function diffs(data) {

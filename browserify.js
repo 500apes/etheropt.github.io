@@ -77,8 +77,8 @@ Main.logout = function() {
 }
 Main.createAddress = function() {
   var newAddress = utility.createAddress();
-  var addr = '0x'+newAddress[0].toString('hex');
-  var pk = '0x'+newAddress[1].toString('hex');
+  var addr = newAddress[0];
+  var pk = newAddress[1];
   Main.addAddress(addr, pk);
   Main.alertInfo('You just created an Ethereum address: '+addr+'.');
 }
