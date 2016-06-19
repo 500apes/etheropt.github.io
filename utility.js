@@ -513,6 +513,7 @@ function sign(web3, address, value, privateKey, callback) {
 }
 
 function verify(web3, address, v, r, s, value, callback) {
+  address = address.toLowerCase();
   if (r.substring(0,2)=='0x') r=r.substring(2,r.length);
   if (s.substring(0,2)=='0x') s=s.substring(2,s.length);
   if (value.substring(0,2)=='0x') value=value.substring(2,value.length);

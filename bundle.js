@@ -191,7 +191,7 @@ Main.processOrders = function(callback) {
                       var order = {contract_addr: browser_order.option.contract_addr, optionID: browser_order.option.optionID, price: browser_order.price_tied, size: browser_order.size-cumulative_match_size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
                       condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
                       hash = '0x'+sha256(new Buffer(condensed,'hex'));
-                      var verified = utility.verify(web3, order.addr.toLowerCase(), order.v, order.r, order.s, order.hash);
+                      var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
                       utility.call(web3, myContract, browser_order.option.contract_addr, 'getFunds', [order.addr, false], function(result) {
                         var balance = result.toNumber();
                         utility.call(web3, myContract, browser_order.option.contract_addr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(result) {
@@ -85983,6 +85983,7 @@ function sign(web3, address, value, privateKey, callback) {
 }
 
 function verify(web3, address, v, r, s, value, callback) {
+  address = address.toLowerCase();
   if (r.substring(0,2)=='0x') r=r.substring(2,r.length);
   if (s.substring(0,2)=='0x') s=s.substring(2,s.length);
   if (value.substring(0,2)=='0x') value=value.substring(2,value.length);
