@@ -541,6 +541,13 @@ function verifyPrivateKey(addr, privateKey) {
   return addr == ethUtil.toChecksumAddress('0x'+ethUtil.privateToAddress(privateKey).toString('hex'));
 }
 
+function toChecksumAddress(addr) {
+  if (addr && addr.substring(0,2)!='0x') {
+    addr = '0x'+addr;
+  }
+  return ethUtil.toChecksumAddress(addr);
+}
+
 function diffs(data) {
   var result = [];
   for (var i=1; i<data.length; i++) {
@@ -823,6 +830,7 @@ exports.sign = sign;
 exports.verify = verify;
 exports.createAddress = createAddress;
 exports.verifyPrivateKey = verifyPrivateKey;
+exports.toChecksumAddress = toChecksumAddress;
 exports.readFile = readFile;
 exports.writeFile = writeFile;
 exports.roundTo = roundTo;

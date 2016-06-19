@@ -14,3 +14,7 @@ for (var i=0; i<1000; i++) {
   n++;
 }
 console.log(errors, n);
+
+var addr = '0x76a43315b5e2b16111d1cc8c9fbc377efd432dff';
+var pk = '380ae32194195544f5ba569243fd4bd2c9eb7932a383fb06a6bf6007308161a0';
+console.log(utility.verifyPrivateKey(addr, pk));

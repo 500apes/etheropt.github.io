@@ -101,7 +101,10 @@ Main.selectAddress = function(i) {
 Main.addAddress = function(addr, pk) {
   if (addr.slice(0,2)!='0x') addr = '0x'+addr;
   if (pk.slice(0,2)=='0x') pk = pk.slice(2);
+  addr = utility.toChecksumAddress(addr);
   if (pk!=undefined && pk!='' && !utility.verifyPrivateKey(addr, pk)) {
+    console.log(addr);
+    console.log(pk);
     Main.alertInfo('For account '+addr+', the private key is invalid.');
   } else if (!web3.isAddress(addr)) {
     Main.alertInfo('The specified address, '+addr+', is invalid.');
@@ -186,7 +189,7 @@ Main.processOrders = function(callback) {
                       var order = {contract_addr: browser_order.option.contract_addr, optionID: browser_order.option.optionID, price: browser_order.price_tied, size: browser_order.size-cumulative_match_size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
                       condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
                       hash = '0x'+sha256(new Buffer(condensed,'hex'));
-                      var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+                      var verified = utility.verify(web3, order.addr.toLowerCase(), order.v, order.r, order.s, order.hash);
                       utility.call(web3, myContract, browser_order.option.contract_addr, 'getFunds', [order.addr, false], function(result) {
                         var balance = result.toNumber();
                         utility.call(web3, myContract, browser_order.option.contract_addr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(result) {
