@@ -115,6 +115,7 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 							//post
 							self.app.post('/', function(req, res) {
 								res.setHeader('Access-Control-Allow-Origin', '*');
+								console.log(req.body);
 								utility.blockNumber(web3, function(blockNumber) {
 									try {
 										var new_orders = req.body.orders;
@@ -128,6 +129,9 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 													utility.call(web3, myContract, order.contract_addr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(result) {
 														if (result) {
 															balance = balance + result.toNumber();
+															if (!verified) console.log('Verification failure');
+															if (!hash==order.hash) console.log('Hash check failure');
+															if (balance<0) console.log('Balance check failure'); 
 															if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
 																self.received_orders.push(order);
 															}
@@ -204,7 +208,7 @@ function Server(domain, port, url, punch, eth_addr, armed, pricer_data_fn, price
 							async.eachSeries(config.contract_addrs,
 								function(contract_addr, callback_each){
 									utility.logs(web3, myContract, contract_addr, 0, 'latest', function(event) {
-										event.tx_link = 'http://'+(config.eth_testnet ? 'morden' : 'live')+'.ether.camp/transaction/'+event.transactionHash;
+										event.tx_link = 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
 										self.events_hash[event.transactionHash+event.logIndex] = event;
 									});
 									callback_each();
