@@ -186,11 +186,12 @@ contract Etheropt {
               result += moneyness * positions[accounts[accountID].user].positions[optionID] / 1000000000000000000;
             }
             positions[accounts[accountID].user].expired = true;
-            accounts[accountID].user.call.value(uint(accounts[accountID].capital + result))();
+            uint amountToSend = uint(accounts[accountID].capital + result);
             accounts[accountID].capital = 0;
             if (positions[accounts[accountID].user].hasPosition==true) {
               numPositionsExpired++;
             }
+            accounts[accountID].user.call.value(amountToSend)();
             Expire(msg.sender, accounts[accountID].user);
           }
         }
