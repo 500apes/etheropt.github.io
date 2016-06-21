@@ -85672,8 +85672,8 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
       if (tx) {
         var serializedTx = tx.serialize().toString('hex');
         function proxy() {
-          var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_sendRawTransaction&hex='+serializedTx;
-          request.get(url, function(err, httpResponse, body){
+          var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api';
+          request.post({url: url, form: {module: 'proxy', action: 'eth_sendRawTransaction', hex: serializedTx}}, function(err, httpResponse, body){
             if (!err) {
               try {
                 var result = JSON.parse(body);
