@@ -598,13 +598,14 @@ function zero_pad(num, places) {
   return Array(+(zero > 0 && zero)).join("0") + num;
 }
 
-function dec_to_hex(decStr, length) {
+function dec_to_hex(dec, length) {
   if (typeof(length)==='undefined') length = 32;
-  if (decStr < 0) {
+  if (dec < 0) {
     // return convert_base((Math.pow(2, length) + decStr).toString(), 10, 16);
-    return (new BigNumber(2)).pow(length).add(new BigNumber(decStr)).toString(16);
+    return (new BigNumber(2)).pow(length).add(new BigNumber(dec)).toString(16);
   } else {
-    return convert_base(decStr.toString(), 10, 16);
+    // return convert_base(dec.toString(), 10, 16);
+    return (new BigNumber(dec)).toString(16);
   }
 }
 
