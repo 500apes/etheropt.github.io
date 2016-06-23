@@ -604,8 +604,11 @@ function dec_to_hex(dec, length) {
     // return convert_base((Math.pow(2, length) + decStr).toString(), 10, 16);
     return (new BigNumber(2)).pow(length).add(new BigNumber(dec)).toString(16);
   } else {
-    // return convert_base(dec.toString(), 10, 16);
-    return (new BigNumber(dec)).toString(16);
+    try {
+      return convert_base(dec.toString(), 10, 16);
+    } catch (err) {
+      return (new BigNumber(dec)).toString(16);
+    }
   }
 }
 
