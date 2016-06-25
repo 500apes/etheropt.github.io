@@ -215,7 +215,7 @@ Main.processOrders = function(callback) {
                       });
                     } else {
                       Main.alertInfo('You tried sending an order to the order book, but it could not be signed.');
-                      console.log(err, sig);
+                      console.log(err);
                       callbackBrowserOrder();
                     }
                   });
