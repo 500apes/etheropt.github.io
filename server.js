@@ -117,7 +117,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 								res.setHeader('Access-Control-Allow-Origin', '*');
 								console.log(req.body);
 								utility.blockNumber(web3, function(err, blockNumber) {
-									try {
+									// try {
 										var ordersNew = req.body.orders;
 										async.each(ordersNew, function(order, callbackEach) {
 											var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
@@ -142,10 +142,9 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 												}
 											});
 										});
-									} catch(err) {
-										console.log(err);
-										console.trace();
-									}
+									// } catch(err) {
+									// 	console.log(err);
+									// }
 								});
 								res.writeHead(200);
 								res.end(undefined);
