@@ -117,10 +117,12 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 								res.setHeader('Access-Control-Allow-Origin', '*');
 								console.log(req.body);
 								utility.blockNumber(web3, function(err, blockNumber) {
-									// try {
+									try {
 										var ordersNew = req.body.orders;
 										async.each(ordersNew, function(order, callbackEach) {
 											var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
+											console.log([order.optionID, order.price, order.size, order.orderID, order.blockExpires]);
+											console.log(condensed);
 											var hash = '0x'+sha256(new Buffer(condensed,'hex'));
 											var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
 											utility.call(web3, myContract, order.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
@@ -142,9 +144,9 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 												}
 											});
 										});
-									// } catch(err) {
-									// 	console.log(err);
-									// }
+									} catch(err) {
+										console.log(err);
+									}
 								});
 								res.writeHead(200);
 								res.end(undefined);

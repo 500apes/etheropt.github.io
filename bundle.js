@@ -201,7 +201,6 @@ Main.processOrders = function(callback) {
                             Main.alertInfo('Your order is being sent to the order book.');
                             async.each(browserOrder.option.marketMakers,
                               function(marketMaker, callbackMarketMaker) {
-                                console.log(marketMaker, order);
                                 request.post(marketMaker, {form:{orders: [order]}}, function(err, httpResponse, body) {
                                   callbackMarketMaker();
                                 });
@@ -85521,7 +85520,7 @@ exports.getRandomInt = getRandomInt;
 var config = {};
 
 config.homeURL = 'https://etheropt.github.io';
-config.homeURL = 'http://localhost:8080';
+// config.homeURL = 'http://localhost:8080';
 config.contractMarket = 'etheropt.sol';
 config.contractContracts = 'etheropt_contracts.sol';
 config.contractAddrs = [];
