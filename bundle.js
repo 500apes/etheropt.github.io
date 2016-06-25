@@ -819,8 +819,7 @@ Main.refresh = function() {
     Main.connectionTest();
     Main.loadAddresses();
     var events = Object.values(eventsCache);
-    // events.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
-    events.sort(function(a,b){ return a.blockNumber-b.blockNumber || a.transactionIndex-b.transactionIndex });
+    events.sort(function(a,b){ return b.blockNumber-a.blockNumber || b.transactionIndex-a.transactionIndex });
     new EJS({url: config.homeURL+'/'+'events_table.ejs'}).update('events', {events: events, options: optionsCache});
     Main.updatePrice(function(){
       Main.loadContractsFunds(function(contracts){
@@ -85494,7 +85493,7 @@ exports.getRandomInt = getRandomInt;
 var config = {};
 
 config.homeURL = 'https://etheropt.github.io';
-config.homeURL = 'http://localhost:8080';
+// config.homeURL = 'http://localhost:8080';
 config.contractMarket = 'etheropt.sol';
 config.contractContracts = 'etheropt_contracts.sol';
 config.contractAddrs = [];
