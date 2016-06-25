@@ -90,8 +90,8 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 
 	//get contracts
 	var myContract = undefined;
-	utility.readFile(config.contractContracts+'.bytecode', function(bytecode){
-	  utility.readFile(config.contractContracts+'.interface', function(abi){
+	utility.readFile(config.contractContracts+'.bytecode', function(err, bytecode){
+	  utility.readFile(config.contractContracts+'.interface', function(err, abi){
 	    abi = JSON.parse(abi);
 	    bytecode = JSON.parse(bytecode);
 	    var contractsContract = web3.eth.contract(abi);
@@ -99,8 +99,8 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 	    utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
 	      if (result) {
 	        config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
-	        utility.readFile(config.contractMarket+'.bytecode', function(bytecode){
-	          utility.readFile(config.contractMarket+'.interface', function(abi){
+	        utility.readFile(config.contractMarket+'.bytecode', function(err, bytecode){
+	          utility.readFile(config.contractMarket+'.interface', function(err, abi){
 	            abi = JSON.parse(abi);
 	            bytecode = JSON.parse(bytecode);
 	            myContract = web3.eth.contract(abi);
