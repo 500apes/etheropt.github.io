@@ -378,7 +378,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 																var mmOrders = mmOrders.reduce(function(a, b) {return a.concat(b);}, []);
 																var mmOrdersNew = [];
 																mmOrders.forEach(function(mmOrder){
-																	var existing_orders = self.mmOrders.filter(function(x){return x.contract==mmOrder.contract && x.optionID==mmOrder.optionID && utility.math_sign(x.size)==utility.math_sign(mmOrder.size)});
+																	var existing_orders = self.mmOrders.filter(function(x){return x.contract==mmOrder.contract && x.optionID==mmOrder.optionID && utility.Math.sign(x.size)==utility.Math.sign(mmOrder.size)});
 																	if (existing_orders.length==1 && blockNumber+5<=existing_orders[0].blockExpires && existing_orders[0].buyPrice==mmOrder.buyPrice && existing_orders[0].sellPrice==mmOrder.sellPrice && existing_orders[0].buySize==mmOrder.buySize && existing_orders[0].sellSize==mmOrder.sellSize) {
 																		mmOrdersNew.push(existing_orders[0]);
 																	} else {
