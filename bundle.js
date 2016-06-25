@@ -85168,13 +85168,17 @@ function sign(web3, address, value, privateKey, callback) {
     }
   } else {
     web3.eth.sign(address, value, function(err, sig) {
-      try {
-        var r = sig.slice(0, 66);
-        var s = '0x' + sig.slice(66, 130);
-        var v = web3.toDecimal('0x' + sig.slice(130, 132));
-        if (v!=27 && v!=28) v+=27;
-        callback(undefined, {r: r, s: s, v: v});
-      } catch (err) {
+      if (!err) {
+        try {
+          var r = sig.slice(0, 66);
+          var s = '0x' + sig.slice(66, 130);
+          var v = web3.toDecimal('0x' + sig.slice(130, 132));
+          if (v!=27 && v!=28) v+=27;
+          callback(undefined, {r: r, s: s, v: v});
+        } catch (err) {
+          callback(err, undefined);
+        }
+      } else {
         callback(err, undefined);
       }
     });
