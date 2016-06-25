@@ -116,7 +116,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 							self.app.post('/', function(req, res) {
 								res.setHeader('Access-Control-Allow-Origin', '*');
 								console.log(req.body);
-								utility.blockNumber(web3, function(blockNumber) {
+								utility.blockNumber(web3, function(err, blockNumber) {
 									try {
 										var new_orders = req.body.orders;
 										async.each(new_orders, function(order, callbackEach) {
@@ -306,7 +306,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 													var events = Object.values(self.eventsHash);
 													events.sort(function(a,b){ return b.blockNumber-a.blockNumber || b.transactionIndex-a.transactionIndex });
 													var today = Date.now();
-													utility.blockNumber(web3, function(blockNumber) {
+													utility.blockNumber(web3, function(err, blockNumber) {
 														var orderID = utility.getRandomInt(0,Math.pow(2,64));
 														var nonce = undefined;
 														async.map(self.options,
