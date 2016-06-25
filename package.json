@@ -1,15 +1,4 @@
 {
-  "name": "Etheropt",
-  "version": "1.0.0",
-  "description": "Decentralized options exchange built on Ethereum",
-  "main": "index.html",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/etheropt/etheropt.github.io.git"
-  },
-  "author": "etheropt",
-  "license": "MIT",
-  "homepage": "https://etheropt.github.io",
   "dependencies": {
     "web3": "^0.15.2",
     "request": "^2.69.0",
@@ -30,8 +19,7 @@
     "assert": "^1.3.0",
     "bignumber.js": "^2.3.0",
     "mocha": "^2.4.5",
-    "http": "^0.0.0"
-  },
-  "width": 800,
-  "height": 600
+    "http": "^0.0.0",
+    "solc": "^0.3.5"
+  }
 }

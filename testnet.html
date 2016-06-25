@@ -28,7 +28,7 @@
     <div id="market-spinner"><i class="fa fa-circle-o-notch fa-spin fa-3x"></i></div>
 
     <!-- Address -->
-    <div class="modal fade" id="address_modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+    <div class="modal fade" id="account_modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
       <div class="modal-dialog modal-sm" role="document">
         <div class="modal-content">
           <div class="modal-header">
@@ -39,19 +39,19 @@
             <form>
               <div class="form-group">
                 <label for="address_addr">Address</label>
-                <input type="text" class="form-control" id="address_addr" placeholder="Address (0x.....)" />
+                <input type="text" class="form-control" id="account_addr" placeholder="Address (0x.....)" />
               </div>
               <div id="pk_div">
                 <div class="form-group">
                   <label for="address_addr">Private key</label>
-                  <input type="text" class="form-control" id="address_pk" placeholder="Private key (0x.....)" />
+                  <input type="text" class="form-control" id="account_pk" placeholder="Private key (0x.....)" />
                 </div>
               </div>
             </form>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary" id="address_submit">Add account</button>
+            <button type="button" class="btn btn-primary" id="account_submit">Add account</button>
           </div>
         </div>
       </div>
@@ -123,11 +123,11 @@
               </div>
               <div class="form-group">
                 <label for="buy_size">Size</label>
-                <input type="text" class="form-control" id="buy_size" placeholder="Size (eth)" onchange="buy_margin();" />
+                <input type="text" class="form-control" id="buy_size" placeholder="Size (eth)" onchange="buyMargin();" />
               </div>
               <div class="form-group">
                 <label for="buy_price">Price</label>
-                <input type="text" class="form-control" id="buy_price" placeholder="Price" onchange="buy_margin();" />
+                <input type="text" class="form-control" id="buy_price" placeholder="Price" onchange="buyMargin();" />
               </div>
               <div class="form-group">
                 <label for="buy_graph">Payoff diagram</label>
@@ -216,11 +216,11 @@
               </div>
               <div class="form-group">
                 <label for="sell_size">Size</label>
-                <input type="text" class="form-control" id="sell_size" placeholder="Size (eth)" onchange="sell_margin();" />
+                <input type="text" class="form-control" id="sell_size" placeholder="Size (eth)" onchange="sellMargin();" />
               </div>
               <div class="form-group">
                 <label for="sell_price">Price</label>
-                <input type="text" class="form-control" id="sell_price" placeholder="Price" onchange="sell_margin();" />
+                <input type="text" class="form-control" id="sell_price" placeholder="Price" onchange="sellMargin();" />
               </div>
               <div class="form-group">
                 <label for="sell_graph">Payoff diagram</label>

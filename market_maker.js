@@ -1,6 +1,6 @@
-var config = require('./config_testnet.js');
+var config = require('./config.js');
 var server = require('./server.js');
-var utility = require('./utility.js');
+var utility = require('./common/utility.js');
 var Web3 = require('web3');
 var request = require('request');
 var async = require('async');
@@ -16,31 +16,31 @@ var cli = commandLineArgs([
   { name: 'port', type: String, defaultValue: config.port },
 	{ name: 'url', type: String, defaultValue: config.url },
 	{ name: 'punch', type: Boolean, defaultValue: true },
-	{ name: 'eth_addr', type: String, defaultValue: config.eth_addr }
+	{ name: 'ethAddr', type: String, defaultValue: config.ethAddr }
 ]);
-var cli_options = cli.parse()
+var cliOptions = cli.parse()
 
-if (cli_options.help) {
+if (cliOptions.help) {
 	console.log(cli.getUsage());
 } else {
-	var server = new server.Server(cli_options.domain, cli_options.port, cli_options.url, cli_options.punch, cli_options.eth_addr, cli_options.armed,
-    function (existing_pricer_data, callback) {
+	var server = new server.Server(cliOptions.domain, cliOptions.port, cliOptions.url, cliOptions.punch, cliOptions.ethAddr, cliOptions.armed,
+    function (existingPricerData, callback) {
       callback();
     },
-    function(option, pricer_data, funds_data, events) {
+    function(option, pricerData, fundsData, events) {
 			var today = Date.now();
 			var expiration = Date.parse(option.expiration+" 00:00:00 +0000");
-			var t_days = (expiration - today)/86400000.0;
-			var t = t_days / 365.0;
+			var tDays = (expiration - today)/86400000.0;
+			var t = tDays / 365.0;
 
 			if (t<=0) return undefined;
 
-      var buy_price = 0.0001;
-      var sell_price = option.margin;
-      var buy_size = utility.ethToWei(1);
-      var sell_size = utility.ethToWei(1);
+      var buyPrice = 0.0001;
+      var sellPrice = option.margin;
+      var buySize = utility.ethToWei(1);
+      var sellSize = utility.ethToWei(1);
       var expires = 10; //in blocks
-      return {buy_price: buy_price, sell_price: sell_price, buy_size: buy_size, sell_size: sell_size, expires: expires};
+      return {buyPrice: buyPrice, sellPrice: sellPrice, buySize: buySize, sellSize: sellSize, expires: expires};
     }
   );
 }

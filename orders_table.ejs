@@ -12,11 +12,11 @@
   <% orders.forEach(function(order){ %>
     <tr>
       <td><%= order.option.expiration+" "+order.option.fromcur+"/"+order.option.tocur+" "+order.option.strike+" "+order.option.kind %></td>
-      <td><%= utility.weiToEth(order.size) %> eth @ <%= utility.weiToEth(order.price_tied ? order.price_tied : order.price) %></td>
+      <td><%= utility.weiToEth(order.size) %> eth @ <%= utility.weiToEth(order.priceTied ? order.priceTied : order.price) %></td>
       <td><%= Math.max(0,order.blockNumber+order.expires-blockNumber) %></td>
       <td><%= order.update %></td>
-      <td><%= order.last_updated>0 ? Math.max(0,blockNumber-order.last_updated) : '' %></td>
-      <td><%= order.price_above ? '>'+order.price_above : '' %> <%= order.price_below ? '<'+order.price_below : '' %></td>
+      <td><%= order.lastUpdated>0 ? Math.max(0,blockNumber-order.lastUpdated) : '' %></td>
+      <td><%= order.priceAbove ? '>'+order.priceAbove : '' %> <%= order.priceBelow ? '<'+order.priceBelow : '' %></td>
       <td><%= order.delta ? order.delta : '' %></td>
       <td><%= order.tie ? order.tie : '' %></td>
     </tr>

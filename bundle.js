@@ -1,7 +1,7 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.bundle = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
 (function (Buffer){
 var Web3 = _dereq_('web3');
-var utility = _dereq_('./utility.js');
+var utility = _dereq_('./common/utility.js');
 var request = _dereq_('request');
 var sha256 = _dereq_('js-sha256').sha256;
 _dereq_('datejs');
@@ -14,11 +14,11 @@ Main.alertInfo = function(message) {
   $('#notifications').prepend($('<p>' + message + '</p>').hide().fadeIn(2000));
   console.log(message);
 }
-Main.alertTxHash = function(txHash) {
+Main.alertTxResult = function(err, result) {
   if (txHash) {
-    Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+txHash+'" target="_blank">'+txHash+'</a>.');
+    Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+result.txHash+'" target="_blank">'+result.txHash+'</a>.');
   } else {
-    Main.alertInfo('You tried to send an Ethereum transaction but there was an error. Check the Javascript console for details.');
+    Main.alertInfo('You tried to send an Ethereum transaction but there was an error: '+err);
   }
 }
 Main.tooltip = function(message) {
@@ -69,60 +69,58 @@ Main.eraseCookie = function(name) {
   }
 }
 Main.logout = function() {
-  addrs = [config.eth_addr];
-  pks = [config.eth_addr_pk];
-  selectedAddr = 0;
+  addrs = [config.ethAddr];
+  pks = [config.ethAddrPrivateKey];
+  selectedAccount = 0;
   nonce = undefined;
-  market_makers = {};
-  browser_orders = [];
+  marketMakers = {};
+  browserOrders = [];
   Main.refresh();
 }
-Main.createAddress = function() {
-  var newAddress = utility.createAddress();
-  var addr = newAddress[0];
-  var pk = newAddress[1];
-  Main.addAddress(addr, pk);
-  Main.alertInfo('You just created an Ethereum address: '+addr+'.');
+Main.createAccount = function() {
+  var newAccount = utility.createAccount();
+  var addr = newAccount.address;
+  var pk = newAccount.privateKey;
+  Main.addAccount(addr, pk);
+  Main.alertInfo('You just created an Ethereum account: '+addr+'.');
 }
-Main.deleteAddress = function() {
-  addrs.splice(selectedAddr, 1);
-  pks.splice(selectedAddr, 1);
-  selectedAddr = 0;
+Main.deleteAccount = function() {
+  addrs.splice(selectedAccount, 1);
+  pks.splice(selectedAccount, 1);
+  selectedAccount = 0;
   nonce = undefined;
-  market_makers = {};
-  browser_orders = [];
+  marketMakers = {};
+  browserOrders = [];
   Main.refresh();
 }
-Main.selectAddress = function(i) {
-  selectedAddr = i;
+Main.selectAccount = function(i) {
+  selectedAccount = i;
   nonce = undefined;
-  market_makers = {};
-  browser_orders = [];
+  marketMakers = {};
+  browserOrders = [];
   Main.refresh();
 }
-Main.addAddress = function(addr, pk) {
+Main.addAccount = function(addr, pk) {
   if (addr.slice(0,2)!='0x') addr = '0x'+addr;
   if (pk.slice(0,2)=='0x') pk = pk.slice(2);
   addr = utility.toChecksumAddress(addr);
   if (pk!=undefined && pk!='' && !utility.verifyPrivateKey(addr, pk)) {
-    console.log(addr);
-    console.log(pk);
     Main.alertInfo('For account '+addr+', the private key is invalid.');
   } else if (!web3.isAddress(addr)) {
-    Main.alertInfo('The specified address, '+addr+', is invalid.');
+    Main.alertInfo('The specified account, '+addr+', is invalid.');
   } else {
     addrs.push(addr);
     pks.push(pk);
-    selectedAddr = addrs.length-1;
+    selectedAccount = addrs.length-1;
     nonce = undefined;
-    market_makers = {};
-    browser_orders = [];
+    marketMakers = {};
+    browserOrders = [];
     Main.refresh();
   }
 }
 Main.showPrivateKey = function() {
-  var addr = addrs[selectedAddr];
-  var pk = pks[selectedAddr];
+  var addr = addrs[selectedAccount];
+  var pk = pks[selectedAccount];
   if (pk==undefined || pk=='') {
     Main.alertInfo('For account '+addr+', there is no private key available. You can still transact if you are connected to Geth and the account is unlocked.');
   } else {
@@ -136,86 +134,87 @@ Main.shapeshift_click = function(a,e) {
   return false;
 }
 Main.processOrders = function(callback) {
-  utility.blockNumber(web3, function(blockNumber) {
+  utility.blockNumber(web3, function(err, blockNumber) {
     //process orders
-    browser_orders = browser_orders.filter(function(browser_order){return blockNumber<browser_order.blockNumber+browser_order.expires && browser_order.size!=0});
-    async.eachSeries(browser_orders,
-      function(browser_order, callback_browser_order) {
-        if (blockNumber>=browser_order.last_updated+browser_order.update) {
-          browser_order.last_updated = blockNumber;
+    browserOrders = browserOrders.filter(function(browserOrder){return blockNumber<browserOrder.blockNumber+browserOrder.expires && browserOrder.size!=0});
+    async.eachSeries(browserOrders,
+      function(browserOrder, callbackBrowserOrder) {
+        if (blockNumber>=browserOrder.lastUpdated+browserOrder.update) {
+          browserOrder.lastUpdated = blockNumber;
           //update option
-          browser_order.option = options_cache.filter(function(option){return option.contract_addr == browser_order.option.contract_addr && option.optionID == browser_order.option.optionID})[0];
-          if (browser_order.position_lock!=undefined) {
-            browser_order.size -= (browser_order.option.position-browser_order.position_lock); //update remaining size based on change in position
+          browserOrder.option = optionsCache.filter(function(option){return option.contractAddr == browserOrder.option.contractAddr && option.optionID == browserOrder.option.optionID})[0];
+          if (browserOrder.positionLock!=undefined) {
+            browserOrder.size -= (browserOrder.option.position-browserOrder.positionLock); //update remaining size based on change in position
           }
-          browser_order.position_lock = browser_order.option.position;
-          if ((browser_order.price_above==undefined || price>browser_order.price_above) && (browser_order.price_below==undefined || price<browser_order.price_below) && (Date.now()-price_updated<30*1000)) {
-            browser_order.price_tied = browser_order.price;
-            if (browser_order.tie!=undefined && browser_order.delta!=undefined) {
-              browser_order.price_tied = browser_order.price + browser_order.delta * 1000000000000000000 * (price - browser_order.tie);
+          browserOrder.positionLock = browserOrder.option.position;
+          if ((browserOrder.priceAbove==undefined || price>browserOrder.priceAbove) && (browserOrder.priceBelow==undefined || price<browserOrder.priceBelow) && (Date.now()-priceUpdated<30*1000)) {
+            browserOrder.priceTied = browserOrder.price;
+            if (browserOrder.tie!=undefined && browserOrder.delta!=undefined) {
+              browserOrder.priceTied = browserOrder.price + browserOrder.delta * 1000000000000000000 * (price - browserOrder.tie);
             }
             //market maker order
-            if (browser_order.market_maker) {
-              var market_maker = market_makers[browser_order.market_maker];
-              if (market_maker) {
+            if (browserOrder.marketMaker) {
+              var marketMaker = marketMakers[browserOrder.marketMaker];
+              if (marketMaker) {
                 var theo = 0;
-                for (var i=0; i<market_maker.pdf.length; i++) {
-                  theo += (browser_order.option.kind=='Call' ? Math.max(0,Math.min(browser_order.option.margin, market_maker.pdf[i][0]-browser_order.option.strike)) : Math.max(0,Math.min(browser_order.option.margin, browser_order.option.strike-market_maker.pdf[i][0]))) * market_maker.pdf[i][1];
+                for (var i=0; i<marketMaker.pdf.length; i++) {
+                  theo += (browserOrder.option.kind=='Call' ? Math.max(0,Math.min(browserOrder.option.margin, marketMaker.pdf[i][0]-browserOrder.option.strike)) : Math.max(0,Math.min(browserOrder.option.margin, browserOrder.option.strike-marketMaker.pdf[i][0]))) * marketMaker.pdf[i][1];
                 }
-                if (browser_order.size>0) {
-                  browser_order.size = market_maker.size;
-                  browser_order.price = utility.roundTo(Math.max(0,theo-market_maker.width/2),2)*1000000000000000000;
+                if (browserOrder.size>0) {
+                  browserOrder.size = marketMaker.size;
+                  browserOrder.price = (Math.max(0,theo-marketMaker.width/2)).toFixed(2)*1000000000000000000;
                 } else {
-                  browser_order.size = -market_maker.size;
-                  browser_order.price = utility.roundTo(Math.max(0,theo+market_maker.width/2),2)*1000000000000000000;
+                  browserOrder.size = -marketMaker.size;
+                  browserOrder.price = (Math.max(0,theo+marketMaker.width/2)).toFixed(2)*1000000000000000000;
                 }
-                browser_order.price_tied = browser_order.price;
+                browserOrder.priceTied = browserOrder.price;
               } else {
-                browser_order.size = 0;
+                browserOrder.size = 0;
               }
             }
             //send the remainder of the order to rest on the order book
-            function send_to_order_book() {
-              if (browser_order.size-cumulative_match_size!=0) {
-                browser_order.price_tied = utility.roundToNearest(browser_order.price_tied, 1000000);
-                utility.blockNumber(web3, function(blockNumber) {
+            function sendToOrderBook() {
+              if (browserOrder.size-cumulativeMatchSize!=0) {
+                browserOrder.priceTied = utility.roundToNearest(browserOrder.priceTied, 1000000);
+                utility.blockNumber(web3, function(err, blockNumber) {
                   var orderID = utility.getRandomInt(0,Math.pow(2,64));
-                  var blockExpires = blockNumber + browser_order.update;
-                  var condensed = utility.pack([browser_order.option.optionID, browser_order.price_tied, browser_order.size-cumulative_match_size, orderID, blockExpires], [256, 256, 256, 256, 256]);
+                  var blockExpires = blockNumber + browserOrder.update;
+                  var condensed = utility.pack([browserOrder.option.optionID, browserOrder.priceTied, browserOrder.size-cumulativeMatchSize, orderID, blockExpires], [256, 256, 256, 256, 256]);
                   var hash = sha256(new Buffer(condensed,'hex'));
-                  utility.sign(web3, addrs[selectedAddr], hash, pks[selectedAddr], function(sig) {
-                    if (!sig) {
+                  utility.sign(web3, addrs[selectedAccount], hash, pks[selectedAccount], function(err, sig) {
+                    if (err) {
                       Main.alertInfo('You tried sending an order to the order book, but it could not be signed.');
-                      callback_browser_order();
+                      callbackBrowserOrder();
                     } else {
-                      var order = {contract_addr: browser_order.option.contract_addr, optionID: browser_order.option.optionID, price: browser_order.price_tied, size: browser_order.size-cumulative_match_size, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAddr], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+                      var order = {contractAddr: browserOrder.option.contractAddr, optionID: browserOrder.option.optionID, price: browserOrder.priceTied, size: browserOrder.size-cumulativeMatchSize, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAccount], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
                       condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
                       hash = '0x'+sha256(new Buffer(condensed,'hex'));
                       var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
-                      utility.call(web3, myContract, browser_order.option.contract_addr, 'getFunds', [order.addr, false], function(result) {
+                      utility.call(web3, myContract, browserOrder.option.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
                         var balance = result.toNumber();
-                        utility.call(web3, myContract, browser_order.option.contract_addr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(result) {
+                        utility.call(web3, myContract, browserOrder.option.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
                           balance = balance + result.toNumber();
                           if (!verified) {
                             Main.alertInfo('You tried sending an order to the order book, but signature verification failed.');
-                            callback_browser_order();
+                            callbackBrowserOrder();
                           } else if (balance<=0) {
                             Main.alertInfo('You tried sending an order to the order book, but you do not have enough funds to place your order. You need to add '+(utility.weiToEth(-balance))+' eth to your account to cover this trade. ');
-                            callback_browser_order();
+                            callbackBrowserOrder();
                           } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
-                            async.each(browser_order.option.market_makers,
-                              function(market_maker, callback_market_maker) {
-                                request.post(market_maker, {form:{orders: [order]}}, function(err, httpResponse, body) {
-                                  callback_market_maker();
+                            Main.alertInfo('Your order is being sent to the order book.');
+                            async.each(browserOrder.option.marketMakers,
+                              function(marketMaker, callbackMarketMaker) {
+                                request.post(marketMaker, {form:{orders: [order]}}, function(err, httpResponse, body) {
+                                  callbackMarketMaker();
                                 });
                               },
                               function(err) {
                                 //finished sending order to order book
-                                callback_browser_order();
+                                callbackBrowserOrder();
                               }
                             );
                           } else {
-                            callback_browser_order();
+                            callbackBrowserOrder();
                           }
                         });
                       });
@@ -223,148 +222,149 @@ Main.processOrders = function(callback) {
                   });
                 });
               } else {
-                callback_browser_order();
+                callbackBrowserOrder();
               }
             }
             //match against existing orders
-            var cumulative_match_size = 0;
-            if (browser_order.post_only==false) { //as long as post_only isn't set
-              var match_orders = browser_order.size>0 ? browser_order.option.sell_orders : browser_order.option.buy_orders;
-              async.each(match_orders,
-                function(match_order, callback_match_order) {
-                  if ((browser_order.size>0 && browser_order.price_tied>=match_order.order.price) || (browser_order.size<0 && browser_order.price_tied<=match_order.order.price)) {
-                    var match_size = 0;
-                    if (Math.abs(cumulative_match_size)>=Math.abs(browser_order.size)) {
+            var cumulativeMatchSize = 0;
+            if (browserOrder.postOnly==false) { //as long as postOnly isn't set
+              var matchOrders = browserOrder.size>0 ? browserOrder.option.sellOrders : browserOrder.option.buyOrders;
+              async.each(matchOrders,
+                function(matchOrder, callbackMatchOrder) {
+                  if ((browserOrder.size>0 && browserOrder.priceTied>=matchOrder.order.price) || (browserOrder.size<0 && browserOrder.priceTied<=matchOrder.order.price)) {
+                    var matchSize = 0;
+                    if (Math.abs(cumulativeMatchSize)>=Math.abs(browserOrder.size)) {
                       //we've attempted to match enough size already
-                    } else if (Math.abs(browser_order.size-cumulative_match_size)>=Math.abs(match_order.size)) { //the order is bigger than the match order
-                      match_size = -match_order.order.size;
+                    } else if (Math.abs(browserOrder.size-cumulativeMatchSize)>=Math.abs(matchOrder.size)) { //the order is bigger than the match order
+                      matchSize = -matchOrder.order.size;
                     } else { //the match order covers the order
-                      match_size = browser_order.size-cumulative_match_size;
+                      matchSize = browserOrder.size-cumulativeMatchSize;
                     }
-                    if (match_size!=0) {
-                      cumulative_match_size += match_size; //let's assume the order will go through
+                    if (matchSize!=0) {
+                      cumulativeMatchSize += matchSize; //let's assume the order will go through
                       var deposit = utility.ethToWei(0);
-                      utility.call(web3, myContract, browser_order.option.contract_addr, 'orderMatchTest', [match_order.order.optionID, match_order.order.price, match_order.order.size, match_order.order.orderID, match_order.order.blockExpires, match_order.order.addr, addrs[selectedAddr], deposit, match_size], function(test) {
-                        if (test && blockNumber<match_order.order.blockExpires-1) {
-                          utility.send(web3, myContract, browser_order.option.contract_addr, 'orderMatch', [match_order.order.optionID, match_order.order.price, match_order.order.size, match_order.order.orderID, match_order.order.blockExpires, match_order.order.addr, match_order.order.v, match_order.order.r, match_order.order.s, match_size, {gas: browser_order.gas, value: deposit}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-                            txHash = result[0];
-                            nonce = result[1];
-                            Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(match_size))+' eth) was sent to the blockchain to match against a resting order.');
-                            Main.alertTxHash(txHash);
-                            callback_match_order();
+                      utility.call(web3, myContract, browserOrder.option.contractAddr, 'orderMatchTest', [matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, addrs[selectedAccount], deposit, matchSize], function(err, result) {
+                        if (result && blockNumber<matchOrder.order.blockExpires-1) {
+                          utility.send(web3, myContract, browserOrder.option.contractAddr, 'orderMatch', [matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, matchOrder.order.v, matchOrder.order.r, matchOrder.order.s, matchSize, {gas: browserOrder.gas, value: deposit}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+                            txHash = result.txHash;
+                            nonce = result.nonce;
+                            Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
+                            Main.alertTxResult(err, result);
+                            callbackMatchOrder();
                           });
                         } else {
                           Main.alertInfo('You tried to match against a resting order but the order match failed. This can be because the order expired or traded already, or either you or the counterparty do not have enough funds to cover the trade.');
-                          callback_match_order();
+                          callbackMatchOrder();
                         }
                       });
                     } else {
-                      callback_match_order();
+                      callbackMatchOrder();
                     }
                   } else {
-                    callback_match_order();
+                    callbackMatchOrder();
                   }
                 },
                 function(err) {
-                  send_to_order_book();
+                  sendToOrderBook();
                 }
               );
             } else {
-              send_to_order_book();
+              sendToOrderBook();
             }
           }
         } else {
-          callback_browser_order();
+          callbackBrowserOrder();
         }
       },
       function(err) {
         //update display
-        new EJS({url: config.home_url+'/'+'orders_table.ejs'}).update('orders', {orders: browser_orders, utility: utility, blockNumber: blockNumber});
+        new EJS({url: config.homeURL+'/'+'orders_table.ejs'}).update('orders', {orders: browserOrders, utility: utility, blockNumber: blockNumber});
         callback();
       }
     );
   });
 }
-Main.order = function(option, price, size, expires, update, gas, price_above, price_below, delta, tie, post_only) {
+Main.order = function(option, price, size, expires, update, gas, priceAbove, priceBelow, delta, tie, postOnly) {
   option = JSON.parse(option);
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
   gas = Number(gas);
   expires = Number(expires);
   update = Number(update);
-  price_above = price_above ? Number(price_above) : undefined;
-  price_below = price_below ? Number(price_below) : undefined;
+  priceAbove = priceAbove ? Number(priceAbove) : undefined;
+  priceBelow = priceBelow ? Number(priceBelow) : undefined;
   delta = delta ? Number(delta) : undefined;
   tie = tie ? Number(tie) : undefined;
-  post_only = post_only=='true' ? true : false;
-  utility.blockNumber(web3, function(blockNumber) {
-    var order = {option: option, price: price, size: size, expires: expires, update: update, gas: gas, price_above: price_above, price_below: price_below, delta: delta, tie: tie, post_only: post_only, blockNumber: blockNumber, last_updated: 0};
-    browser_orders.push(order);
+  postOnly = postOnly=='true' ? true : false;
+  utility.blockNumber(web3, function(err, blockNumber) {
+    var order = {option: option, price: price, size: size, expires: expires, update: update, gas: gas, priceAbove: priceAbove, priceBelow: priceBelow, delta: delta, tie: tie, postOnly: postOnly, blockNumber: blockNumber, lastUpdated: 0};
+    browserOrders.push(order);
     Main.refresh();
   });
 }
-Main.marketMakeStart = function(contract_addr, pdf, size, width, post_only) {
-  utility.blockNumber(web3, function(blockNumber) {
+Main.marketMakeStart = function(contractAddr, pdf, size, width, postOnly) {
+  utility.blockNumber(web3, function(err, blockNumber) {
     size = utility.ethToWei(size);
     pdf = JSON.parse(pdf);
     width = Number(width);
-    post_only = post_only=='true' ? true : false;
-    market_makers[contract_addr] = {pdf: pdf, size: size, contract_addr: contract_addr, width: width};
-    browser_orders = browser_orders.filter(function(browser_order){return browser_order.market_maker!=contract_addr});
-    options_cache.filter(function(option) {return option.contract_addr==contract_addr}).forEach(function(option) {
-      var order_buy = {market_maker: contract_addr, option: option, price: undefined, size: 1, expires: 1000000, update: 5, gas: 1000000, price_above: undefined, price_below: undefined, delta: undefined, tie: undefined, post_only: post_only, blockNumber: blockNumber, last_updated: 0};
-      browser_orders.push(order_buy);
-      var order_sell = {market_maker: contract_addr, option: option, price: undefined, size: -1, expires: 1000000, update: 5, gas: 1000000, price_above: undefined, price_below: undefined, delta: undefined, tie: undefined, post_only: post_only, blockNumber: blockNumber, last_updated: 0};
-      browser_orders.push(order_sell);
+    postOnly = postOnly=='true' ? true : false;
+    marketMakers[contractAddr] = {pdf: pdf, size: size, contractAddr: contractAddr, width: width};
+    browserOrders = browserOrders.filter(function(browserOrder){return browserOrder.marketMaker!=contractAddr});
+    optionsCache.filter(function(option) {return option.contractAddr==contractAddr}).forEach(function(option) {
+      var orderBuy = {marketMaker: contractAddr, option: option, price: undefined, size: 1, expires: 1000000, update: 5, gas: 1000000, priceAbove: undefined, priceBelow: undefined, delta: undefined, tie: undefined, postOnly: postOnly, blockNumber: blockNumber, lastUpdated: 0};
+      browserOrders.push(orderBuy);
+      var orderSell = {marketMaker: contractAddr, option: option, price: undefined, size: -1, expires: 1000000, update: 5, gas: 1000000, priceAbove: undefined, priceBelow: undefined, delta: undefined, tie: undefined, postOnly: postOnly, blockNumber: blockNumber, lastUpdated: 0};
+      browserOrders.push(orderSell);
     });
     Main.processOrders(function(){});
   });
 }
-Main.marketMakeStop = function(contract_addr) {
-  delete market_makers[contract_addr];
-  browser_orders = browser_orders.filter(function(browser_order){return browser_order.market_maker!=contract_addr});
+Main.marketMakeStop = function(contractAddr) {
+  delete marketMakers[contractAddr];
+  browserOrders = browserOrders.filter(function(browserOrder){return browserOrder.marketMaker!=contractAddr});
 }
-Main.fund = function(amount, contract_addr) {
-  utility.send(web3, myContract, contract_addr, 'addFunds', [{gas: 200000, value: utility.ethToWei(amount)}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-    txHash = result[0];
-    nonce = result[1];
-    Main.alertTxHash(txHash);
+Main.fund = function(amount, contractAddr) {
+  amount = utility.ethToWei(amount);
+  utility.send(web3, myContract, contractAddr, 'addFunds', [{gas: 200000, value: amount}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+    txHash = result.txHash;
+    nonce = result.nonce;
+    Main.alertTxResult(err, result);
   });
 }
-Main.withdraw = function(amount, contract_addr) {
+Main.withdraw = function(amount, contractAddr) {
   amount = utility.ethToWei(amount);
-  utility.call(web3, myContract, contract_addr, 'getFundsAndAvailable', [addrs[selectedAddr]], function(result) {
-    if (result) {
+  utility.call(web3, myContract, contractAddr, 'getFundsAndAvailable', [addrs[selectedAccount]], function(err, result) {
+    if (!err) {
       var fundsAvailable = result[1].toNumber();
       if (amount>fundsAvailable) amount = fundsAvailable;
     }
     if (amount>0) {
-      utility.send(web3, myContract, contract_addr, 'withdrawFunds', [amount, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-        txHash = result[0];
-        nonce = result[1];
-        Main.alertTxHash(txHash);
+      utility.send(web3, myContract, contractAddr, 'withdrawFunds', [amount, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+        txHash = result.txHash;
+        nonce = result.nonce;
+        Main.alertTxResult(err, result);
       });
     }
   });
 }
-Main.expireCheck = function(contract_addr, callback) {
-  var first_option = options_cache.filter(function(x){return x.contract_addr==contract_addr})[0]
-  var realityID = first_option.realityID;
+Main.expireCheck = function(contractAddr, callback) {
+  var firstOption = optionsCache.filter(function(x){return x.contractAddr==contractAddr})[0]
+  var realityID = firstOption.realityID;
   request.get('https://www.realitykeys.com/api/v1/exchange/'+realityID+'?accept_terms_of_service=current', function(err, httpResponse, body){
     if (!err) {
       result = JSON.parse(body);
-      var signed_hash = '0x'+result.signature_v2.signed_hash;
+      var signedHash = '0x'+result.signature_v2.signed_hash;
       var value = '0x'+result.signature_v2.signed_value;
-      var fact_hash = '0x'+result.signature_v2.fact_hash;
-      var sig_r = '0x'+result.signature_v2.sig_r;
-      var sig_s = '0x'+result.signature_v2.sig_s;
-      var sig_v = result.signature_v2.sig_v;
+      var factHash = '0x'+result.signature_v2.fact_hash;
+      var sigR = '0x'+result.signature_v2.sig_r;
+      var sigS = '0x'+result.signature_v2.sig_s;
+      var sigV = result.signature_v2.sig_v;
       var settlement = result.winner_value;
-      var machine_settlement = result.machine_resolution_value;
-      if (sig_r && sig_s && sig_v && value) {
+      var machineSettlement = result.machine_resolution_value;
+      if (sigR && sigS && sigV && value) {
         callback([true, settlement]);
-      } else if (machine_settlement) {
-        callback([false, machine_settlement]);
+      } else if (machineSettlement) {
+        callback([false, machineSettlement]);
       } else if (settlement) {
         callback([false, settlement]);
       } else {
@@ -373,42 +373,42 @@ Main.expireCheck = function(contract_addr, callback) {
     }
   });
 }
-Main.expire = function(contract_addr) {
-  var first_option = options_cache.filter(function(x){return x.contract_addr==contract_addr})[0]
-  var realityID = first_option.realityID;
+Main.expire = function(contractAddr) {
+  var firstOption = optionsCache.filter(function(x){return x.contractAddr==contractAddr})[0]
+  var realityID = firstOption.realityID;
   request.get('https://www.realitykeys.com/api/v1/exchange/'+realityID+'?accept_terms_of_service=current', function(err, httpResponse, body){
     if (!err) {
       result = JSON.parse(body);
-      var signed_hash = '0x'+result.signature_v2.signed_hash;
+      var signedHash = '0x'+result.signature_v2.signed_hash;
       var value = '0x'+result.signature_v2.signed_value;
-      var fact_hash = '0x'+result.signature_v2.fact_hash;
-      var sig_r = '0x'+result.signature_v2.sig_r;
-      var sig_s = '0x'+result.signature_v2.sig_s;
-      var sig_v = result.signature_v2.sig_v;
+      var factHash = '0x'+result.signature_v2.fact_hash;
+      var sigR = '0x'+result.signature_v2.sig_r;
+      var sigS = '0x'+result.signature_v2.sig_s;
+      var sigV = result.signature_v2.sig_v;
       var settlement = result.winner_value;
-      if (sig_r && sig_s && sig_v && value) {
-        Main.alertInfo("Expiring "+first_option.expiration+" using settlement price: "+settlement);
-        utility.send(web3, myContract, contract_addr, 'expire', [0, sig_v, sig_r, sig_s, value, {gas: 1000000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-          txHash = result[0];
-          nonce = result[1];
-          Main.alertTxHash(txHash);
+      if (sigR && sigS && sigV && value) {
+        Main.alertInfo("Expiring "+firstOption.expiration+" using settlement price: "+settlement);
+        utility.send(web3, myContract, contractAddr, 'expire', [0, sigV, sigR, sigS, value, {gas: 1000000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+          txHash = result.txHash;
+          nonce = result.nonce;
+          Main.alertTxResult(err, result);
         });
       }
     }
   });
 }
 Main.publishExpiration = function(address) {
-  utility.send(web3, contractsContract, config.contract_contracts_addr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-    txHash = result[0];
-    nonce = result[1];
-    Main.alertTxHash(txHash);
+  utility.send(web3, contractsContract, config.contractContractsAddr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, esult) {
+    txHash = result.txHash;
+    nonce = result.nonce;
+    Main.alertTxResult(err, result);
   });
 }
 Main.disableExpiration = function(address) {
-  utility.send(web3, contractsContract, config.contract_contracts_addr, 'disableContract', [address, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-    txHash = result[0];
-    nonce = result[1];
-    Main.alertTxHash(txHash);
+  utility.send(web3, contractsContract, config.contractContractsAddr, 'disableContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+    txHash = result.txHash;
+    nonce = result.nonce;
+    Main.alertTxResult(err, result);
   });
 }
 Main.newExpiration = function(date, calls, puts, margin) {
@@ -416,7 +416,7 @@ Main.newExpiration = function(date, calls, puts, margin) {
   var tocur = "USD";
   margin = Number(margin);
   var expiration = date;
-  var expiration_timestamp = Date.parse(expiration+" 00:00:00 +0000").getTime()/1000;
+  var expirationTimestamp = Date.parse(expiration+" 00:00:00 +0000").getTime()/1000;
   var strikes = calls.split(",").map(function(x){return Number(x)}).slice(0,5).concat(puts.split(",").map(function(x){return -Number(x)}).slice(0,5));
   strikes.sort(function(a,b){return Math.abs(b)>Math.abs(a) ? -1 : (Math.abs(b)==Math.abs(a) ? (a>b ? -1 : 1) : 1)});
   request.post('https://www.realitykeys.com/api/v1/exchange/new', {form: {fromcur: fromcur, tocur: tocur, settlement_date: expiration, objection_period_secs: '86400', accept_terms_of_service: 'current', use_existing: '1'}}, function(err, httpResponse, body){
@@ -425,36 +425,36 @@ Main.newExpiration = function(date, calls, puts, margin) {
       var realityID = result.id;
       var factHash = '0x'+result.signature_v2.fact_hash;
       var ethAddr = '0x'+result.signature_v2.ethereum_address;
-      var original_strikes = strikes;
-      var scaled_strikes = strikes.map(function(strike) { return strike*1000000000000000000 });
-      var scaled_margin = margin*1000000000000000000;
+      var originalStrikes = strikes;
+      var scaledStrikes = strikes.map(function(strike) { return strike*1000000000000000000 });
+      var scaledMargin = margin*1000000000000000000;
       Main.alertInfo("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
-      utility.send(web3, myContract, undefined, 'constructor', [expiration_timestamp, fromcur+"/"+tocur, scaled_margin, realityID, factHash, ethAddr, scaled_strikes, {from: addrs[selectedAddr], data: bytecode, gas: 4712388, gasPrice: config.eth_gas_price}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
+      utility.send(web3, myContract, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
         if(result) {
-          txHash = result[0];
-          nonce = result[1];
-          Main.alertTxHash(txHash);
+          txHash = result.txHash;
+          nonce = result.nonce;
+          Main.alertTxResult(err, result);
           var address = undefined;
           async.whilst(
               function () { return address==undefined; },
-              function (callback_whilst) {
+              function (callbackWhilst) {
                   setTimeout(function () {
-                    utility.txReceipt(web3, txHash, function(receipt) {
+                    utility.txReceipt(web3, txHash, function(err, receipt) {
                       if (receipt) {
                         address = receipt.contractAddress;
                       }
                       console.log("Waiting for contract creation to complete.");
-                      callback_whilst(null);
+                      callbackWhilst(null);
                     });
                   }, 10*1000);
               },
               function (err) {
                 Main.alertInfo("Here is the new contract address: "+address+". We will now send a transaction to the contract that keeps track of expirations so that the new expiration will show up on Etheropt.");
                 //notify contracts contract of new contract
-                utility.send(web3, contractsContract, config.contract_contracts_addr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAddr], pks[selectedAddr], nonce, function(result) {
-                  txHash = result[0];
-                  nonce = result[1];
-                  Main.alertTxHash(txHash);
+                utility.send(web3, contractsContract, config.contractContractsAddr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+                  txHash = result.txHash;
+                  nonce = result.nonce;
+                  Main.alertTxResult(err, result);
                 });
               }
           );
@@ -465,16 +465,16 @@ Main.newExpiration = function(date, calls, puts, margin) {
 }
 Main.connectionTest = function() {
   if (connection) return connection;
-  connection = {connection: 'Proxy', provider: 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io', testnet: config.eth_testnet};
+  connection = {connection: 'Proxy', provider: 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io', testnet: config.ethTestnet};
   try {
     if (web3.currentProvider) {
       web3.eth.getBalance('0x0000000000000000000000000000000000000000');
-      connection = {connection: 'Geth', provider: config.eth_provider, testnet: config.eth_testnet};
+      connection = {connection: 'Geth', provider: config.ethProvider, testnet: config.ethTestnet};
     }
   } catch(err) {
     web3.setProvider(undefined);
   }
-  new EJS({url: config.home_url+'/'+'connection_description.ejs'}).update('connection', {connection: connection});
+  new EJS({url: config.homeURL+'/'+'connection_description.ejs'}).update('connection', {connection: connection});
   Main.popovers();
   return connection;
 }
@@ -483,36 +483,36 @@ Main.loadAddresses = function() {
     $('#pk_div').hide();
   }
   if (addrs.length<=0 || addrs.length!=pks.length) {
-    addrs = [config.eth_addr];
-    pks = [config.eth_addr_pk];
-    selectedAddr = 0;
+    addrs = [config.ethAddr];
+    pks = [config.ethAddrPrivateKey];
+    selectedAccount = 0;
   }
   async.map(addrs,
     function(addr, callback) {
-      utility.getBalance(web3, addr, function(balance) {
+      utility.getBalance(web3, addr, function(err, balance) {
         callback(null, {addr: addr, balance: balance});
       });
     },
     function(err, addresses) {
-      new EJS({url: config.home_url+'/'+'addresses.ejs'}).update('addresses', {addresses: addresses, selectedAddr: selectedAddr});
+      new EJS({url: config.homeURL+'/'+'addresses.ejs'}).update('addresses', {addresses: addresses, selectedAccount: selectedAccount});
     }
   );
 }
 Main.displayMarket = function(callback) {
-  if (contracts_cache && options_cache) {
-    contracts_cache.sort(function(a,b){return (options_cache.filter(function(x){return x.contract_addr==a.contract_addr}).length==0 ? "2020-01-01" : options_cache.filter(function(x){return x.contract_addr==a.contract_addr})[0].expiration) > (options_cache.filter(function(x){return x.contract_addr==b.contract_addr}).length==0 ? "2020-01-01" : options_cache.filter(function(x){return x.contract_addr==b.contract_addr})[0].expiration) ? 1 : -1});
-    contracts_cache.forEach(function(contract){
-      var filtered_options = options_cache.filter(function(x){return x.contract_addr==contract.contract_addr});
+  if (contractsCache && optionsCache) {
+    contractsCache.sort(function(a,b){return (optionsCache.filter(function(x){return x.contractAddr==a.contractAddr}).length==0 ? "2020-01-01" : optionsCache.filter(function(x){return x.contractAddr==a.contractAddr})[0].expiration) > (optionsCache.filter(function(x){return x.contractAddr==b.contractAddr}).length==0 ? "2020-01-01" : optionsCache.filter(function(x){return x.contractAddr==b.contractAddr})[0].expiration) ? 1 : -1});
+    contractsCache.forEach(function(contract){
+      var optionsFiltered = optionsCache.filter(function(x){return x.contractAddr==contract.contractAddr});
       var item = {
         type: 'component',
         componentName: 'layout',
         isClosable: false,
-        title: filtered_options.length>0 ? filtered_options[0].expiration : contract.contract_addr.slice(0,12)+'...',
+        title: optionsFiltered.length>0 ? optionsFiltered[0].expiration : contract.contractAddr.slice(0,12)+'...',
         componentState: { id: 'contract', type: 'ejs', data: {contract: contract} }
       };
       myLayout.root.contentItems[0].contentItems[0].contentItems[0].addChild( item );
-      new EJS({url: config.home_url+'/'+'contract_nav.ejs'}).update(contract.contract_addr+'_nav', {contract: contract, options: options_cache});
-      new EJS({url: config.home_url+'/'+'contract_prices.ejs'}).update(contract.contract_addr+'_prices', {contract: contract, options: options_cache, addr: addrs[selectedAddr]});
+      new EJS({url: config.homeURL+'/'+'contract_nav.ejs'}).update(contract.contractAddr+'_nav', {contract: contract, options: optionsCache});
+      new EJS({url: config.homeURL+'/'+'contract_prices.ejs'}).update(contract.contractAddr+'_prices', {contract: contract, options: optionsCache, addr: addrs[selectedAccount]});
       myLayout.root.contentItems[0].contentItems[0].contentItems[0].setActiveContentItem(myLayout.root.contentItems[0].contentItems[0].contentItems[0].contentItems[1]);
     });
     $('#market-spinner').hide();
@@ -521,14 +521,14 @@ Main.displayMarket = function(callback) {
   } else {
     $('#market-spinner').show();
     Main.loadContractsFunds(function(contracts){
-      contracts_cache = contracts;
+      contractsCache = contracts;
       Main.loadOptions(function(options){
-        options_cache = options;
-        Main.loadPrices(options_cache, function(options){
-          options_cache = options;
+        optionsCache = options;
+        Main.loadPrices(optionsCache, function(options){
+          optionsCache = options;
           Main.displayMarket();
-          Main.loadLog(events_cache, function(events){
-            events_cache = events;
+          Main.loadLog(eventsCache, function(events){
+            eventsCache = events;
             if (callback) callback();
           });
         });
@@ -537,56 +537,56 @@ Main.displayMarket = function(callback) {
   }
 }
 Main.loadPrices = function(options, callback) {
-  async.reduce(config.contract_addrs, [],
-    function(memo, contract_addr, callback_reduce){
-      var options_filtered = options.filter(function(x){return x.contract_addr==contract_addr})
-      if (options_filtered.length>0) {
+  async.reduce(config.contractAddrs, [],
+    function(memo, contractAddr, callbackReduce){
+      var optionsFiltered = options.filter(function(x){return x.contractAddr==contractAddr})
+      if (optionsFiltered.length>0) {
 
-        if (options_filtered[0].timer) clearInterval(options_filtered[0].timer);
-        options_filtered[0].last_updated = Date.now();
-        options_filtered[0].timer = setInterval(function () {
+        if (optionsFiltered[0].timer) clearInterval(optionsFiltered[0].timer);
+        optionsFiltered[0].lastUpdated = Date.now();
+        optionsFiltered[0].timer = setInterval(function () {
           function pad(val) {return val > 9 ? val : "0" + val;}
-          var sec = Math.ceil((Date.now() - options_filtered[0].last_updated) / 1000);
-          if ($('#'+contract_addr+"_updated").length) {
-            $('#'+contract_addr+"_updated")[0].innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
+          var sec = Math.ceil((Date.now() - optionsFiltered[0].lastUpdated) / 1000);
+          if ($('#'+contractAddr+"_updated").length) {
+            $('#'+contractAddr+"_updated")[0].innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
           }
         }, 1000);
 
-        var market_makers = options_filtered[0].market_makers;
-        async.reduce(market_makers, [],
-          function(memo, market_maker, callback_reduce) {
-            request.get(market_maker+'/'+contract_addr, {timeout: 2500}, function(err, httpResponse, body) {
+        var marketMakers = optionsFiltered[0].marketMakers;
+        async.reduce(marketMakers, [],
+          function(memo, marketMaker, callbackReduce) {
+            request.get(marketMaker+'/'+contractAddr, {timeout: 2500}, function(err, httpResponse, body) {
               try {
-                callback_reduce(null, memo.concat(JSON.parse(body)));
+                callbackReduce(null, memo.concat(JSON.parse(body)));
               } catch (err) {
-                callback_reduce(null, memo);
+                callbackReduce(null, memo);
               }
             });
           },
           function(err, markets){
-            callback_reduce(null, memo.concat(markets));
+            callbackReduce(null, memo.concat(markets));
           }
         );
       } else {
-        callback_reduce(null, memo);
+        callbackReduce(null, memo);
       }
     },
     function(err, markets){
       async.map(options,
-        function(option, callback_map){
-          var orders = markets.filter(function(x){return x.contract_addr==option.contract_addr && x.optionID==option.optionID});
+        function(option, callbackMap){
+          var orders = markets.filter(function(x){return x.contractAddr==option.contractAddr && x.optionID==option.optionID});
           orders = orders.map(function(x){return {size: Math.abs(x.size), price: x.price/1000000000000000000, order: x}});
-          var new_buy_orders = {};
-          var new_sell_orders = {};
+          var newBuyOrders = {};
+          var newSellOrders = {};
           for (var i=0; i<orders.length; i++) {
-            if (orders[i].order.size>0) new_buy_orders[orders[i].order.orderID] = orders[i];
-            if (orders[i].order.size<0) new_sell_orders[orders[i].order.orderID] = orders[i];
+            if (orders[i].order.size>0) newBuyOrders[orders[i].order.orderID] = orders[i];
+            if (orders[i].order.size<0) newSellOrders[orders[i].order.orderID] = orders[i];
           }
-          option.buy_orders = Object.values(new_buy_orders);
-          option.sell_orders = Object.values(new_sell_orders);
-          option.buy_orders.sort(function(a, b) {return b.price > a.price ? 1 : (b.price == a.price ? (b.size > a.size ? 1 : -1) : -1)});
-          option.sell_orders.sort(function(a, b) {return b.price < a.price ? 1 : (b.price == a.price ? (b.size > a.size ? 1 : -1) : -1)});
-          callback_map(null, option);
+          option.buyOrders = Object.values(newBuyOrders);
+          option.sellOrders = Object.values(newSellOrders);
+          option.buyOrders.sort(function(a, b) {return b.price > a.price ? 1 : (b.price == a.price ? (b.size > a.size ? 1 : -1) : -1)});
+          option.sellOrders.sort(function(a, b) {return b.price < a.price ? 1 : (b.price == a.price ? (b.size > a.size ? 1 : -1) : -1)});
+          callbackMap(null, option);
         },
         function(err, options){
           callback(options);
@@ -595,10 +595,10 @@ Main.loadPrices = function(options, callback) {
     }
   );
 }
-Main.loadPositions = function(options_original, callback) {
-  async.map(config.contract_addrs,
-    function(contract_addr, callback) {
-      utility.call(web3, myContract, contract_addr, 'getMarket', [addrs[selectedAddr]], function(result) {
+Main.loadPositions = function(optionsOriginal, callback) {
+  async.map(config.contractAddrs,
+    function(contractAddr, callback) {
+      utility.call(web3, myContract, contractAddr, 'getMarket', [addrs[selectedAccount]], function(err, result) {
         if (result) {
           var optionIDs = result[0];
           var strikes = result[1];
@@ -609,11 +609,11 @@ Main.loadPositions = function(options_original, callback) {
             if (strikes[i].toNumber()!=0) is.push(i);
           }
           async.map(is,
-            function(i, callback_map) {
+            function(i, callbackMap) {
               var cash = cashes[i].toNumber() / 1000000000000000000;
               var position = positions[i].toNumber();
-              var option = {cash: cash, position: position, optionID: optionIDs[i], contract_addr: contract_addr};
-              callback_map(null, option);
+              var option = {cash: cash, position: position, optionID: optionIDs[i], contractAddr: contractAddr};
+              callbackMap(null, option);
             },
             function(err, options) {
               callback(null, options);
@@ -626,16 +626,16 @@ Main.loadPositions = function(options_original, callback) {
     },
     function(err, options) {
       options = options.reduce(function(a, b) {return a.concat(b);}, []);
-      async.map(options_original,
-        function(option, callback_map) {
+      async.map(optionsOriginal,
+        function(option, callbackMap) {
           for (var i=0; i<options.length; i++) {
-            if (options[i].contract_addr==option.contract_addr && options[i].optionID==option.optionID) {
+            if (options[i].contractAddr==option.contractAddr && options[i].optionID==option.optionID) {
               option.position = options[i].position;
               option.cash = options[i].cash;
-              return callback_map(null, option);
+              return callbackMap(null, option);
             }
           }
-          callback_map(null, option);
+          callbackMap(null, option);
         },
         function(err, options) {
           callback(options);
@@ -645,14 +645,14 @@ Main.loadPositions = function(options_original, callback) {
   );
 }
 Main.loadLog = function(events, callback) {
-  async.eachSeries(config.contract_addrs,
-    function(contract_addr, callback_each){
-      utility.logs(web3, myContract, contract_addr, 0, 'latest', function(event) {
-        event.tx_link = 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
+  async.eachSeries(config.contractAddrs,
+    function(contractAddr, callbackEach){
+      utility.logs(web3, myContract, contractAddr, 0, 'latest', function(err, event) {
+        event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
         events[event.transactionHash+event.logIndex] = event;
         Main.refresh();
       });
-      callback_each();
+      callbackEach();
     },
     function (err) {
       callback(events);
@@ -660,14 +660,14 @@ Main.loadLog = function(events, callback) {
   );
 }
 Main.loadContractsFunds = function(callback) {
-  async.map(config.contract_addrs,
-    function(contract_addr, callback) {
-      utility.call(web3, myContract, contract_addr, 'getFundsAndAvailable', [addrs[selectedAddr]], function(result) {
+  async.map(config.contractAddrs,
+    function(contractAddr, callback) {
+      utility.call(web3, myContract, contractAddr, 'getFundsAndAvailable', [addrs[selectedAccount]], function(err, result) {
         if (result) {
           var funds = result[0].toString();
           var fundsAvailable = result[1].toString();
-          var contract_link = 'http://'+(config.eth_testnet ? 'testnet.' : '')+'etherscan.io/address/'+contract_addr;
-          callback(null, {contract_addr: contract_addr, contract_link: contract_link, funds: funds, fundsAvailable: fundsAvailable});
+          var contractLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/address/'+contractAddr;
+          callback(null, {contractAddr: contractAddr, contractLink: contractLink, funds: funds, fundsAvailable: fundsAvailable});
         } else {
           callback(null, undefined);
         }
@@ -680,16 +680,16 @@ Main.loadContractsFunds = function(callback) {
   );
 }
 Main.loadOptions = function(callback) {
-  async.mapSeries(config.contract_addrs,
-    function(contract_addr, callback) {
-      utility.call(web3, myContract, contract_addr, 'getOptionChain', [], function(result) {
+  async.mapSeries(config.contractAddrs,
+    function(contractAddr, callback) {
+      utility.call(web3, myContract, contractAddr, 'getOptionChain', [], function(err, result) {
         if (result) {
           var expiration = (new Date(result[0].toNumber()*1000)).toISOString().substring(0,10);
           var fromcur = result[1].split("/")[0];
           var tocur = result[1].split("/")[1];
           var margin = result[2].toNumber() / 1000000000000000000.0;
           var realityID = result[3].toNumber();
-          utility.call(web3, myContract, contract_addr, 'getMarket', [addrs[selectedAddr]], function(result) {
+          utility.call(web3, myContract, contractAddr, 'getMarket', [addrs[selectedAccount]], function(err, result) {
             if (result) {
               var optionIDs = result[0];
               var strikes = result[1];
@@ -700,11 +700,11 @@ Main.loadOptions = function(callback) {
                 if (strikes[i].toNumber()!=0) is.push(i);
               }
               var optionChainDescription = {expiration: expiration, fromcur: fromcur, tocur: tocur, margin: margin, realityID: realityID};
-              utility.call(web3, myContract, contract_addr, 'getMarketMakers', [], function(result) {
+              utility.call(web3, myContract, contractAddr, 'getMarketMakers', [], function(err, result) {
                 if (result) {
-                  var market_makers = result ? result.filter(function(x){return x!=''}) : [];
+                  var marketMakers = result ? result.filter(function(x){return x!=''}) : [];
                   async.map(is,
-                    function(i, callback_map) {
+                    function(i, callbackMap) {
                       var optionID = optionIDs[i].toNumber();
                       var strike = strikes[i].toNumber() / 1000000000000000000;
                       var cash = cashes[i].toNumber() / 1000000000000000000;
@@ -719,14 +719,14 @@ Main.loadOptions = function(callback) {
                       option.optionID = optionID;
                       option.cash = cash;
                       option.position = position;
-                      option.contract_addr = contract_addr;
-                      option.market_makers = market_makers;
+                      option.contractAddr = contractAddr;
+                      option.marketMakers = marketMakers;
                       option.expiration = optionChainDescription.expiration;
                       option.fromcur = optionChainDescription.fromcur;
                       option.tocur = optionChainDescription.tocur;
                       option.margin = optionChainDescription.margin;
                       option.realityID = realityID;
-                      callback_map(null, option);
+                      callbackMap(null, option);
                     },
                     function(err, options) {
                       callback(null, options);
@@ -752,16 +752,16 @@ Main.loadOptions = function(callback) {
     }
   );
 }
-Main.draw_chart = function(element, title, data_rows, x_label, y_label, columns) {
+Main.drawChart = function(element, title, dataRows, xLabel, yLabel, columns) {
   var data = new google.visualization.DataTable();
-  data.addColumn('number', x_label);
+  data.addColumn('number', xLabel);
   columns.forEach(function(column){
     data.addColumn(column);
   });
-  data.addRows(data_rows);
+  data.addRows(dataRows);
   var options = {
-    hAxis: {title: x_label},
-    vAxis: {title: y_label},
+    hAxis: {title: xLabel},
+    vAxis: {title: yLabel},
     legend: {position: 'none'},
     enableInteractivity: true,
     title: title
@@ -769,7 +769,7 @@ Main.draw_chart = function(element, title, data_rows, x_label, y_label, columns)
   var chart = new google.visualization.LineChart(document.getElementById(element));
   chart.draw(data, options);
 }
-Main.draw_option_chart = function(element, option, price, size) {
+Main.drawOptionChart = function(element, option, price, size) {
   if (option.kind=='Call') {
     var data = [];
     data.push([Math.max(option.strike-option.margin*1,0),size*(-price),null,null]);
@@ -782,7 +782,7 @@ Main.draw_option_chart = function(element, option, price, size) {
     data.push([option.strike+option.margin,size*(-price+option.margin),label,label]);
     data.push([option.strike+2*option.margin,size*(-price+option.margin),null,null]);
     var action = size>0 ? 'Buy' : 'Sell';
-    Main.draw_chart(element, action+" "+Math.abs(size)+" eth of the "+option.strike+" Call "+" for "+price, data, "ETH/USD price", "Net profit (eth)", [{type: 'number', role: null}, {type: 'string', role: 'annotation'}, {type: 'string', role: 'annotationText'}]);
+    Main.drawChart(element, action+" "+Math.abs(size)+" eth of the "+option.strike+" Call "+" for "+price, data, "ETH/USD price", "Net profit (eth)", [{type: 'number', role: null}, {type: 'string', role: 'annotation'}, {type: 'string', role: 'annotationText'}]);
   } else if (option.kind=='Put') {
     var data = [];
     data.push([Math.max(option.strike-option.margin*2,0),size*(-price+option.margin),null,null]);
@@ -795,16 +795,16 @@ Main.draw_option_chart = function(element, option, price, size) {
     data.push([option.strike,size*(-price),label,label]);
     data.push([option.strike+1*option.margin,size*(-price),null,null]);
     var action = size>0 ? 'Buy' : 'Sell';
-    Main.draw_chart(element, action+" "+Math.abs(size)+" eth of the "+option.strike+" Put "+" for "+price, data, "ETH/USD price", "Net profit (eth)", [{type: 'number', role: null}, {type: 'string', role: 'annotation'}, {type: 'string', role: 'annotationText'}]);
+    Main.drawChart(element, action+" "+Math.abs(size)+" eth of the "+option.strike+" Put "+" for "+price, data, "ETH/USD price", "Net profit (eth)", [{type: 'number', role: null}, {type: 'string', role: 'annotation'}, {type: 'string', role: 'annotationText'}]);
   }
 }
 Main.updatePrice = function(callback) {
   $.getJSON('https://poloniex.com/public?command=returnTicker', function(result) {
-    var eth_btc = result.BTC_ETH.last;
+    var ethBTC = result.BTC_ETH.last;
     $.getJSON('https://api.coindesk.com/v1/bpi/currentprice/USD.json', function(result) {
-      var btc_usd = result.bpi.USD.rate;
-      price = Number(eth_btc * btc_usd);
-      price_updated = Date.now();
+      var btcUSD = result.bpi.USD.rate;
+      price = Number(ethBTC * btcUSD);
+      priceUpdated = Date.now();
       callback();
     });
   });
@@ -813,28 +813,29 @@ Main.getPrice = function() {
   return price;
 }
 Main.refresh = function() {
-  if (!refreshing || Date.now()-last_refresh>60*1000) {
+  if (!refreshing || Date.now()-lastRefresh>60*1000) {
     refreshing = true;
-    Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAddr": selectedAddr}), 999);
+    Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
     Main.loadAddresses();
-    var events = Object.values(events_cache);
-    events.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
-    new EJS({url: config.home_url+'/'+'events_table.ejs'}).update('events', {events: events, options: options_cache});
+    var events = Object.values(eventsCache);
+    // events.sort(function(a,b){ return a.blockNumber*1000+a.transactionIndex>b.blockNumber*1000+b.transactionIndex ? -1 : 1 });
+    events.sort(function(a,b){ return a.blockNumber-b.blockNumber || a.transactionIndex-b.transactionIndex });
+    new EJS({url: config.homeURL+'/'+'events_table.ejs'}).update('events', {events: events, options: optionsCache});
     Main.updatePrice(function(){
       Main.loadContractsFunds(function(contracts){
-        contracts_cache = contracts;
-        Main.loadPositions(options_cache, function(options){
-          options_cache = options;
+        contractsCache = contracts;
+        Main.loadPositions(optionsCache, function(options){
+          optionsCache = options;
           Main.processOrders(function(){
-            Main.loadPrices(options_cache, function(options) {
-              options_cache = options;
-              contracts_cache.forEach(function(contract){
-                new EJS({url: config.home_url+'/'+'contract_nav.ejs'}).update(contract.contract_addr+'_nav', {contract: contract, options: options_cache});
-                new EJS({url: config.home_url+'/'+'contract_prices.ejs'}).update(contract.contract_addr+'_prices', {contract: contract, options: options_cache, addr: addrs[selectedAddr]});
+            Main.loadPrices(optionsCache, function(options) {
+              optionsCache = options;
+              contractsCache.forEach(function(contract){
+                new EJS({url: config.homeURL+'/'+'contract_nav.ejs'}).update(contract.contractAddr+'_nav', {contract: contract, options: optionsCache});
+                new EJS({url: config.homeURL+'/'+'contract_prices.ejs'}).update(contract.contractAddr+'_prices', {contract: contract, options: optionsCache, addr: addrs[selectedAccount]});
               });
               refreshing = false;
-              last_refresh = Date.now();
+              lastRefresh = Date.now();
             });
           });
         });
@@ -843,7 +844,7 @@ Main.refresh = function() {
   }
 }
 Main.init = function() {
-  Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAddr": selectedAddr}), 999);
+  Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
   Main.connectionTest();
   Main.loadAddresses();
   Main.displayMarket(function(){
@@ -856,53 +857,53 @@ Main.init = function() {
 }
 
 //globals
-var addrs = [config.eth_addr];
-var pks = [config.eth_addr_pk];
-var selectedAddr = 0;
+var addrs = [config.ethAddr];
+var pks = [config.ethAddrPrivateKey];
+var selectedAccount = 0;
 var cookie = Main.readCookie("user");
-if (cookie) {
+if (cookie && cookie["selectedAccount"]) {
   cookie = JSON.parse(cookie);
   addrs = cookie["addrs"];
   pks = cookie["pks"];
-  selectedAddr = cookie["selectedAddr"];
+  selectedAccount = cookie["selectedAccount"];
 }
 var connection = undefined;
 var nonce = undefined;
-var events_cache = {};
-var contracts_cache = undefined;
-var options_cache = undefined;
-var browser_orders = [];
-var market_makers = {};
+var eventsCache = {};
+var contractsCache = undefined;
+var optionsCache = undefined;
+var browserOrders = [];
+var marketMakers = {};
 var refreshing = false;
-var last_refresh = Date.now();
+var lastRefresh = Date.now();
 var price = undefined;
-var price_updated = Date.now();
+var priceUpdated = Date.now();
 //web3
 var web3 = new Web3();
-web3.eth.defaultAccount = config.eth_addr;
-web3.setProvider(new web3.providers.HttpProvider(config.eth_provider));
+web3.eth.defaultAccount = config.ethAddr;
+web3.setProvider(new web3.providers.HttpProvider(config.ethProvider));
 
 //get contracts
 var contractsContract = undefined;
 var myContract = undefined;
 var bytecode = undefined;
 var abi = undefined;
-utility.readFile(config.contract_contracts+'.bytecode', function(result){
+utility.readFile(config.contractContracts+'.bytecode', function(err, result){
   bytecode = JSON.parse(result);
-  utility.readFile(config.contract_contracts+'.interface', function(result){
+  utility.readFile(config.contractContracts+'.interface', function(err, result){
     abi = JSON.parse(result);
     contractsContract = web3.eth.contract(abi);
-    contractsContract = contractsContract.at(config.contract_contracts_addr);
-    utility.call(web3, contractsContract, config.contract_contracts_addr, 'getContracts', [], function(result) {
+    contractsContract = contractsContract.at(config.contractContractsAddr);
+    utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
       if (result) {
-        config.contract_addrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
-        utility.readFile(config.contract_market+'.bytecode', function(result){
+        config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
+        utility.readFile(config.contractMarket+'.bytecode', function(err, result){
           bytecode = JSON.parse(result);
-          utility.readFile(config.contract_market+'.interface', function(result){
+          utility.readFile(config.contractMarket+'.interface', function(err, result){
             abi = JSON.parse(result);
             myContract = web3.eth.contract(abi);
-            myContract = myContract.at(config.contract_addr);
-            Main.init(); //iniital load
+            myContract = myContract.at(config.contractAddr);
+            Main.init(); //initial load
           });
         });
       }
@@ -913,32 +914,7 @@ utility.readFile(config.contract_contracts+'.bytecode', function(result){
 module.exports = {Main: Main, utility: utility};
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./utility.js":311,"async":11,"async/dist/async.min.js":10,"buffer":359,"datejs":67,"js-sha256":156,"request":196,"web3":261}],2:[function(_dereq_,module,exports){
-(function (global){
-var config = {};
-
-config.home_url = 'https://etheropt.github.io';
-// config.home_url = 'http://localhost:8080';
-config.contract_market = 'etheropt.sol';
-config.contract_contracts = 'etheropt_contracts.sol';
-config.contract_addrs = [];
-config.contract_contracts_addr = '0x9eea10abd08519d7a2cc3734ff8bb38e1de35446';
-config.domain = undefined;
-config.port = 8082;
-config.url = undefined;
-config.eth_testnet = false;
-config.eth_provider = 'http://localhost:8545';
-config.eth_gas_price = 20000000000;
-config.eth_addr = '0x0000000000000000000000000000000000000000';
-config.eth_addr_pk = '';
-
-try {
-  global.config = config;
-  module.exports = config;
-} catch (err) {}
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],3:[function(_dereq_,module,exports){
+},{"./common/utility.js":296,"async":306,"async/dist/async.min.js":305,"buffer":574,"datejs":353,"js-sha256":414,"request":428,"web3":477}],2:[function(_dereq_,module,exports){
 // Copyright 2011 Mark Cavage <mcavage@gmail.com> All rights reserved.
 
 
@@ -953,7 +929,7 @@ module.exports = {
 
 };
 
-},{}],4:[function(_dereq_,module,exports){
+},{}],3:[function(_dereq_,module,exports){
 // Copyright 2011 Mark Cavage <mcavage@gmail.com> All rights reserved.
 
 var errors = _dereq_('./errors');
@@ -982,7 +958,7 @@ for (var e in errors) {
     module.exports[e] = errors[e];
 }
 
-},{"./errors":3,"./reader":5,"./types":6,"./writer":7}],5:[function(_dereq_,module,exports){
+},{"./errors":2,"./reader":4,"./types":5,"./writer":6}],4:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2011 Mark Cavage <mcavage@gmail.com> All rights reserved.
 
@@ -1247,7 +1223,7 @@ Reader.prototype._readTag = function(tag) {
 module.exports = Reader;
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./errors":3,"./types":6,"assert":327,"buffer":359}],6:[function(_dereq_,module,exports){
+},{"./errors":2,"./types":5,"assert":542,"buffer":574}],5:[function(_dereq_,module,exports){
 // Copyright 2011 Mark Cavage <mcavage@gmail.com> All rights reserved.
 
 
@@ -1285,7 +1261,7 @@ module.exports = {
   Context: 128
 };
 
-},{}],7:[function(_dereq_,module,exports){
+},{}],6:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2011 Mark Cavage <mcavage@gmail.com> All rights reserved.
 
@@ -1605,7 +1581,7 @@ Writer.prototype._ensure = function(len) {
 module.exports = Writer;
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./errors":3,"./types":6,"assert":327,"buffer":359}],8:[function(_dereq_,module,exports){
+},{"./errors":2,"./types":5,"assert":542,"buffer":574}],7:[function(_dereq_,module,exports){
 // Copyright 2011 Mark Cavage <mcavage@gmail.com> All rights reserved.
 
 // If you have no idea what ASN.1 or BER is, see this:
@@ -1627,7 +1603,7 @@ module.exports = {
 
 };
 
-},{"./ber/index":4}],9:[function(_dereq_,module,exports){
+},{"./ber/index":3}],8:[function(_dereq_,module,exports){
 (function (Buffer,process){
 // Copyright (c) 2012, Mark Cavage. All rights reserved.
 // Copyright 2015 Joyent, Inc.
@@ -1836,13 +1812,13 @@ function _setExports(ndebug) {
 
 module.exports = _setExports(process.env.NODE_NDEBUG);
 
-}).call(this,{"isBuffer":_dereq_("../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")},_dereq_('_process'))
-},{"../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":409,"_process":431,"assert":327,"stream":462,"util":473}],10:[function(_dereq_,module,exports){
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")},_dereq_('_process'))
+},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"_process":646,"assert":542,"stream":677,"util":688}],9:[function(_dereq_,module,exports){
 (function (process,global){
 !function(){function n(){}function t(n){return n}function e(n){return!!n}function r(n){return!n}function u(n){return function(){if(null===n)throw new Error("Callback was already called.");n.apply(this,arguments),n=null}}function i(n){return function(){null!==n&&(n.apply(this,arguments),n=null)}}function o(n){return M(n)||"number"==typeof n.length&&n.length>=0&&n.length%1===0}function c(n,t){for(var e=-1,r=n.length;++e<r;)t(n[e],e,n)}function a(n,t){for(var e=-1,r=n.length,u=Array(r);++e<r;)u[e]=t(n[e],e,n);return u}function f(n){return a(Array(n),function(n,t){return t})}function l(n,t,e){return c(n,function(n,r,u){e=t(e,n,r,u)}),e}function s(n,t){c(W(n),function(e){t(n[e],e)})}function p(n,t){for(var e=0;e<n.length;e++)if(n[e]===t)return e;return-1}function h(n){var t,e,r=-1;return o(n)?(t=n.length,function(){return r++,t>r?r:null}):(e=W(n),t=e.length,function(){return r++,t>r?e[r]:null})}function m(n,t){return t=null==t?n.length-1:+t,function(){for(var e=Math.max(arguments.length-t,0),r=Array(e),u=0;e>u;u++)r[u]=arguments[u+t];switch(t){case 0:return n.call(this,r);case 1:return n.call(this,arguments[0],r)}}}function y(n){return function(t,e,r){return n(t,r)}}function v(t){return function(e,r,o){o=i(o||n),e=e||[];var c=h(e);if(0>=t)return o(null);var a=!1,f=0,l=!1;!function s(){if(a&&0>=f)return o(null);for(;t>f&&!l;){var n=c();if(null===n)return a=!0,void(0>=f&&o(null));f+=1,r(e[n],n,u(function(n){f-=1,n?(o(n),l=!0):s()}))}}()}}function d(n){return function(t,e,r){return n(P.eachOf,t,e,r)}}function g(n){return function(t,e,r,u){return n(v(e),t,r,u)}}function k(n){return function(t,e,r){return n(P.eachOfSeries,t,e,r)}}function b(t,e,r,u){u=i(u||n),e=e||[];var c=o(e)?[]:{};t(e,function(n,t,e){r(n,function(n,r){c[t]=r,e(n)})},function(n){u(n,c)})}function w(n,t,e,r){var u=[];n(t,function(n,t,r){e(n,function(e){e&&u.push({index:t,value:n}),r()})},function(){r(a(u.sort(function(n,t){return n.index-t.index}),function(n){return n.value}))})}function O(n,t,e,r){w(n,t,function(n,t){e(n,function(n){t(!n)})},r)}function S(n,t,e){return function(r,u,i,o){function c(){o&&o(e(!1,void 0))}function a(n,r,u){return o?void i(n,function(r){o&&t(r)&&(o(e(!0,n)),o=i=!1),u()}):u()}arguments.length>3?n(r,u,a,c):(o=i,i=u,n(r,a,c))}}function E(n,t){return t}function L(t,e,r){r=r||n;var u=o(e)?[]:{};t(e,function(n,t,e){n(m(function(n,r){r.length<=1&&(r=r[0]),u[t]=r,e(n)}))},function(n){r(n,u)})}function j(n,t,e,r){var u=[];n(t,function(n,t,r){e(n,function(n,t){u=u.concat(t||[]),r(n)})},function(n){r(n,u)})}function I(t,e,r){function i(t,e,r,u){if(null!=u&&"function"!=typeof u)throw new Error("task callback must be a function");return t.started=!0,M(e)||(e=[e]),0===e.length&&t.idle()?P.setImmediate(function(){t.drain()}):(c(e,function(e){var i={data:e,callback:u||n};r?t.tasks.unshift(i):t.tasks.push(i),t.tasks.length===t.concurrency&&t.saturated()}),void P.setImmediate(t.process))}function o(n,t){return function(){f-=1;var e=!1,r=arguments;c(t,function(n){c(l,function(t,r){t!==n||e||(l.splice(r,1),e=!0)}),n.callback.apply(n,r)}),n.tasks.length+f===0&&n.drain(),n.process()}}if(null==e)e=1;else if(0===e)throw new Error("Concurrency must not be zero");var f=0,l=[],s={tasks:[],concurrency:e,payload:r,saturated:n,empty:n,drain:n,started:!1,paused:!1,push:function(n,t){i(s,n,!1,t)},kill:function(){s.drain=n,s.tasks=[]},unshift:function(n,t){i(s,n,!0,t)},process:function(){for(;!s.paused&&f<s.concurrency&&s.tasks.length;){var n=s.payload?s.tasks.splice(0,s.payload):s.tasks.splice(0,s.tasks.length),e=a(n,function(n){return n.data});0===s.tasks.length&&s.empty(),f+=1,l.push(n[0]);var r=u(o(s,n));t(e,r)}},length:function(){return s.tasks.length},running:function(){return f},workersList:function(){return l},idle:function(){return s.tasks.length+f===0},pause:function(){s.paused=!0},resume:function(){if(s.paused!==!1){s.paused=!1;for(var n=Math.min(s.concurrency,s.tasks.length),t=1;n>=t;t++)P.setImmediate(s.process)}}};return s}function x(n){return m(function(t,e){t.apply(null,e.concat([m(function(t,e){"object"==typeof console&&(t?console.error&&console.error(t):console[n]&&c(e,function(t){console[n](t)}))})]))})}function A(n){return function(t,e,r){n(f(t),e,r)}}function T(n){return m(function(t,e){var r=m(function(e){var r=this,u=e.pop();return n(t,function(n,t,u){n.apply(r,e.concat([u]))},u)});return e.length?r.apply(this,e):r})}function z(n){return m(function(t){var e=t.pop();t.push(function(){var n=arguments;r?P.setImmediate(function(){e.apply(null,n)}):e.apply(null,n)});var r=!0;n.apply(this,t),r=!1})}var q,P={},C="object"==typeof self&&self.self===self&&self||"object"==typeof global&&global.global===global&&global||this;null!=C&&(q=C.async),P.noConflict=function(){return C.async=q,P};var H=Object.prototype.toString,M=Array.isArray||function(n){return"[object Array]"===H.call(n)},U=function(n){var t=typeof n;return"function"===t||"object"===t&&!!n},W=Object.keys||function(n){var t=[];for(var e in n)n.hasOwnProperty(e)&&t.push(e);return t},B="function"==typeof setImmediate&&setImmediate,D=B?function(n){B(n)}:function(n){setTimeout(n,0)};"object"==typeof process&&"function"==typeof process.nextTick?P.nextTick=process.nextTick:P.nextTick=D,P.setImmediate=B?D:P.nextTick,P.forEach=P.each=function(n,t,e){return P.eachOf(n,y(t),e)},P.forEachSeries=P.eachSeries=function(n,t,e){return P.eachOfSeries(n,y(t),e)},P.forEachLimit=P.eachLimit=function(n,t,e,r){return v(t)(n,y(e),r)},P.forEachOf=P.eachOf=function(t,e,r){function o(n){f--,n?r(n):null===c&&0>=f&&r(null)}r=i(r||n),t=t||[];for(var c,a=h(t),f=0;null!=(c=a());)f+=1,e(t[c],c,u(o));0===f&&r(null)},P.forEachOfSeries=P.eachOfSeries=function(t,e,r){function o(){var n=!0;return null===a?r(null):(e(t[a],a,u(function(t){if(t)r(t);else{if(a=c(),null===a)return r(null);n?P.setImmediate(o):o()}})),void(n=!1))}r=i(r||n),t=t||[];var c=h(t),a=c();o()},P.forEachOfLimit=P.eachOfLimit=function(n,t,e,r){v(t)(n,e,r)},P.map=d(b),P.mapSeries=k(b),P.mapLimit=g(b),P.inject=P.foldl=P.reduce=function(n,t,e,r){P.eachOfSeries(n,function(n,r,u){e(t,n,function(n,e){t=e,u(n)})},function(n){r(n,t)})},P.foldr=P.reduceRight=function(n,e,r,u){var i=a(n,t).reverse();P.reduce(i,e,r,u)},P.transform=function(n,t,e,r){3===arguments.length&&(r=e,e=t,t=M(n)?[]:{}),P.eachOf(n,function(n,r,u){e(t,n,r,u)},function(n){r(n,t)})},P.select=P.filter=d(w),P.selectLimit=P.filterLimit=g(w),P.selectSeries=P.filterSeries=k(w),P.reject=d(O),P.rejectLimit=g(O),P.rejectSeries=k(O),P.any=P.some=S(P.eachOf,e,t),P.someLimit=S(P.eachOfLimit,e,t),P.all=P.every=S(P.eachOf,r,r),P.everyLimit=S(P.eachOfLimit,r,r),P.detect=S(P.eachOf,t,E),P.detectSeries=S(P.eachOfSeries,t,E),P.detectLimit=S(P.eachOfLimit,t,E),P.sortBy=function(n,t,e){function r(n,t){var e=n.criteria,r=t.criteria;return r>e?-1:e>r?1:0}P.map(n,function(n,e){t(n,function(t,r){t?e(t):e(null,{value:n,criteria:r})})},function(n,t){return n?e(n):void e(null,a(t.sort(r),function(n){return n.value}))})},P.auto=function(t,e,r){function u(n){g.unshift(n)}function o(n){var t=p(g,n);t>=0&&g.splice(t,1)}function a(){h--,c(g.slice(0),function(n){n()})}"function"==typeof arguments[1]&&(r=e,e=null),r=i(r||n);var f=W(t),h=f.length;if(!h)return r(null);e||(e=h);var y={},v=0,d=!1,g=[];u(function(){h||r(null,y)}),c(f,function(n){function i(){return e>v&&l(k,function(n,t){return n&&y.hasOwnProperty(t)},!0)&&!y.hasOwnProperty(n)}function c(){i()&&(v++,o(c),h[h.length-1](g,y))}if(!d){for(var f,h=M(t[n])?t[n]:[t[n]],g=m(function(t,e){if(v--,e.length<=1&&(e=e[0]),t){var u={};s(y,function(n,t){u[t]=n}),u[n]=e,d=!0,r(t,u)}else y[n]=e,P.setImmediate(a)}),k=h.slice(0,h.length-1),b=k.length;b--;){if(!(f=t[k[b]]))throw new Error("Has nonexistent dependency in "+k.join(", "));if(M(f)&&p(f,n)>=0)throw new Error("Has cyclic dependencies")}i()?(v++,h[h.length-1](g,y)):u(c)}})},P.retry=function(n,t,e){function r(n,t){if("number"==typeof t)n.times=parseInt(t,10)||i;else{if("object"!=typeof t)throw new Error("Unsupported argument type for 'times': "+typeof t);n.times=parseInt(t.times,10)||i,n.interval=parseInt(t.interval,10)||o}}function u(n,t){function e(n,e){return function(r){n(function(n,t){r(!n||e,{err:n,result:t})},t)}}function r(n){return function(t){setTimeout(function(){t(null)},n)}}for(;a.times;){var u=!(a.times-=1);c.push(e(a.task,u)),!u&&a.interval>0&&c.push(r(a.interval))}P.series(c,function(t,e){e=e[e.length-1],(n||a.callback)(e.err,e.result)})}var i=5,o=0,c=[],a={times:i,interval:o},f=arguments.length;if(1>f||f>3)throw new Error("Invalid arguments - must be either (task), (task, callback), (times, task) or (times, task, callback)");return 2>=f&&"function"==typeof n&&(e=t,t=n),"function"!=typeof n&&r(a,n),a.callback=e,a.task=t,a.callback?u():u},P.waterfall=function(t,e){function r(n){return m(function(t,u){if(t)e.apply(null,[t].concat(u));else{var i=n.next();i?u.push(r(i)):u.push(e),z(n).apply(null,u)}})}if(e=i(e||n),!M(t)){var u=new Error("First argument to waterfall must be an array of functions");return e(u)}return t.length?void r(P.iterator(t))():e()},P.parallel=function(n,t){L(P.eachOf,n,t)},P.parallelLimit=function(n,t,e){L(v(t),n,e)},P.series=function(n,t){L(P.eachOfSeries,n,t)},P.iterator=function(n){function t(e){function r(){return n.length&&n[e].apply(null,arguments),r.next()}return r.next=function(){return e<n.length-1?t(e+1):null},r}return t(0)},P.apply=m(function(n,t){return m(function(e){return n.apply(null,t.concat(e))})}),P.concat=d(j),P.concatSeries=k(j),P.whilst=function(t,e,r){if(r=r||n,t()){var u=m(function(n,i){n?r(n):t.apply(this,i)?e(u):r.apply(null,[null].concat(i))});e(u)}else r(null)},P.doWhilst=function(n,t,e){var r=0;return P.whilst(function(){return++r<=1||t.apply(this,arguments)},n,e)},P.until=function(n,t,e){return P.whilst(function(){return!n.apply(this,arguments)},t,e)},P.doUntil=function(n,t,e){return P.doWhilst(n,function(){return!t.apply(this,arguments)},e)},P.during=function(t,e,r){r=r||n;var u=m(function(n,e){n?r(n):(e.push(i),t.apply(this,e))}),i=function(n,t){n?r(n):t?e(u):r(null)};t(i)},P.doDuring=function(n,t,e){var r=0;P.during(function(n){r++<1?n(null,!0):t.apply(this,arguments)},n,e)},P.queue=function(n,t){var e=I(function(t,e){n(t[0],e)},t,1);return e},P.priorityQueue=function(t,e){function r(n,t){return n.priority-t.priority}function u(n,t,e){for(var r=-1,u=n.length-1;u>r;){var i=r+(u-r+1>>>1);e(t,n[i])>=0?r=i:u=i-1}return r}function i(t,e,i,o){if(null!=o&&"function"!=typeof o)throw new Error("task callback must be a function");return t.started=!0,M(e)||(e=[e]),0===e.length?P.setImmediate(function(){t.drain()}):void c(e,function(e){var c={data:e,priority:i,callback:"function"==typeof o?o:n};t.tasks.splice(u(t.tasks,c,r)+1,0,c),t.tasks.length===t.concurrency&&t.saturated(),P.setImmediate(t.process)})}var o=P.queue(t,e);return o.push=function(n,t,e){i(o,n,t,e)},delete o.unshift,o},P.cargo=function(n,t){return I(n,1,t)},P.log=x("log"),P.dir=x("dir"),P.memoize=function(n,e){var r={},u={},i=Object.prototype.hasOwnProperty;e=e||t;var o=m(function(t){var o=t.pop(),c=e.apply(null,t);i.call(r,c)?P.setImmediate(function(){o.apply(null,r[c])}):i.call(u,c)?u[c].push(o):(u[c]=[o],n.apply(null,t.concat([m(function(n){r[c]=n;var t=u[c];delete u[c];for(var e=0,i=t.length;i>e;e++)t[e].apply(null,n)})])))});return o.memo=r,o.unmemoized=n,o},P.unmemoize=function(n){return function(){return(n.unmemoized||n).apply(null,arguments)}},P.times=A(P.map),P.timesSeries=A(P.mapSeries),P.timesLimit=function(n,t,e,r){return P.mapLimit(f(n),t,e,r)},P.seq=function(){var t=arguments;return m(function(e){var r=this,u=e[e.length-1];"function"==typeof u?e.pop():u=n,P.reduce(t,e,function(n,t,e){t.apply(r,n.concat([m(function(n,t){e(n,t)})]))},function(n,t){u.apply(r,[n].concat(t))})})},P.compose=function(){return P.seq.apply(null,Array.prototype.reverse.call(arguments))},P.applyEach=T(P.eachOf),P.applyEachSeries=T(P.eachOfSeries),P.forever=function(t,e){function r(n){return n?i(n):void o(r)}var i=u(e||n),o=z(t);r()},P.ensureAsync=z,P.constant=m(function(n){var t=[null].concat(n);return function(n){return n.apply(this,t)}}),P.wrapSync=P.asyncify=function(n){return m(function(t){var e,r=t.pop();try{e=n.apply(this,t)}catch(u){return r(u)}U(e)&&"function"==typeof e.then?e.then(function(n){r(null,n)})["catch"](function(n){r(n.message?n:new Error(n))}):r(null,e)})},"object"==typeof module&&module.exports?module.exports=P:"function"==typeof define&&define.amd?define([],function(){return P}):C.async=P}();
 
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"_process":431}],11:[function(_dereq_,module,exports){
+},{"_process":646}],10:[function(_dereq_,module,exports){
 (function (process,global){
 /*!
  * async
@@ -3111,7 +3087,7 @@ module.exports = _setExports(process.env.NODE_NDEBUG);
 }());
 
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"_process":431}],12:[function(_dereq_,module,exports){
+},{"_process":646}],11:[function(_dereq_,module,exports){
 
 /*!
  *  Copyright 2010 LearnBoost <dev@learnboost.com>
@@ -3325,7 +3301,7 @@ function canonicalizeResource (resource) {
 }
 module.exports.canonicalizeResource = canonicalizeResource
 
-},{"crypto":369,"url":469}],13:[function(_dereq_,module,exports){
+},{"crypto":584,"url":684}],12:[function(_dereq_,module,exports){
 (function (process,Buffer){
 var aws4 = exports,
     url = _dereq_('url'),
@@ -3647,7 +3623,7 @@ aws4.sign = function(request, credentials) {
 }
 
 }).call(this,_dereq_('_process'),_dereq_("buffer").Buffer)
-},{"./lru":14,"_process":431,"buffer":359,"crypto":369,"querystring":441,"url":469}],14:[function(_dereq_,module,exports){
+},{"./lru":13,"_process":646,"buffer":574,"crypto":584,"querystring":656,"url":684}],13:[function(_dereq_,module,exports){
 module.exports = function(size) {
   return new LruCache(size)
 }
@@ -3745,7 +3721,7 @@ function DoublyLinkedNode(key, val) {
   this.next = null
 }
 
-},{}],15:[function(_dereq_,module,exports){
+},{}],14:[function(_dereq_,module,exports){
 /*! bignumber.js v2.3.0 https://github.com/MikeMcl/bignumber.js/LICENCE */
 
 ;(function (globalObj) {
@@ -6480,7 +6456,7 @@ function DoublyLinkedNode(key, val) {
     }
 })(this);
 
-},{}],16:[function(_dereq_,module,exports){
+},{}],15:[function(_dereq_,module,exports){
 (function (Buffer){
 // Reference https://github.com/bitcoin/bips/blob/master/bip-0066.mediawiki
 // Format: 0x30 [total-length] 0x02 [R-length] [R] 0x02 [S-length] [S]
@@ -6595,7 +6571,7 @@ module.exports = {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],17:[function(_dereq_,module,exports){
+},{"buffer":574}],16:[function(_dereq_,module,exports){
 (function (Buffer){
 var DuplexStream = _dereq_('readable-stream/duplex')
   , util         = _dereq_('util')
@@ -6842,17 +6818,17 @@ BufferList.prototype.destroy = function destroy () {
 module.exports = BufferList
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"readable-stream/duplex":19,"util":473}],18:[function(_dereq_,module,exports){
+},{"buffer":574,"readable-stream/duplex":18,"util":688}],17:[function(_dereq_,module,exports){
 var toString = {}.toString;
 
 module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}],19:[function(_dereq_,module,exports){
+},{}],18:[function(_dereq_,module,exports){
 module.exports = _dereq_("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":20}],20:[function(_dereq_,module,exports){
+},{"./lib/_stream_duplex.js":19}],19:[function(_dereq_,module,exports){
 // a duplex stream is just a stream that is both readable and writable.
 // Since JS doesn't have multiple prototypal inheritance, this class
 // prototypally inherits from Readable, and then parasitically from
@@ -6928,7 +6904,7 @@ function forEach(xs, f) {
     f(xs[i], i);
   }
 }
-},{"./_stream_readable":21,"./_stream_writable":22,"core-util-is":29,"inherits":143,"process-nextick-args":195}],21:[function(_dereq_,module,exports){
+},{"./_stream_readable":20,"./_stream_writable":21,"core-util-is":28,"inherits":129,"process-nextick-args":180}],20:[function(_dereq_,module,exports){
 (function (process){
 'use strict';
 
@@ -7811,7 +7787,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this,_dereq_('_process'))
-},{"./_stream_duplex":20,"_process":431,"buffer":359,"core-util-is":29,"events":397,"inherits":143,"isarray":18,"process-nextick-args":195,"string_decoder/":246,"util":331}],22:[function(_dereq_,module,exports){
+},{"./_stream_duplex":19,"_process":646,"buffer":574,"core-util-is":28,"events":612,"inherits":129,"isarray":17,"process-nextick-args":180,"string_decoder/":231,"util":546}],21:[function(_dereq_,module,exports){
 (function (process){
 // A bit simpler than readable streams.
 // Implement an async ._write(chunk, encoding, cb), and it'll handle all
@@ -8330,7 +8306,7 @@ function CorkedRequest(state) {
   };
 }
 }).call(this,_dereq_('_process'))
-},{"./_stream_duplex":20,"_process":431,"buffer":359,"core-util-is":29,"events":397,"inherits":143,"process-nextick-args":195,"util-deprecate":258}],23:[function(_dereq_,module,exports){
+},{"./_stream_duplex":19,"_process":646,"buffer":574,"core-util-is":28,"events":612,"inherits":129,"process-nextick-args":180,"util-deprecate":243}],22:[function(_dereq_,module,exports){
 (function (module, exports) {
   'use strict';
 
@@ -11751,7 +11727,7 @@ function CorkedRequest(state) {
   };
 })(typeof module === 'undefined' || module, this);
 
-},{}],24:[function(_dereq_,module,exports){
+},{}],23:[function(_dereq_,module,exports){
 var r;
 
 module.exports = function rand(len) {
@@ -11810,7 +11786,7 @@ if (typeof window === 'object') {
   }
 }
 
-},{}],25:[function(_dereq_,module,exports){
+},{}],24:[function(_dereq_,module,exports){
 (function (Buffer){
 const Sha3 = _dereq_('js-sha3')
 
@@ -11848,7 +11824,7 @@ module.exports = {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"js-sha3":157}],26:[function(_dereq_,module,exports){
+},{"buffer":574,"js-sha3":142}],25:[function(_dereq_,module,exports){
 function Caseless (dict) {
   this.dict = dict || {}
 }
@@ -11916,7 +11892,7 @@ module.exports.httpify = function (resp, headers) {
   return c
 }
 
-},{}],27:[function(_dereq_,module,exports){
+},{}],26:[function(_dereq_,module,exports){
 (function (Buffer){
 var Transform = _dereq_('stream').Transform
 var inherits = _dereq_('inherits')
@@ -12010,7 +11986,7 @@ CipherBase.prototype._toString = function (value, enc, final) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"inherits":143,"stream":462,"string_decoder":467}],28:[function(_dereq_,module,exports){
+},{"buffer":574,"inherits":129,"stream":677,"string_decoder":682}],27:[function(_dereq_,module,exports){
 (function (Buffer){
 var util = _dereq_('util');
 var Stream = _dereq_('stream').Stream;
@@ -12201,8 +12177,8 @@ CombinedStream.prototype._emitError = function(err) {
   this.emit('error', err);
 };
 
-}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":409,"delayed-stream":80,"stream":462,"util":473}],29:[function(_dereq_,module,exports){
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"delayed-stream":66,"stream":677,"util":688}],28:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -12312,8 +12288,8 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 
-}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":409}],30:[function(_dereq_,module,exports){
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624}],29:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict';
 var inherits = _dereq_('inherits')
@@ -12369,7 +12345,7 @@ module.exports = function createHash (alg) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./md5":32,"buffer":359,"cipher-base":27,"inherits":143,"ripemd160":212,"sha.js":220}],31:[function(_dereq_,module,exports){
+},{"./md5":31,"buffer":574,"cipher-base":26,"inherits":129,"ripemd160":197,"sha.js":205}],30:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict';
 var intSize = 4;
@@ -12406,7 +12382,7 @@ function hash(buf, fn, hashSize, bigEndian) {
 }
 exports.hash = hash;
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],32:[function(_dereq_,module,exports){
+},{"buffer":574}],31:[function(_dereq_,module,exports){
 'use strict';
 /*
  * A JavaScript implementation of the RSA Data Security, Inc. MD5 Message
@@ -12563,7 +12539,7 @@ function bit_rol(num, cnt)
 module.exports = function md5(buf) {
   return helpers.hash(buf, core_md5, 16);
 };
-},{"./helpers":31}],33:[function(_dereq_,module,exports){
+},{"./helpers":30}],32:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -12791,7 +12767,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.AES;
 
 }));
-},{"./cipher-core":34,"./core":35,"./enc-base64":36,"./evpkdf":38,"./md5":43}],34:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34,"./enc-base64":35,"./evpkdf":37,"./md5":42}],33:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -13667,7 +13643,7 @@ module.exports = function md5(buf) {
 
 
 }));
-},{"./core":35}],35:[function(_dereq_,module,exports){
+},{"./core":34}],34:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -14410,7 +14386,7 @@ module.exports = function md5(buf) {
 	return CryptoJS;
 
 }));
-},{}],36:[function(_dereq_,module,exports){
+},{}],35:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -14535,7 +14511,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.enc.Base64;
 
 }));
-},{"./core":35}],37:[function(_dereq_,module,exports){
+},{"./core":34}],36:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -14685,7 +14661,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.enc.Utf16;
 
 }));
-},{"./core":35}],38:[function(_dereq_,module,exports){
+},{"./core":34}],37:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -14818,7 +14794,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.EvpKDF;
 
 }));
-},{"./core":35,"./hmac":40,"./sha1":59}],39:[function(_dereq_,module,exports){
+},{"./core":34,"./hmac":39,"./sha1":58}],38:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -14885,7 +14861,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.format.Hex;
 
 }));
-},{"./cipher-core":34,"./core":35}],40:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],39:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15029,7 +15005,7 @@ module.exports = function md5(buf) {
 
 
 }));
-},{"./core":35}],41:[function(_dereq_,module,exports){
+},{"./core":34}],40:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15048,7 +15024,7 @@ module.exports = function md5(buf) {
 	return CryptoJS;
 
 }));
-},{"./aes":33,"./cipher-core":34,"./core":35,"./enc-base64":36,"./enc-utf16":37,"./evpkdf":38,"./format-hex":39,"./hmac":40,"./lib-typedarrays":42,"./md5":43,"./mode-cfb":44,"./mode-ctr":46,"./mode-ctr-gladman":45,"./mode-ecb":47,"./mode-ofb":48,"./pad-ansix923":49,"./pad-iso10126":50,"./pad-iso97971":51,"./pad-nopadding":52,"./pad-zeropadding":53,"./pbkdf2":54,"./rabbit":56,"./rabbit-legacy":55,"./rc4":57,"./ripemd160":58,"./sha1":59,"./sha224":60,"./sha256":61,"./sha3":62,"./sha384":63,"./sha512":64,"./tripledes":65,"./x64-core":66}],42:[function(_dereq_,module,exports){
+},{"./aes":32,"./cipher-core":33,"./core":34,"./enc-base64":35,"./enc-utf16":36,"./evpkdf":37,"./format-hex":38,"./hmac":39,"./lib-typedarrays":41,"./md5":42,"./mode-cfb":43,"./mode-ctr":45,"./mode-ctr-gladman":44,"./mode-ecb":46,"./mode-ofb":47,"./pad-ansix923":48,"./pad-iso10126":49,"./pad-iso97971":50,"./pad-nopadding":51,"./pad-zeropadding":52,"./pbkdf2":53,"./rabbit":55,"./rabbit-legacy":54,"./rc4":56,"./ripemd160":57,"./sha1":58,"./sha224":59,"./sha256":60,"./sha3":61,"./sha384":62,"./sha512":63,"./tripledes":64,"./x64-core":65}],41:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15125,7 +15101,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.lib.WordArray;
 
 }));
-},{"./core":35}],43:[function(_dereq_,module,exports){
+},{"./core":34}],42:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15394,7 +15370,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.MD5;
 
 }));
-},{"./core":35}],44:[function(_dereq_,module,exports){
+},{"./core":34}],43:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15473,7 +15449,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.mode.CFB;
 
 }));
-},{"./cipher-core":34,"./core":35}],45:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],44:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15590,7 +15566,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.mode.CTRGladman;
 
 }));
-},{"./cipher-core":34,"./core":35}],46:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],45:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15649,7 +15625,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.mode.CTR;
 
 }));
-},{"./cipher-core":34,"./core":35}],47:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],46:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15690,7 +15666,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.mode.ECB;
 
 }));
-},{"./cipher-core":34,"./core":35}],48:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],47:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15745,7 +15721,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.mode.OFB;
 
 }));
-},{"./cipher-core":34,"./core":35}],49:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],48:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15795,7 +15771,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.pad.Ansix923;
 
 }));
-},{"./cipher-core":34,"./core":35}],50:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],49:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15840,7 +15816,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.pad.Iso10126;
 
 }));
-},{"./cipher-core":34,"./core":35}],51:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],50:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15881,7 +15857,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.pad.Iso97971;
 
 }));
-},{"./cipher-core":34,"./core":35}],52:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],51:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15912,7 +15888,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.pad.NoPadding;
 
 }));
-},{"./cipher-core":34,"./core":35}],53:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],52:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -15958,7 +15934,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.pad.ZeroPadding;
 
 }));
-},{"./cipher-core":34,"./core":35}],54:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34}],53:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -16104,7 +16080,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.PBKDF2;
 
 }));
-},{"./core":35,"./hmac":40,"./sha1":59}],55:[function(_dereq_,module,exports){
+},{"./core":34,"./hmac":39,"./sha1":58}],54:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -16295,7 +16271,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.RabbitLegacy;
 
 }));
-},{"./cipher-core":34,"./core":35,"./enc-base64":36,"./evpkdf":38,"./md5":43}],56:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34,"./enc-base64":35,"./evpkdf":37,"./md5":42}],55:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -16488,7 +16464,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.Rabbit;
 
 }));
-},{"./cipher-core":34,"./core":35,"./enc-base64":36,"./evpkdf":38,"./md5":43}],57:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34,"./enc-base64":35,"./evpkdf":37,"./md5":42}],56:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -16628,7 +16604,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.RC4;
 
 }));
-},{"./cipher-core":34,"./core":35,"./enc-base64":36,"./evpkdf":38,"./md5":43}],58:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34,"./enc-base64":35,"./evpkdf":37,"./md5":42}],57:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -16896,7 +16872,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.RIPEMD160;
 
 }));
-},{"./core":35}],59:[function(_dereq_,module,exports){
+},{"./core":34}],58:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -17047,7 +17023,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.SHA1;
 
 }));
-},{"./core":35}],60:[function(_dereq_,module,exports){
+},{"./core":34}],59:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -17128,7 +17104,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.SHA224;
 
 }));
-},{"./core":35,"./sha256":61}],61:[function(_dereq_,module,exports){
+},{"./core":34,"./sha256":60}],60:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -17328,7 +17304,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.SHA256;
 
 }));
-},{"./core":35}],62:[function(_dereq_,module,exports){
+},{"./core":34}],61:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -17652,7 +17628,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.SHA3;
 
 }));
-},{"./core":35,"./x64-core":66}],63:[function(_dereq_,module,exports){
+},{"./core":34,"./x64-core":65}],62:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -17736,7 +17712,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.SHA384;
 
 }));
-},{"./core":35,"./sha512":64,"./x64-core":66}],64:[function(_dereq_,module,exports){
+},{"./core":34,"./sha512":63,"./x64-core":65}],63:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -18060,7 +18036,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.SHA512;
 
 }));
-},{"./core":35,"./x64-core":66}],65:[function(_dereq_,module,exports){
+},{"./core":34,"./x64-core":65}],64:[function(_dereq_,module,exports){
 ;(function (root, factory, undef) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -18831,7 +18807,7 @@ module.exports = function md5(buf) {
 	return CryptoJS.TripleDES;
 
 }));
-},{"./cipher-core":34,"./core":35,"./enc-base64":36,"./evpkdf":38,"./md5":43}],66:[function(_dereq_,module,exports){
+},{"./cipher-core":33,"./core":34,"./enc-base64":35,"./evpkdf":37,"./md5":42}],65:[function(_dereq_,module,exports){
 ;(function (root, factory) {
 	if (typeof exports === "object") {
 		// CommonJS
@@ -19136,4371 +19112,7 @@ module.exports = function md5(buf) {
 	return CryptoJS;
 
 }));
-},{"./core":35}],67:[function(_dereq_,module,exports){
-/**
- * @overview NPM Module index: include all the core modules, I18n files will be loaded on the fly.
- * @author Gregory Wild-Smith <gregory@wild-smith.com>
- */
-_dereq_("./src/core/i18n.js");
-_dereq_("./src/core/core.js");
-_dereq_("./src/core/core-prototypes.js");
-_dereq_("./src/core/sugarpak.js");
-_dereq_("./src/core/format_parser.js");
-_dereq_("./src/core/parsing_operators.js");
-_dereq_("./src/core/parsing_translator.js");
-_dereq_("./src/core/parsing_grammar.js");
-_dereq_("./src/core/parser.js");
-_dereq_("./src/core/extras.js");
-_dereq_("./src/core/time_period.js");
-_dereq_("./src/core/time_span.js");
-/*
- * Notice that there is no model.export or exports. This is not required as it modifies the Date object and it's prototypes.
- */
-},{"./src/core/core-prototypes.js":68,"./src/core/core.js":69,"./src/core/extras.js":70,"./src/core/format_parser.js":71,"./src/core/i18n.js":72,"./src/core/parser.js":73,"./src/core/parsing_grammar.js":74,"./src/core/parsing_operators.js":75,"./src/core/parsing_translator.js":76,"./src/core/sugarpak.js":77,"./src/core/time_period.js":78,"./src/core/time_span.js":79}],68:[function(_dereq_,module,exports){
-(function () {
-	var $D = Date,
-		$P = $D.prototype,
-		p = function (s, l) {
-			if (!l) {
-				l = 2;
-			}
-			return ("000" + s).slice(l * -1);
-		};
-
-	var validateConfigObject = function (obj) {
-		var result = {}, self = this, prop, testFunc;
-		testFunc = function (prop, func, value) {
-			if (prop === "day") {
-				var month = (obj.month !== undefined) ? obj.month : self.getMonth();
-				var year = (obj.year !== undefined) ? obj.year : self.getFullYear();
-				return $D[func](value, year, month);
-			} else {
-				return $D[func](value);
-			}
-		};
-		for (prop in obj) {
-			if (hasOwnProperty.call(obj, prop)) {
-				var func = "validate" + prop.charAt(0).toUpperCase() + prop.slice(1);
-
-				if ($D[func] && obj[prop] !== null && testFunc(prop, func, obj[prop])) {
-					result[prop] = obj[prop];
-				}
-			}
-		}
-		return result;
-	};
-	/**
-	 * Resets the time of this Date object to 12:00 AM (00:00), which is the start of the day.
-	 * @param {Boolean}  .clone() this date instance before clearing Time
-	 * @return {Date}    this
-	 */
-	$P.clearTime = function () {
-		this.setHours(0);
-		this.setMinutes(0);
-		this.setSeconds(0);
-		this.setMilliseconds(0);
-		return this;
-	};
-
-	/**
-	 * Resets the time of this Date object to the current time ('now').
-	 * @return {Date}    this
-	 */
-	$P.setTimeToNow = function () {
-		var n = new Date();
-		this.setHours(n.getHours());
-		this.setMinutes(n.getMinutes());
-		this.setSeconds(n.getSeconds());
-		this.setMilliseconds(n.getMilliseconds());
-		return this;
-	};
-	/**
-	 * Returns a new Date object that is an exact date and time copy of the original instance.
-	 * @return {Date}    A new Date instance
-	 */
-	$P.clone = function () {
-		return new Date(this.getTime());
-	};
-
-	/**
-	 * Compares this instance to a Date object and returns an number indication of their relative values.  
-	 * @param {Date}     Date object to compare [Required]
-	 * @return {Number}  -1 = this is lessthan date. 0 = values are equal. 1 = this is greaterthan date.
-	 */
-	$P.compareTo = function (date) {
-		return Date.compare(this, date);
-	};
-
-	/**
-	 * Compares this instance to another Date object and returns true if they are equal.  
-	 * @param {Date}     Date object to compare. If no date to compare, new Date() [now] is used.
-	 * @return {Boolean} true if dates are equal. false if they are not equal.
-	 */
-	$P.equals = function (date) {
-		return Date.equals(this, (date !== undefined ? date : new Date()));
-	};
-
-	/**
-	 * Determines if this instance is between a range of two dates or equal to either the start or end dates.
-	 * @param {Date}     Start of range [Required]
-	 * @param {Date}     End of range [Required]
-	 * @return {Boolean} true is this is between or equal to the start and end dates, else false
-	 */
-	$P.between = function (start, end) {
-		return this.getTime() >= start.getTime() && this.getTime() <= end.getTime();
-	};
-
-	/**
-	 * Determines if this date occurs after the date to compare to.
-	 * @param {Date}     Date object to compare. If no date to compare, new Date() ("now") is used.
-	 * @return {Boolean} true if this date instance is greater than the date to compare to (or "now"), otherwise false.
-	 */
-	$P.isAfter = function (date) {
-		return this.compareTo(date || new Date()) === 1;
-	};
-
-	/**
-	 * Determines if this date occurs before the date to compare to.
-	 * @param {Date}     Date object to compare. If no date to compare, new Date() ("now") is used.
-	 * @return {Boolean} true if this date instance is less than the date to compare to (or "now").
-	 */
-	$P.isBefore = function (date) {
-		return (this.compareTo(date || new Date()) === -1);
-	};
-
-	/**
-	 * Determines if the current Date instance occurs today.
-	 * @return {Boolean} true if this date instance is 'today', otherwise false.
-	 */
-	
-	/**
-	 * Determines if the current Date instance occurs on the same Date as the supplied 'date'. 
-	 * If no 'date' to compare to is provided, the current Date instance is compared to 'today'. 
-	 * @param {date}     Date object to compare. If no date to compare, the current Date ("now") is used.
-	 * @return {Boolean} true if this Date instance occurs on the same Day as the supplied 'date'.
-	 */
-	$P.isToday = $P.isSameDay = function (date) {
-		return this.clone().clearTime().equals((date || new Date()).clone().clearTime());
-	};
-	
-	/**
-	 * Adds the specified number of milliseconds to this instance. 
-	 * @param {Number}   The number of milliseconds to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addMilliseconds = function (value) {
-		if (!value) { return this; }
-		this.setTime(this.getTime() + value * 1);
-		return this;
-	};
-
-	/**
-	 * Adds the specified number of seconds to this instance. 
-	 * @param {Number}   The number of seconds to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addSeconds = function (value) {
-		if (!value) { return this; }
-		return this.addMilliseconds(value * 1000);
-	};
-
-	/**
-	 * Adds the specified number of seconds to this instance. 
-	 * @param {Number}   The number of seconds to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addMinutes = function (value) {
-		if (!value) { return this; }
-		return this.addMilliseconds(value * 60000); // 60*1000
-	};
-
-	/**
-	 * Adds the specified number of hours to this instance. 
-	 * @param {Number}   The number of hours to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addHours = function (value) {
-		if (!value) { return this; }
-		return this.addMilliseconds(value * 3600000); // 60*60*1000
-	};
-
-	/**
-	 * Adds the specified number of days to this instance. 
-	 * @param {Number}   The number of days to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addDays = function (value) {
-		if (!value) { return this; }
-		this.setDate(this.getDate() + value * 1);
-		return this;
-	};
-
-	/**
-	 * Adds the specified number of weekdays (ie - not sat or sun) to this instance. 
-	 * @param {Number}   The number of days to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addWeekdays = function (value) {
-		if (!value) { return this; }
-		var day = this.getDay();
-		var weeks = (Math.ceil(Math.abs(value)/7));
-		if (day === 0 || day === 6) {
-			if (value > 0) {
-				this.next().monday();
-				this.addDays(-1);
-				day = this.getDay();
-			}
-		}
-
-		if (value < 0) {
-			while (value < 0) {
-				this.addDays(-1);
-				day = this.getDay();
-				if (day !== 0 && day !== 6) {
-					value++;
-				}
-			}
-			return this;
-		} else if (value > 5 || (6-day) <= value) {
-			value = value + (weeks * 2);
-		}
-
-		return this.addDays(value);
-	};
-
-	/**
-	 * Adds the specified number of weeks to this instance. 
-	 * @param {Number}   The number of weeks to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addWeeks = function (value) {
-		if (!value) { return this; }
-		return this.addDays(value * 7);
-	};
-
-
-	/**
-	 * Adds the specified number of months to this instance. 
-	 * @param {Number}   The number of months to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addMonths = function (value) {
-		if (!value) { return this; }
-		var n = this.getDate();
-		this.setDate(1);
-		this.setMonth(this.getMonth() + value * 1);
-		this.setDate(Math.min(n, $D.getDaysInMonth(this.getFullYear(), this.getMonth())));
-		return this;
-	};
-
-	$P.addQuarters = function (value) {
-		if (!value) { return this; }
-		// note this will take you to the same point in the quarter as you are now.
-		// i.e. - if you are 15 days into the quarter you'll be 15 days into the resulting one.
-		// bonus: this allows adding fractional quarters
-		return this.addMonths(value * 3);
-	};
-
-	/**
-	 * Adds the specified number of years to this instance. 
-	 * @param {Number}   The number of years to add. The number can be positive or negative [Required]
-	 * @return {Date}    this
-	 */
-	$P.addYears = function (value) {
-		if (!value) { return this; }
-		return this.addMonths(value * 12);
-	};
-
-	/**
-	 * Adds (or subtracts) to the value of the years, months, weeks, days, hours, minutes, seconds, milliseconds of the date instance using given configuration object. Positive and Negative values allowed.
-	 * Example
-	<pre><code>
-	Date.today().add( { days: 1, months: 1 } )
-	 
-	new Date().add( { years: -1 } )
-	</code></pre> 
-	 * @param {Object}   Configuration object containing attributes (months, days, etc.)
-	 * @return {Date}    this
-	 */
-	$P.add = function (config) {
-		if (typeof config === "number") {
-			this._orient = config;
-			return this;
-		}
-		
-		var x = config;
-
-		if (x.day) {
-			// If we should be a different date than today (eg: for 'tomorrow -1d', etc).
-			// Should only effect parsing, not direct usage (eg, Finish and FinishExact)
-			if ((x.day - this.getDate()) !== 0) {
-				this.setDate(x.day);
-			}
-		}
-		if (x.milliseconds) {
-			this.addMilliseconds(x.milliseconds);
-		}
-		if (x.seconds) {
-			this.addSeconds(x.seconds);
-		}
-		if (x.minutes) {
-			this.addMinutes(x.minutes);
-		}
-		if (x.hours) {
-			this.addHours(x.hours);
-		}
-		if (x.weeks) {
-			this.addWeeks(x.weeks);
-		}
-		if (x.months) {
-			this.addMonths(x.months);
-		}
-		if (x.years) {
-			this.addYears(x.years);
-		}
-		if (x.days) {
-			this.addDays(x.days);
-		}
-		return this;
-	};
-	
-	/**
-	 * Get the week number. Week one (1) is the week which contains the first Thursday of the year. Monday is considered the first day of the week.
-	 * The .getWeek() function does NOT convert the date to UTC. The local datetime is used. 
-	 * Please use .getISOWeek() to get the week of the UTC converted date.
-	 * @return {Number}  1 to 53
-	 */
-	$P.getWeek = function (utc) {
-		// Create a copy of this date object  
-		var self, target = new Date(this.valueOf());
-		if (utc) {
-			target.addMinutes(target.getTimezoneOffset());
-			self = target.clone();
-		} else {
-			self = this;
-		}
-		// ISO week date weeks start on monday  
-		// so correct the day number  
-		var dayNr = (self.getDay() + 6) % 7;
-		// ISO 8601 states that week 1 is the week  
-		// with the first thursday of that year.  
-		// Set the target date to the thursday in the target week  
-		target.setDate(target.getDate() - dayNr + 3);
-		// Store the millisecond value of the target date  
-		var firstThursday = target.valueOf();
-		// Set the target to the first thursday of the year  
-		// First set the target to january first  
-		target.setMonth(0, 1);
-		// Not a thursday? Correct the date to the next thursday  
-		if (target.getDay() !== 4) {
-			target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
-		}
-		// The weeknumber is the number of weeks between the   
-		// first thursday of the year and the thursday in the target week  
-		return 1 + Math.ceil((firstThursday - target) / 604800000); // 604800000 = 7 * 24 * 3600 * 1000  
-	};
-	
-	/**
-	 * Get the ISO 8601 week number. Week one ("01") is the week which contains the first Thursday of the year. Monday is considered the first day of the week.
-	 * The .getISOWeek() function does convert the date to it's UTC value. Please use .getWeek() to get the week of the local date.
-	 * @return {String}  "01" to "53"
-	 */
-	$P.getISOWeek = function () {
-		return p(this.getWeek(true));
-	};
-
-	/**
-	 * Moves the date to Monday of the week set. Week one (1) is the week which contains the first Thursday of the year.
-	 * @param {Number}   A Number (1 to 53) that represents the week of the year.
-	 * @return {Date}    this
-	 */
-	$P.setWeek = function (n) {
-		if ((n - this.getWeek()) === 0) {
-			if (this.getDay() !== 1) {
-				return this.moveToDayOfWeek(1, (this.getDay() > 1 ? -1 : 1));
-			} else {
-				return this;
-			}
-		} else {
-			return this.moveToDayOfWeek(1, (this.getDay() > 1 ? -1 : 1)).addWeeks(n - this.getWeek());
-		}
-	};
-
-	$P.setQuarter = function (qtr) {
-		var month = Math.abs(((qtr-1) * 3) + 1);
-		return this.setMonth(month, 1);
-	};
-
-	$P.getQuarter = function () {
-		return Date.getQuarter(this);
-	};
-
-	$P.getDaysLeftInQuarter = function () {
-		return Date.getDaysLeftInQuarter(this);
-	};
-
-	/**
-	 * Moves the date to the next n'th occurrence of the dayOfWeek starting from the beginning of the month. The number (-1) is a magic number and will return the last occurrence of the dayOfWeek in the month.
-	 * @param {Number}   The dayOfWeek to move to
-	 * @param {Number}   The n'th occurrence to move to. Use (-1) to return the last occurrence in the month
-	 * @return {Date}    this
-	 */
-	$P.moveToNthOccurrence = function (dayOfWeek, occurrence) {
-		if (dayOfWeek === "Weekday") {
-			if (occurrence > 0) {
-				this.moveToFirstDayOfMonth();
-				if (this.is().weekday()) {
-					occurrence -= 1;
-				}
-			} else if (occurrence < 0) {
-				this.moveToLastDayOfMonth();
-				if (this.is().weekday()) {
-					occurrence += 1;
-				}
-			} else {
-				return this;
-			}
-			return this.addWeekdays(occurrence);
-		}
-		var shift = 0;
-		if (occurrence > 0) {
-			shift = occurrence - 1;
-		}
-		else if (occurrence === -1) {
-			this.moveToLastDayOfMonth();
-			if (this.getDay() !== dayOfWeek) {
-				this.moveToDayOfWeek(dayOfWeek, -1);
-			}
-			return this;
-		}
-		return this.moveToFirstDayOfMonth().addDays(-1).moveToDayOfWeek(dayOfWeek, +1).addWeeks(shift);
-	};
-
-
-	var moveToN = function (getFunc, addFunc, nVal) {
-		return function (value, orient) {
-			var diff = (value - this[getFunc]() + nVal * (orient || +1)) % nVal;
-			return this[addFunc]((diff === 0) ? diff += nVal * (orient || +1) : diff);
-		};
-	};
-	/**
-	 * Move to the next or last dayOfWeek based on the orient value.
-	 * @param {Number}   The dayOfWeek to move to
-	 * @param {Number}   Forward (+1) or Back (-1). Defaults to +1. [Optional]
-	 * @return {Date}    this
-	 */
-	$P.moveToDayOfWeek = moveToN("getDay", "addDays", 7);
-	/**
-	 * Move to the next or last month based on the orient value.
-	 * @param {Number}   The month to move to. 0 = January, 11 = December
-	 * @param {Number}   Forward (+1) or Back (-1). Defaults to +1. [Optional]
-	 * @return {Date}    this
-	 */
-	$P.moveToMonth = moveToN("getMonth", "addMonths", 12);
-	/**
-	 * Get the Ordinate of the current day ("th", "st", "rd").
-	 * @return {String} 
-	 */
-	$P.getOrdinate = function () {
-		var num = this.getDate();
-		return ord(num);
-	};
-	/**
-	 * Get the Ordinal day (numeric day number) of the year, adjusted for leap year.
-	 * @return {Number} 1 through 365 (366 in leap years)
-	 */
-	$P.getOrdinalNumber = function () {
-		return Math.ceil((this.clone().clearTime() - new Date(this.getFullYear(), 0, 1)) / 86400000) + 1;
-	};
-
-	/**
-	 * Get the time zone abbreviation of the current date.
-	 * @return {String} The abbreviated time zone name (e.g. "EST")
-	 */
-	$P.getTimezone = function () {
-		return $D.getTimezoneAbbreviation(this.getUTCOffset(), this.isDaylightSavingTime());
-	};
-
-	$P.setTimezoneOffset = function (offset) {
-		var here = this.getTimezoneOffset(), there = Number(offset) * -6 / 10;
-		return (there || there === 0) ? this.addMinutes(there - here) : this;
-	};
-
-	$P.setTimezone = function (offset) {
-		return this.setTimezoneOffset($D.getTimezoneOffset(offset));
-	};
-
-	/**
-	 * Indicates whether Daylight Saving Time is observed in the current time zone.
-	 * @return {Boolean} true|false
-	 */
-	$P.hasDaylightSavingTime = function () {
-		return (Date.today().set({month: 0, day: 1}).getTimezoneOffset() !== Date.today().set({month: 6, day: 1}).getTimezoneOffset());
-	};
-	
-	/**
-	 * Indicates whether this Date instance is within the Daylight Saving Time range for the current time zone.
-	 * @return {Boolean} true|false
-	 */
-	$P.isDaylightSavingTime = function () {
-		return Date.today().set({month: 0, day: 1}).getTimezoneOffset() !== this.getTimezoneOffset();
-	};
-
-	/**
-	 * Get the offset from UTC of the current date.
-	 * @return {String} The 4-character offset string prefixed with + or - (e.g. "-0500")
-	 */
-	$P.getUTCOffset = function (offset) {
-		var n = (offset || this.getTimezoneOffset()) * -10 / 6, r;
-		if (n < 0) {
-			r = (n - 10000).toString();
-			return r.charAt(0) + r.substr(2);
-		} else {
-			r = (n + 10000).toString();
-			return "+" + r.substr(1);
-		}
-	};
-
-	/**
-	 * Returns the number of milliseconds between this date and date.
-	 * @param {Date} Defaults to now
-	 * @return {Number} The diff in milliseconds
-	 */
-	$P.getElapsed = function (date) {
-		return (date || new Date()) - this;
-	};
-
-	/**
-	 * Set the value of year, month, day, hour, minute, second, millisecond of date instance using given configuration object.
-	 * Example
-	<pre><code>
-	Date.today().set( { day: 20, month: 1 } )
-
-	new Date().set( { millisecond: 0 } )
-	</code></pre>
-	 * 
-	 * @param {Object}   Configuration object containing attributes (month, day, etc.)
-	 * @return {Date}    this
-	 */
-	$P.set = function (config) {
-		config = validateConfigObject.call(this, config);
-		var key;
-		for (key in config) {
-			if (hasOwnProperty.call(config, key)) {
-				var name = key.charAt(0).toUpperCase() + key.slice(1);
-				var addFunc, getFunc;
-				if (key !== "week" && key !== "month" && key !== "timezone" && key !== "timezoneOffset") {
-					name += "s";
-				}
-				addFunc = "add" + name;
-				getFunc = "get" + name;
-				if (key === "month") {
-					addFunc = addFunc + "s";
-				} else if (key === "year"){
-					getFunc = "getFullYear";
-				}
-				if (key !== "day" && key !== "timezone" && key !== "timezoneOffset"  && key !== "week" &&  key !== "hour") {
-						this[addFunc](config[key] - this[getFunc]());
-				} else if ( key === "timezone"|| key === "timezoneOffset" || key === "week" || key === "hour") {
-					this["set"+name](config[key]);
-				}
-			}
-		}
-		// day has to go last because you can't validate the day without first knowing the month
-		if (config.day) {
-			this.addDays(config.day - this.getDate());
-		}
-		
-		return this;
-	};
-
-	/**
-	 * Moves the date to the first day of the month.
-	 * @return {Date}    this
-	 */
-	$P.moveToFirstDayOfMonth = function () {
-		return this.set({ day: 1 });
-	};
-
-	/**
-	 * Moves the date to the last day of the month.
-	 * @return {Date}    this
-	 */
-	$P.moveToLastDayOfMonth = function () {
-		return this.set({ day: $D.getDaysInMonth(this.getFullYear(), this.getMonth())});
-	};
-
-
-	/**
-	 * Converts the value of the current Date object to its equivalent string representation.
-	 * Format Specifiers
-	 * CUSTOM DATE AND TIME FORMAT STRINGS
-	 * Format  Description                                                                  Example
-	 * ------  ---------------------------------------------------------------------------  -----------------------
-	 * s      The seconds of the minute between 0-59.                                      "0" to "59"
-	 * ss     The seconds of the minute with leading zero if required.                     "00" to "59"
-	 * 
-	 * m      The minute of the hour between 0-59.                                         "0"  or "59"
-	 * mm     The minute of the hour with leading zero if required.                        "00" or "59"
-	 * 
-	 * h      The hour of the day between 1-12.                                            "1"  to "12"
-	 * hh     The hour of the day with leading zero if required.                           "01" to "12"
-	 * 
-	 * H      The hour of the day between 0-23.                                            "0"  to "23"
-	 * HH     The hour of the day with leading zero if required.                           "00" to "23"
-	 * 
-	 * d      The day of the month between 1 and 31.                                       "1"  to "31"
-	 * dd     The day of the month with leading zero if required.                          "01" to "31"
-	 * ddd    Abbreviated day name. Date.CultureInfo.abbreviatedDayNames.                                "Mon" to "Sun" 
-	 * dddd   The full day name. Date.CultureInfo.dayNames.                                              "Monday" to "Sunday"
-	 * 
-	 * M      The month of the year between 1-12.                                          "1" to "12"
-	 * MM     The month of the year with leading zero if required.                         "01" to "12"
-	 * MMM    Abbreviated month name. Date.CultureInfo.abbreviatedMonthNames.                            "Jan" to "Dec"
-	 * MMMM   The full month name. Date.CultureInfo.monthNames.                                          "January" to "December"
-	 *
-	 * yy     The year as a two-digit number.                                              "99" or "08"
-	 * yyyy   The full four digit year.                                                    "1999" or "2008"
-	 * 
-	 * t      Displays the first character of the A.M./P.M. designator.                    "A" or "P"
-	 *		Date.CultureInfo.amDesignator or Date.CultureInfo.pmDesignator
-	 * tt     Displays the A.M./P.M. designator.                                           "AM" or "PM"
-	 *		Date.CultureInfo.amDesignator or Date.CultureInfo.pmDesignator
-	 * 
-	 * S      The ordinal suffix ("st, "nd", "rd" or "th") of the current day.            "st, "nd", "rd" or "th"
-	 *
-	 * STANDARD DATE AND TIME FORMAT STRINGS
-	 * Format  Description                                                                  Example
-	 *------  ---------------------------------------------------------------------------  -----------------------
-	 * d      The CultureInfo shortDate Format Pattern                                     "M/d/yyyy"
-	 * D      The CultureInfo longDate Format Pattern                                      "dddd, MMMM dd, yyyy"
-	 * F      The CultureInfo fullDateTime Format Pattern                                  "dddd, MMMM dd, yyyy h:mm:ss tt"
-	 * m      The CultureInfo monthDay Format Pattern                                      "MMMM dd"
-	 * r      The CultureInfo rfc1123 Format Pattern                                       "ddd, dd MMM yyyy HH:mm:ss GMT"
-	 * s      The CultureInfo sortableDateTime Format Pattern                              "yyyy-MM-ddTHH:mm:ss"
-	 * t      The CultureInfo shortTime Format Pattern                                     "h:mm tt"
-	 * T      The CultureInfo longTime Format Pattern                                      "h:mm:ss tt"
-	 * u      The CultureInfo universalSortableDateTime Format Pattern                     "yyyy-MM-dd HH:mm:ssZ"
-	 * y      The CultureInfo yearMonth Format Pattern                                     "MMMM, yyyy"
-	 *
-	 * @param {String}   A format string consisting of one or more format spcifiers [Optional].
-	 * @return {String}  A string representation of the current Date object.
-	 */
-	
-	var ord = function (n) {
-		switch (n * 1) {
-		case 1:
-		case 21:
-		case 31:
-			return "st";
-		case 2:
-		case 22:
-			return "nd";
-		case 3:
-		case 23:
-			return "rd";
-		default:
-			return "th";
-		}
-	};
-	var parseStandardFormats = function (format) {
-		var y, c = Date.CultureInfo.formatPatterns;
-		switch (format) {
-			case "d":
-				return this.toString(c.shortDate);
-			case "D":
-				return this.toString(c.longDate);
-			case "F":
-				return this.toString(c.fullDateTime);
-			case "m":
-				return this.toString(c.monthDay);
-			case "r":
-			case "R":
-				y = this.clone().addMinutes(this.getTimezoneOffset());
-				return y.toString(c.rfc1123) + " GMT";
-			case "s":
-				return this.toString(c.sortableDateTime);
-			case "t":
-				return this.toString(c.shortTime);
-			case "T":
-				return this.toString(c.longTime);
-			case "u":
-				y = this.clone().addMinutes(this.getTimezoneOffset());
-				return y.toString(c.universalSortableDateTime);
-			case "y":
-				return this.toString(c.yearMonth);
-			default:
-				return false;
-		}
-	};
-	var parseFormatStringsClosure = function (context) {
-		return function (m) {
-			if (m.charAt(0) === "\\") {
-				return m.replace("\\", "");
-			}
-			switch (m) {
-				case "hh":
-					return p(context.getHours() < 13 ? (context.getHours() === 0 ? 12 : context.getHours()) : (context.getHours() - 12));
-				case "h":
-					return context.getHours() < 13 ? (context.getHours() === 0 ? 12 : context.getHours()) : (context.getHours() - 12);
-				case "HH":
-					return p(context.getHours());
-				case "H":
-					return context.getHours();
-				case "mm":
-					return p(context.getMinutes());
-				case "m":
-					return context.getMinutes();
-				case "ss":
-					return p(context.getSeconds());
-				case "s":
-					return context.getSeconds();
-				case "yyyy":
-					return p(context.getFullYear(), 4);
-				case "yy":
-					return p(context.getFullYear());
-				case "y":
-					return context.getFullYear();
-				case "E":
-				case "dddd":
-					return Date.CultureInfo.dayNames[context.getDay()];
-				case "ddd":
-					return Date.CultureInfo.abbreviatedDayNames[context.getDay()];
-				case "dd":
-					return p(context.getDate());
-				case "d":
-					return context.getDate();
-				case "MMMM":
-					return Date.CultureInfo.monthNames[context.getMonth()];
-				case "MMM":
-					return Date.CultureInfo.abbreviatedMonthNames[context.getMonth()];
-				case "MM":
-					return p((context.getMonth() + 1));
-				case "M":
-					return context.getMonth() + 1;
-				case "t":
-					return context.getHours() < 12 ? Date.CultureInfo.amDesignator.substring(0, 1) : Date.CultureInfo.pmDesignator.substring(0, 1);
-				case "tt":
-					return context.getHours() < 12 ? Date.CultureInfo.amDesignator : Date.CultureInfo.pmDesignator;
-				case "S":
-					return ord(context.getDate());
-				case "W":
-					return context.getWeek();
-				case "WW":
-					return context.getISOWeek();
-				case "Q":
-					return "Q" + context.getQuarter();
-				case "q":
-					return String(context.getQuarter());
-				case "z":
-					return context.getTimezone();
-				case "Z":
-				case "X":
-					return Date.getTimezoneOffset(context.getTimezone());
-				case "ZZ": // Timezone offset in seconds
-					return context.getTimezoneOffset() * -60;
-				case "u":
-					return context.getDay();
-				case "L":
-					return ($D.isLeapYear(context.getFullYear())) ? 1 : 0;
-				case "B":
-					// Swatch Internet Time (.beats)
-					return "@"+((context.getUTCSeconds() + (context.getUTCMinutes()*60) + ((context.getUTCHours()+1)*3600))/86.4);
-				default:
-					return m;
-			}
-		};
-	};
-	$P.toString = function (format, ignoreStandards) {
-		
-		// Standard Date and Time Format Strings. Formats pulled from CultureInfo file and
-		// may vary by culture. 
-		if (!ignoreStandards && format && format.length === 1) {
-			output = parseStandardFormats.call(this, format);
-			if (output) {
-				return output;
-			}
-		}
-		var parseFormatStrings = parseFormatStringsClosure(this);
-		return format ? format.replace(/((\\)?(dd?d?d?|MM?M?M?|yy?y?y?|hh?|HH?|mm?|ss?|tt?|S|q|Q|WW?W?W?)(?![^\[]*\]))/g, parseFormatStrings).replace(/\[|\]/g, "") : this._toString();
-	};
-
-}());
-},{}],69:[function(_dereq_,module,exports){
-(function () {
-	var $D = Date,
-		$P = $D.prototype,
-		p = function (s, l) {
-			if (!l) {
-				l = 2;
-			}
-			return ("000" + s).slice(l * -1);
-		};
-	
-	if (typeof window !== "undefined" && typeof window.console !== "undefined" && typeof window.console.log !== "undefined") {
-		$D.console = console; // used only to raise non-critical errors if available
-	} else {
-		// set mock so we don't give errors.
-		$D.console = {
-			log: function(){},
-			error: function(){}
-		};
-	}
-	$D.Config = $D.Config || {};
-
-	$D.initOverloads = function() {
-		/** 
-		 * Overload of Date.now. Allows an alternate call for Date.now where it returns the 
-		 * current Date as an object rather than just milliseconds since the Unix Epoch.
-		 *
-		 * Also provides an implementation of now() for browsers (IE<9) that don't have it.
-		 * 
-		 * Backwards compatible so with work with either:
-		 *  Date.now() [returns ms]
-		 * or
-		 *  Date.now(true) [returns Date]
-		 */
-		if (!$D.now) {
-			$D._now = function now() {
-				return new Date().getTime();
-			};
-		} else if (!$D._now) {
-			$D._now = $D.now;
-		}
-
-		$D.now = function (returnObj) {
-			if (returnObj) {
-				return $D.present();
-			} else {
-				return $D._now();
-			}
-		};
-
-		if ( !$P.toISOString ) {
-			$P.toISOString = function() {
-				return this.getUTCFullYear() +
-				"-" + p(this.getUTCMonth() + 1) +
-				"-" + p(this.getUTCDate()) +
-				"T" + p(this.getUTCHours()) +
-				":" + p(this.getUTCMinutes()) +
-				":" + p(this.getUTCSeconds()) +
-				"." + String( (this.getUTCMilliseconds()/1000).toFixed(3)).slice(2, 5) +
-				"Z";
-			};
-		}
-		
-		// private
-		if ( $P._toString === undefined ){
-			$P._toString = $P.toString;
-		}
-
-	};
-	$D.initOverloads();
-
-
-	/** 
-	 * Gets a date that is set to the current date. The time is set to the start of the day (00:00 or 12:00 AM).
-	 * @return {Date}    The current date.
-	 */
-	$D.today = function () {
-		return new Date().clearTime();
-	};
-
-	/** 
-	 * Gets a date that is set to the current date and time (same as new Date, but chainable)
-	 * @return {Date}    The current date.
-	 */
-	$D.present = function () {
-		return new Date();
-	};
-
-	/**
-	 * Compares the first date to the second date and returns an number indication of their relative values.  
-	 * @param {Date}     First Date object to compare [Required].
-	 * @param {Date}     Second Date object to compare to [Required].
-	 * @return {Number}  -1 = date1 is lessthan date2. 0 = values are equal. 1 = date1 is greaterthan date2.
-	 */
-	$D.compare = function (date1, date2) {
-		if (isNaN(date1) || isNaN(date2)) {
-			throw new Error(date1 + " - " + date2);
-		} else if (date1 instanceof Date && date2 instanceof Date) {
-			return (date1 < date2) ? -1 : (date1 > date2) ? 1 : 0;
-		} else {
-			throw new TypeError(date1 + " - " + date2);
-		}
-	};
-	
-	/**
-	 * Compares the first Date object to the second Date object and returns true if they are equal.  
-	 * @param {Date}     First Date object to compare [Required]
-	 * @param {Date}     Second Date object to compare to [Required]
-	 * @return {Boolean} true if dates are equal. false if they are not equal.
-	 */
-	$D.equals = function (date1, date2) {
-		return (date1.compareTo(date2) === 0);
-	};
-
-	/**
-	 * Gets the language appropriate day name when given the day number(0-6)
-	 * eg - 0 == Sunday
-	 * @return {String}  The day name
-	 */
-	$D.getDayName = function (n) {
-		return Date.CultureInfo.dayNames[n];
-	};
-
-	/**
-	 * Gets the day number (0-6) if given a CultureInfo specific string which is a valid dayName, abbreviatedDayName or shortestDayName (two char).
-	 * @param {String}   The name of the day (eg. "Monday, "Mon", "tuesday", "tue", "We", "we").
-	 * @return {Number}  The day number
-	 */
-	$D.getDayNumberFromName = function (name) {
-		var n = Date.CultureInfo.dayNames, m = Date.CultureInfo.abbreviatedDayNames, o = Date.CultureInfo.shortestDayNames, s = name.toLowerCase();
-		for (var i = 0; i < n.length; i++) {
-			if (n[i].toLowerCase() === s || m[i].toLowerCase() === s || o[i].toLowerCase() === s) {
-				return i;
-			}
-		}
-		return -1;
-	};
-	
-	/**
-	 * Gets the month number (0-11) if given a Culture Info specific string which is a valid monthName or abbreviatedMonthName.
-	 * @param {String}   The name of the month (eg. "February, "Feb", "october", "oct").
-	 * @return {Number}  The day number
-	 */
-	$D.getMonthNumberFromName = function (name) {
-		var n = Date.CultureInfo.monthNames, m = Date.CultureInfo.abbreviatedMonthNames, s = name.toLowerCase();
-		for (var i = 0; i < n.length; i++) {
-			if (n[i].toLowerCase() === s || m[i].toLowerCase() === s) {
-				return i;
-			}
-		}
-		return -1;
-	};
-
-	/**
-	 * Gets the language appropriate month name when given the month number(0-11)
-	 * eg - 0 == January
-	 * @return {String}  The month name
-	 */
-	$D.getMonthName = function (n) {
-		return Date.CultureInfo.monthNames[n];
-	};
-
-	/**
-	 * Determines if the current date instance is within a LeapYear.
-	 * @param {Number}   The year.
-	 * @return {Boolean} true if date is within a LeapYear, otherwise false.
-	 */
-	$D.isLeapYear = function (year) {
-		return ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0);
-	};
-
-	/**
-	 * Gets the number of days in the month, given a year and month value. Automatically corrects for LeapYear.
-	 * @param {Number}   The year.
-	 * @param {Number}   The month (0-11).
-	 * @return {Number}  The number of days in the month.
-	 */
-	$D.getDaysInMonth = function (year, month) {
-		if (!month && $D.validateMonth(year)) {
-				month = year;
-				year = Date.today().getFullYear();
-		}
-		return [31, ($D.isLeapYear(year) ? 29 : 28), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month];
-	};
-
-	$P.getDaysInMonth = function () {
-		return $D.getDaysInMonth(this.getFullYear(), this.getMonth());
-	};
- 
-	$D.getTimezoneAbbreviation = function (offset, dst) {
-		var p, n = (dst || false) ? Date.CultureInfo.abbreviatedTimeZoneDST : Date.CultureInfo.abbreviatedTimeZoneStandard;
-		for (p in n) {
-			if (n.hasOwnProperty(p)) {
-				if (n[p] === offset) {
-					return p;
-				}
-			}
-		}
-		return null;
-	};
-	
-	$D.getTimezoneOffset = function (name, dst) {
-		var i, a =[], z = Date.CultureInfo.timezones;
-		if (!name) { name = (new Date()).getTimezone();}
-		for (i = 0; i < z.length; i++) {
-			if (z[i].name === name.toUpperCase()) {
-				a.push(i);
-			}
-		}
-		if (!z[a[0]]) {
-			return null;
-		}
-		if (a.length === 1 || !dst) {
-			return z[a[0]].offset;
-		} else {
-			for (i=0; i < a.length; i++) {
-				if (z[a[i]].dst) {
-					return z[a[i]].offset;
-				}
-			}
-		}
-	};
-
-	$D.getQuarter = function (d) {
-		d = d || new Date(); // If no date supplied, use today
-		var q = [1,2,3,4];
-		return q[Math.floor(d.getMonth() / 3)]; // ~~~ is a bitwise op. Faster than Math.floor
-	};
-
-	$D.getDaysLeftInQuarter = function (d) {
-		d = d || new Date();
-		var qEnd = new Date(d);
-		qEnd.setMonth(qEnd.getMonth() + 3 - qEnd.getMonth() % 3, 0);
-		return Math.floor((qEnd - d) / 8.64e7);
-	};
-
-	// private
-	var validate = function (n, min, max, name) {
-		name = name ? name : "Object";
-		if (typeof n === "undefined") {
-			return false;
-		} else if (typeof n !== "number") {
-			throw new TypeError(n + " is not a Number.");
-		} else if (n < min || n > max) {
-			// As failing validation is *not* an exceptional circumstance 
-			// lets not throw a RangeError Exception here. 
-			// It's semantically correct but it's not sensible.
-			return false;
-		}
-		return true;
-	};
-
-	/**
-	 * Validates the number is within an acceptable range for milliseconds [0-999].
-	 * @param {Number}   The number to check if within range.
-	 * @return {Boolean} true if within range, otherwise false.
-	 */
-	$D.validateMillisecond = function (value) {
-		return validate(value, 0, 999, "millisecond");
-	};
-
-	/**
-	 * Validates the number is within an acceptable range for seconds [0-59].
-	 * @param {Number}   The number to check if within range.
-	 * @return {Boolean} true if within range, otherwise false.
-	 */
-	$D.validateSecond = function (value) {
-		return validate(value, 0, 59, "second");
-	};
-
-	/**
-	 * Validates the number is within an acceptable range for minutes [0-59].
-	 * @param {Number}   The number to check if within range.
-	 * @return {Boolean} true if within range, otherwise false.
-	 */
-	$D.validateMinute = function (value) {
-		return validate(value, 0, 59, "minute");
-	};
-
-	/**
-	 * Validates the number is within an acceptable range for hours [0-23].
-	 * @param {Number}   The number to check if within range.
-	 * @return {Boolean} true if within range, otherwise false.
-	 */
-	$D.validateHour = function (value) {
-		return validate(value, 0, 23, "hour");
-	};
-
-	/**
-	 * Validates the number is within an acceptable range for the days in a month [0-MaxDaysInMonth].
-	 * @param {Number}   The number to check if within range.
-	 * @return {Boolean} true if within range, otherwise false.
-	 */
-	$D.validateDay = function (value, year, month) {
-		if (year === undefined || year === null || month === undefined || month === null) { return false;}
-		return validate(value, 1, $D.getDaysInMonth(year, month), "day");
-	};
-
-	/**
-	 * Validates the number is within an acceptable range for months [0-11].
-	 * @param {Number}   The number to check if within range.
-	 * @return {Boolean} true if within range, otherwise false.
-	 */
-	$D.validateWeek = function (value) {
-		return validate(value, 0, 53, "week");
-	};
-
-	/**
-	 * Validates the number is within an acceptable range for months [0-11].
-	 * @param {Number}   The number to check if within range.
-	 * @return {Boolean} true if within range, otherwise false.
-	 */
-	$D.validateMonth = function (value) {
-		return validate(value, 0, 11, "month");
-	};
-
-	/**
-	 * Validates the number is within an acceptable range for years.
-	 * @param {Number}   The number to check if within range.
-	 * @return {Boolean} true if within range, otherwise false.
-	 */
-	$D.validateYear = function (value) {
-		/**
-		 * Per ECMAScript spec the range of times supported by Date objects is 
-		 * exactly -100,000,000 days to +100,000,000 days measured relative to 
-		 * midnight at the beginning of 01 January, 1970 UTC. 
-		 * This gives a range of 8,640,000,000,000,000 milliseconds to either 
-		 * side of 01 January, 1970 UTC.
-		 *
-		 * Earliest possible date: Tue, 20 Apr 271,822 B.C. 00:00:00 UTC
-		 * Latest possible date: Sat, 13 Sep 275,760 00:00:00 UTC
-		 */
-		return validate(value, -271822, 275760, "year");
-	};
-	$D.validateTimezone = function(value) {
-		var timezones = {"ACDT":1,"ACST":1,"ACT":1,"ADT":1,"AEDT":1,"AEST":1,"AFT":1,"AKDT":1,"AKST":1,"AMST":1,"AMT":1,"ART":1,"AST":1,"AWDT":1,"AWST":1,"AZOST":1,"AZT":1,"BDT":1,"BIOT":1,"BIT":1,"BOT":1,"BRT":1,"BST":1,"BTT":1,"CAT":1,"CCT":1,"CDT":1,"CEDT":1,"CEST":1,"CET":1,"CHADT":1,"CHAST":1,"CHOT":1,"ChST":1,"CHUT":1,"CIST":1,"CIT":1,"CKT":1,"CLST":1,"CLT":1,"COST":1,"COT":1,"CST":1,"CT":1,"CVT":1,"CWST":1,"CXT":1,"DAVT":1,"DDUT":1,"DFT":1,"EASST":1,"EAST":1,"EAT":1,"ECT":1,"EDT":1,"EEDT":1,"EEST":1,"EET":1,"EGST":1,"EGT":1,"EIT":1,"EST":1,"FET":1,"FJT":1,"FKST":1,"FKT":1,"FNT":1,"GALT":1,"GAMT":1,"GET":1,"GFT":1,"GILT":1,"GIT":1,"GMT":1,"GST":1,"GYT":1,"HADT":1,"HAEC":1,"HAST":1,"HKT":1,"HMT":1,"HOVT":1,"HST":1,"ICT":1,"IDT":1,"IOT":1,"IRDT":1,"IRKT":1,"IRST":1,"IST":1,"JST":1,"KGT":1,"KOST":1,"KRAT":1,"KST":1,"LHST":1,"LINT":1,"MAGT":1,"MART":1,"MAWT":1,"MDT":1,"MET":1,"MEST":1,"MHT":1,"MIST":1,"MIT":1,"MMT":1,"MSK":1,"MST":1,"MUT":1,"MVT":1,"MYT":1,"NCT":1,"NDT":1,"NFT":1,"NPT":1,"NST":1,"NT":1,"NUT":1,"NZDT":1,"NZST":1,"OMST":1,"ORAT":1,"PDT":1,"PET":1,"PETT":1,"PGT":1,"PHOT":1,"PHT":1,"PKT":1,"PMDT":1,"PMST":1,"PONT":1,"PST":1,"PYST":1,"PYT":1,"RET":1,"ROTT":1,"SAKT":1,"SAMT":1,"SAST":1,"SBT":1,"SCT":1,"SGT":1,"SLST":1,"SRT":1,"SST":1,"SYOT":1,"TAHT":1,"THA":1,"TFT":1,"TJT":1,"TKT":1,"TLT":1,"TMT":1,"TOT":1,"TVT":1,"UCT":1,"ULAT":1,"UTC":1,"UYST":1,"UYT":1,"UZT":1,"VET":1,"VLAT":1,"VOLT":1,"VOST":1,"VUT":1,"WAKT":1,"WAST":1,"WAT":1,"WEDT":1,"WEST":1,"WET":1,"WST":1,"YAKT":1,"YEKT":1,"Z":1};
-		return (timezones[value] === 1);
-	};
-	$D.validateTimezoneOffset= function(value) {
-		// timezones go from +14hrs to -12hrs, the +X hours are negative offsets.
-		return (value > -841 && value < 721);
-	};
-
-}());
-
-},{}],70:[function(_dereq_,module,exports){
-(function () {
-	var $D = Date,
-		$P = $D.prototype,
-		// $C = $D.CultureInfo, // not used atm
-		p = function (s, l) {
-			if (!l) {
-				l = 2;
-			}
-			return ("000" + s).slice(l * -1);
-		};
-	/**
-	 * Converts a PHP format string to Java/.NET format string.
-	 * A PHP format string can be used with ._format or .format.
-	 * A Java/.NET format string can be used with .toString().
-	 * The .parseExact function will only accept a Java/.NET format string
-	 *
-	 * Example
-	 * var f1 = "%m/%d/%y"
-	 * var f2 = Date.normalizeFormat(f1);	// "MM/dd/yy"
-	 *
-	 * new Date().format(f1);	// "04/13/08"
-	 * new Date()._format(f1);	// "04/13/08"
-	 * new Date().toString(f2);	// "04/13/08"
-	 *
-	 * var date = Date.parseExact("04/13/08", f2); // Sun Apr 13 2008
-	 *
-	 * @param {String}   A PHP format string consisting of one or more format spcifiers.
-	 * @return {String}  The PHP format converted to a Java/.NET format string.
-	 */
-	 var normalizerSubstitutions = {
-		"d" : "dd",
-		"%d": "dd",
-		"D" : "ddd",
-		"%a": "ddd",
-		"j" : "dddd",
-		"l" : "dddd",
-		"%A": "dddd",
-		"S" : "S",
-		"F" : "MMMM",
-		"%B": "MMMM",
-		"m" : "MM",
-		"%m": "MM",
-		"M" : "MMM",
-		"%b": "MMM",
-		"%h": "MMM",
-		"n" : "M",
-		"Y" : "yyyy",
-		"%Y": "yyyy",
-		"y" : "yy",
-		"%y": "yy",
-		"g" : "h",
-		"%I": "h",
-		"G" : "H",
-		"h" : "hh",
-		"H" : "HH",
-		"%H": "HH",
-		"i" : "mm",
-		"%M": "mm",
-		"s" : "ss",
-		"%S": "ss",
-		"%r": "hh:mm tt",
-		"%R": "H:mm",
-		"%T": "H:mm:ss",
-		"%X": "t",
-		"%x": "d",
-		"%e": "d",
-		"%D": "MM/dd/yy",
-		"%n": "\\n",
-		"%t": "\\t",
-		"e" : "z",
-		"T" : "z",
-		"%z": "z",
-		"%Z": "z",
-		"Z" : "ZZ",
-		"N" : "u",
-		"w" : "u",
-		"%w": "u",
-		"W" : "W",
-		"%V": "W"
-	};
-	var normalizer = {
-		substitutes: function (m) {
-			return normalizerSubstitutions[m];
-		},
-		interpreted: function (m, x) {
-			var y;
-			switch (m) {
-				case "%u":
-					return x.getDay() + 1;
-				case "z":
-					return x.getOrdinalNumber();
-				case "%j":
-					return p(x.getOrdinalNumber(), 3);
-				case "%U":
-					var d1 = x.clone().set({month: 0, day: 1}).addDays(-1).moveToDayOfWeek(0),
-						d2 = x.clone().addDays(1).moveToDayOfWeek(0, -1);
-					return (d2 < d1) ? "00" : p((d2.getOrdinalNumber() - d1.getOrdinalNumber()) / 7 + 1);
-
-				case "%W":
-					return p(x.getWeek());
-				case "t":
-					return $D.getDaysInMonth(x.getFullYear(), x.getMonth());
-				case "o":
-				case "%G":
-					return x.setWeek(x.getISOWeek()).toString("yyyy");
-				case "%g":
-					return x._format("%G").slice(-2);
-				case "a":
-				case "%p":
-					return t("tt").toLowerCase();
-				case "A":
-					return t("tt").toUpperCase();
-				case "u":
-					return p(x.getMilliseconds(), 3);
-				case "I":
-					return (x.isDaylightSavingTime()) ? 1 : 0;
-				case "O":
-					return x.getUTCOffset();
-				case "P":
-					y = x.getUTCOffset();
-					return y.substring(0, y.length - 2) + ":" + y.substring(y.length - 2);
-				case "B":
-					var now = new Date();
-					return Math.floor(((now.getHours() * 3600) + (now.getMinutes() * 60) + now.getSeconds() + (now.getTimezoneOffset() + 60) * 60) / 86.4);
-				case "c":
-					return x.toISOString().replace(/\"/g, "");
-				case "U":
-					return $D.strtotime("now");
-				case "%c":
-					return t("d") + " " + t("t");
-				case "%C":
-					return Math.floor(x.getFullYear() / 100 + 1);
-			}
-		},
-		shouldOverrideDefaults: function (m) {
-			switch (m) {
-				case "%e":
-					return true;
-				default:
-					return false;
-			}
-		},
-		parse: function (m, context) {
-			var formatString, c = context || new Date();
-			formatString = normalizer.substitutes(m);
-			if (formatString) {
-				return formatString;
-			}
-			formatString = normalizer.interpreted(m, c);
-
-			if (formatString) {
-				return formatString;
-			} else {
-				return m;
-			}
-		}
-	};
-
-	$D.normalizeFormat = function (format, context) {
-		return format.replace(/(%|\\)?.|%%/g, function(t){
-				return normalizer.parse(t, context);
-		});
-	};
-	/**
-	 * Format a local Unix timestamp according to locale settings
-	 *
-	 * Example:
-	 * Date.strftime("%m/%d/%y", new Date());		// "04/13/08"
-	 * Date.strftime("c", "2008-04-13T17:52:03Z");	// "04/13/08"
-	 *
-	 * @param {String}   A format string consisting of one or more format spcifiers [Optional].
-	 * @param {Number|String}   The number representing the number of seconds that have elapsed since January 1, 1970 (local time).
-	 * @return {String}  A string representation of the current Date object.
-	 */
-	$D.strftime = function (format, time) {
-		var d = Date.parse(time);
-		return d._format(format);
-	};
-	/**
-	 * Parse any textual datetime description into a Unix timestamp.
-	 * A Unix timestamp is the number of seconds that have elapsed since January 1, 1970 (midnight UTC/GMT).
-	 *
-	 * Example:
-	 * Date.strtotime("04/13/08");				// 1208044800
-	 * Date.strtotime("1970-01-01T00:00:00Z");	// 0
-	 *
-	 * @param {String}   A format string consisting of one or more format spcifiers [Optional].
-	 * @param {Object}   A string or date object.
-	 * @return {String}  A string representation of the current Date object.
-	 */
-	$D.strtotime = function (time) {
-		var d = $D.parse(time);
-		return Math.round($D.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()) / 1000);
-	};
-	/**
-	 * Converts the value of the current Date object to its equivalent string representation using a PHP/Unix style of date format specifiers.
-	 * Format Specifiers
-	 * Format  Description																	Example
-	 * ------  ---------------------------------------------------------------------------	-----------------------
-	 * %a		abbreviated weekday name according to the current localed					"Mon" through "Sun"
-	 * %A		full weekday name according to the current localed							"Sunday" through "Saturday"
-	 * %b		abbreviated month name according to the current localed						"Jan" through "Dec"
-	 * %B		full month name according to the current locale								"January" through "December"
-	 * %c		preferred date and time representation for the current locale				"4/13/2008 12:33 PM"
-	 * %C		century number (the year divided by 100 and truncated to an integer)		"00" to "99"
-	 * %d		day of the month as a decimal number										"01" to "31"
-	 * %D		same as %m/%d/%y															"04/13/08"
-	 * %e		day of the month as a decimal number, a single digit is preceded by a space	"1" to "31"
-	 * %g		like %G, but without the century											"08"
-	 * %G		The 4-digit year corresponding to the ISO week number (see %V).				"2008"
-	 *		This has the same format and value as %Y, except that if the ISO week number
-	 *		belongs to the previous or next year, that year is used instead.
-	 * %h		same as %b																	"Jan" through "Dec"
-	 * %H		hour as a decimal number using a 24-hour clock.								"00" to "23"
-	 * %I		hour as a decimal number using a 12-hour clock.								"01" to "12"
-	 * %j		day of the year as a decimal number.										"001" to "366"
-	 * %m		month as a decimal number.													"01" to "12"
-	 * %M		minute as a decimal number.													"00" to "59"
-	 * %n		newline character		"\n"
-	 * %p		either "am" or "pm" according to the given time value, or the				"am" or "pm"
-	 *		corresponding strings for the current locale.
-	 * %r		time in a.m. and p.m. notation												"8:44 PM"
-	 * %R		time in 24 hour notation													"20:44"
-	 * %S		second as a decimal number													"00" to "59"
-	 * %t		tab character																"\t"
-	 * %T		current time, equal to %H:%M:%S												"12:49:11"
-	 * %u		weekday as a decimal number ["1", "7"], with "1" representing Monday		"1" to "7"
-	 * %U		week number of the current year as a decimal number, starting with the		"0" to ("52" or "53")
-	 *		first Sunday as the first day of the first week
-	 * %V		The ISO 8601:1988 week number of the current year as a decimal number,		"00" to ("52" or "53")
-	 *		range 01 to 53, where week 1 is the first week that has at least 4 days
-	 *		in the current year, and with Monday as the first day of the week.
-	 *		(Use %G or %g for the year component that corresponds to the week number
-	 *		for the specified timestamp.)
-	 * %W		week number of the current year as a decimal number, starting with the		"00" to ("52" or "53")
-	 *		first Monday as the first day of the first week
-	 * %w		day of the week as a decimal, Sunday being "0"								"0" to "6"
-	 * %x		preferred date representation for the current locale without the time		"4/13/2008"
-	 * %X		preferred time representation for the current locale without the date		"12:53:05"
-	 * %y		year as a decimal number without a century									"00" "99"
-	 * %Y		year as a decimal number including the century								"2008"
-	 * %Z		time zone or name or abbreviation											"UTC", "EST", "PST"
-	 * %z		same as %Z
-	 * %%		a literal "%" characters													"%"
-	 * d		Day of the month, 2 digits with leading zeros								"01" to "31"
-	 * D		A textual representation of a day, three letters							"Mon" through "Sun"
-	 * j		Day of the month without leading zeros										"1" to "31"
-	 * l		A full textual representation of the day of the week (lowercase "L")		"Sunday" through "Saturday"
-	 * N		ISO-8601 numeric representation of the day of the week (added in PHP 5.1.0)	"1" (for Monday) through "7" (for Sunday)
-	 * S		English ordinal suffix for the day of the month, 2 characters				"st", "nd", "rd" or "th". Works well with j
-	 * w		Numeric representation of the day of the week								"0" (for Sunday) through "6" (for Saturday)
-	 * z		The day of the year (starting from "0")										"0" through "365"
-	 * W		ISO-8601 week number of year, weeks starting on Monday						"00" to ("52" or "53")
-	 * F		A full textual representation of a month, such as January or March			"January" through "December"
-	 * m		Numeric representation of a month, with leading zeros						"01" through "12"
-	 * M		A short textual representation of a month, three letters					"Jan" through "Dec"
-	 * n		Numeric representation of a month, without leading zeros					"1" through "12"
-	 * t		Number of days in the given month											"28" through "31"
-	 * L		Whether it's a leap year													"1" if it is a leap year, "0" otherwise
-	 * o		ISO-8601 year number. This has the same value as Y, except that if the		"2008"
-	 *		ISO week number (W) belongs to the previous or next year, that year
-	 *		is used instead.
-	 * Y		A full numeric representation of a year, 4 digits							"2008"
-	 * y		A two digit representation of a year										"08"
-	 * a		Lowercase Ante meridiem and Post meridiem									"am" or "pm"
-	 * A		Uppercase Ante meridiem and Post meridiem									"AM" or "PM"
-	 * B		Swatch Internet time														"000" through "999"
-	 * g		12-hour format of an hour without leading zeros								"1" through "12"
-	 * G		24-hour format of an hour without leading zeros								"0" through "23"
-	 * h		12-hour format of an hour with leading zeros								"01" through "12"
-	 * H		24-hour format of an hour with leading zeros								"00" through "23"
-	 * i		Minutes with leading zeros													"00" to "59"
-	 * s		Seconds, with leading zeros													"00" through "59"
-	 * u		Milliseconds																"54321"
-	 * e		Timezone identifier															"UTC", "EST", "PST"
-	 * I		Whether or not the date is in daylight saving time (uppercase i)			"1" if Daylight Saving Time, "0" otherwise
-	 * O		Difference to Greenwich time (GMT) in hours									"+0200", "-0600"
-	 * P		Difference to Greenwich time (GMT) with colon between hours and minutes		"+02:00", "-06:00"
-	 * T		Timezone abbreviation														"UTC", "EST", "PST"
-	 * Z		Timezone offset in seconds. The offset for timezones west of UTC is			"-43200" through "50400"
-	 *			always negative, and for those east of UTC is always positive.
-	 * c		ISO 8601 date																"2004-02-12T15:19:21+00:00"
-	 * r		RFC 2822 formatted date														"Thu, 21 Dec 2000 16:01:07 +0200"
-	 * U		Seconds since the Unix Epoch (January 1 1970 00:00:00 GMT)					"0"
-	 * @param {String}   A format string consisting of one or more format spcifiers [Optional].
-	 * @return {String}  A string representation of the current Date object.
-	 */
-	var formatReplace = function (context) {
-		return function (m) {
-			var formatString, override = false;
-			if (m.charAt(0) === "\\" || m.substring(0, 2) === "%%") {
-				return m.replace("\\", "").replace("%%", "%");
-			}
-
-			override = normalizer.shouldOverrideDefaults(m);
-			formatString = $D.normalizeFormat(m, context);
-			if (formatString) {
-				return context.toString(formatString, override);
-			}
-		};
-	};
-	$P._format = function (format) {
-		var formatter = formatReplace(this);
-		if (!format) {
-			return this._toString();
-		} else {
-			return format.replace(/(%|\\)?.|%%/g, formatter);
-		}
-	};
-
-	if (!$P.format) {
-		$P.format = $P._format;
-	}
-}());
-},{}],71:[function(_dereq_,module,exports){
-(function () {
-	"use strict";
-	Date.Parsing = {
-		Exception: function (s) {
-			this.message = "Parse error at '" + s.substring(0, 10) + " ...'";
-		}
-	};
-	var $P = Date.Parsing;
-	var dayOffsets = {
-		standard: [0,31,59,90,120,151,181,212,243,273,304,334],
-		leap: [0,31,60,91,121,152,182,213,244,274,305,335]
-	};
-
-	$P.isLeapYear = function(year) {
-		return ((year % 4 === 0) && (year % 100 !== 0)) || (year % 400 === 0);
-	};
-
-	var utils = {
-		multiReplace : function (str, hash ) {
-			var key;
-			for (key in hash) {
-				if (Object.prototype.hasOwnProperty.call(hash, key)) {
-					var regex;
-					if (typeof hash[key] === "function") {
-
-					} else {
-						regex = (hash[key] instanceof RegExp) ? hash[key] : new RegExp(hash[key], "g");
-					}
-					str = str.replace(regex, key);
-				}
-			}
-			return str;
-		},
-		getDayOfYearFromWeek : function (obj) {
-			var d, jan4, offset;
-			obj.weekDay = (!obj.weekDay && obj.weekDay !== 0) ? 1 : obj.weekDay;
-			d = new Date(obj.year, 0, 4);
-			jan4 = d.getDay() === 0 ? 7 : d.getDay(); // JS is 0 indexed on Sunday.
-			offset = jan4+3;
-			obj.dayOfYear = ((obj.week * 7) + (obj.weekDay === 0 ? 7 : obj.weekDay))-offset;
-			return obj;
-		},
-		getDayOfYear : function (obj, dayOffset) {
-			if (!obj.dayOfYear) {
-				obj = utils.getDayOfYearFromWeek(obj);
-			}
-			for (var i=0;i <= dayOffset.length;i++) {
-				if (obj.dayOfYear < dayOffset[i] || i === dayOffset.length) {
-					obj.day = obj.day ? obj.day : (obj.dayOfYear - dayOffset[i-1]);
-					break;
-				} else {
-					obj.month = i;
-				}
-			}
-			return obj;
-		},
-		adjustForTimeZone : function (obj, date) {
-			var offset;
-			if (obj.zone.toUpperCase() === "Z" || (obj.zone_hours === 0 && obj.zone_minutes === 0)) {
-				// it's UTC/GML so work out the current timeszone offset
-				offset = -date.getTimezoneOffset();
-			} else {
-				offset = (obj.zone_hours*60) + (obj.zone_minutes || 0);
-				if (obj.zone_sign === "+") {
-					offset *= -1;
-				}
-				offset -= date.getTimezoneOffset();
-			}
-			date.setMinutes(date.getMinutes()+offset);
-			return date;
-		},
-		setDefaults : function (obj) {
-			obj.year = obj.year || Date.today().getFullYear();
-			obj.hours = obj.hours || 0;
-			obj.minutes = obj.minutes || 0;
-			obj.seconds = obj.seconds || 0;
-			obj.milliseconds = obj.milliseconds || 0;
-			if (!(!obj.month && (obj.week || obj.dayOfYear))) {
-				// if we have a month, or if we don't but don't have the day calculation data
-				obj.month = obj.month || 0;
-				obj.day = obj.day || 1;
-			}
-			return obj;
-		},
-		dataNum: function (data, mod, explict, postProcess) {
-			var dataNum = data*1;
-			if (mod) {
-				if (postProcess) {
-					return data ? mod(data)*1 : data;
-				} else {
-					return data ? mod(dataNum) : data;
-				}
-			} else if (!explict){
-				return data ? dataNum : data;
-			} else {
-				return (data && typeof data !== "undefined") ? dataNum : data;
-			}
-		},
-		timeDataProcess: function (obj) {
-			var timeObj = {};
-			for (var x in obj.data) {
-				if (obj.data.hasOwnProperty(x)) {
-					timeObj[x] = obj.ignore[x] ? obj.data[x] : utils.dataNum(obj.data[x], obj.mods[x], obj.explict[x], obj.postProcess[x]);
-				}
-			}
-			if (obj.data.secmins) {
-				obj.data.secmins = obj.data.secmins.replace(",", ".") * 60;
-				if (!timeObj.minutes) {
-					timeObj.minutes = obj.data.secmins;
-				} else if (!timeObj.seconds) {
-					timeObj.seconds = obj.data.secmins;
-				}
-				delete obj.secmins;
-			}
-			return timeObj;
-		},
-		buildTimeObjectFromData: function (data) {
-			var time = utils.timeDataProcess({
-				data: {
-					year : data[1],
-					month : data[5],
-					day : data[7],
-					week : data[8],
-					dayOfYear : data[10],
-					hours : data[15],
-					zone_hours : data[23],
-					zone_minutes : data[24],
-					zone : data[21],
-					zone_sign : data[22],
-					weekDay : data[9],
-					minutes: data[16],
-					seconds: data[19],
-					milliseconds: data[20],
-					secmins: data[18]
-				},
-				mods: {
-					month: function(data) {
-						return data-1;
-					},
-					weekDay: function (data) {
-						data = Math.abs(data);
-						return (data === 7 ? 0 : data);
-					},
-					minutes: function (data) {
-						return data.replace(":","");
-					},
-					seconds: function (data) {
-						return Math.floor( (data.replace(":","").replace(",","."))*1 );
-					},
-					milliseconds: function (data) {
-						return (data.replace(",",".")*1000);
-					}
-				},
-				postProcess: {
-					minutes: true,
-					seconds: true,
-					milliseconds: true
-				},
-				explict: {
-					zone_hours: true,
-					zone_minutes: true
-				},
-				ignore: {
-					zone: true,
-					zone_sign: true,
-					secmins: true
-				}
-			});
-			return time;
-		},
-		addToHash: function (hash, keys, data) {
-			keys = keys;
-			data = data;
-			var len = keys.length;
-			for (var i = 0; i < len; i++) {
-			  hash[keys[i]] = data[i];
-			}
-			return hash;
-		},
-		combineRegex: function (r1, r2) {
-			return new RegExp("(("+r1.source+")\\s("+r2.source+"))");
-		},
-		getDateNthString: function(add, last, inc){
-			if (add) {
-				return Date.today().addDays(inc).toString("d");
-			} else if (last) {
-				return Date.today().last()[inc]().toString("d");
-			}
-
-		},
-		buildRegexData: function (array) {
-			var arr = [];
-			var len = array.length;
-			for (var i=0; i < len; i++) {
-				if (Object.prototype.toString.call(array[i]) === '[object Array]') { // oldIE compat version of Array.isArray
-					arr.push(this.combineRegex(array[i][0], array[i][1]));
-				} else {
-					arr.push(array[i]);
-				}
-			}
-			return arr;
-		}
-	};
-
-	$P.processTimeObject = function (obj) {
-		var date, dayOffset;
-
-		utils.setDefaults(obj);
-		dayOffset = ($P.isLeapYear(obj.year)) ? dayOffsets.leap : dayOffsets.standard;
-
-		if (!obj.month && (obj.week || obj.dayOfYear)) {
-			utils.getDayOfYear(obj, dayOffset);
-		} else {
-			obj.dayOfYear = dayOffset[obj.month] + obj.day;
-		}
-
-		date = new Date(obj.year, obj.month, obj.day, obj.hours, obj.minutes, obj.seconds, obj.milliseconds);
-
-		if (obj.zone) {
-			utils.adjustForTimeZone(obj, date); // adjust (and calculate) for timezone
-		}
-		return date;
-	};
-
-	$P.ISO = {
-		regex : /^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-3])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-4])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?\s?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/,
-		parse : function (s) {
-			var time, data = s.match(this.regex);
-			if (!data || !data.length) {
-				return null;
-			}
-
-			time = utils.buildTimeObjectFromData(data);
-
-			if (!time.year || (!time.year && (!time.month && !time.day) && (!time.week && !time.dayOfYear)) ) {
-				return null;
-			}
-			return $P.processTimeObject(time);
-		}
-	};
-
-	$P.Numeric = {
-		isNumeric: function (e){return!isNaN(parseFloat(e))&&isFinite(e);},
-		regex: /\b([0-1]?[0-9])([0-3]?[0-9])([0-2]?[0-9]?[0-9][0-9])\b/i,
-		parse: function (s) {
-			var data, i,
-				time = {},
-				order = Date.CultureInfo.dateElementOrder.split("");
-			if (!(this.isNumeric(s)) || // if it's non-numeric OR
-				(s[0] === "+" && s[0] === "-")) {			// It's an arithmatic string (eg +/-1000)
-				return null;
-			}
-			if (s.length < 5 && s.indexOf(".") < 0 && s.indexOf("/") < 0) { // assume it's just a year.
-				time.year = s;
-				return $P.processTimeObject(time);
-			}
-			data = s.match(this.regex);
-			if (!data || !data.length) {
-				return null;
-			}
-			for (i=0; i < order.length; i++) {
-				switch(order[i]) {
-					case "d":
-						time.day = data[i+1];
-						break;
-					case "m":
-						time.month = (data[i+1]-1);
-						break;
-					case "y":
-						time.year = data[i+1];
-						break;
-				}
-			}
-			return $P.processTimeObject(time);
-		}
-	};
-
-	$P.Normalizer = {
-		regexData: function () {
-			var $R = Date.CultureInfo.regexPatterns;
-			return utils.buildRegexData([
-				$R.tomorrow,
-				$R.yesterday,
-				[$R.past, $R.mon],
-				[$R.past, $R.tue],
-				[$R.past, $R.wed],
-				[$R.past, $R.thu],
-				[$R.past, $R.fri],
-				[$R.past, $R.sat],
-				[$R.past, $R.sun]
-			]);
-		},
-		basicReplaceHash : function() {
-			var $R = Date.CultureInfo.regexPatterns;
-			return {
-				"January": $R.jan.source,
-				"February": $R.feb,
-				"March": $R.mar,
-				"April": $R.apr,
-				"May": $R.may,
-				"June": $R.jun,
-				"July": $R.jul,
-				"August": $R.aug,
-				"September": $R.sep,
-				"October": $R.oct,
-				"November": $R.nov,
-				"December": $R.dec,
-				"": /\bat\b/gi,
-				" ": /\s{2,}/,
-				"am": $R.inTheMorning,
-				"9am": $R.thisMorning,
-				"pm": $R.inTheEvening,
-				"7pm":$R.thisEvening
-			};
-		},
-		keys : function(){
-			return [
-				utils.getDateNthString(true, false, 1),				// tomorrow
-				utils.getDateNthString(true, false, -1),			// yesterday
-				utils.getDateNthString(false, true, "monday"),		//last mon
-				utils.getDateNthString(false, true, "tuesday"),		//last tues
-				utils.getDateNthString(false, true, "wednesday"),	//last wed
-				utils.getDateNthString(false, true, "thursday"),	//last thurs
-				utils.getDateNthString(false, true, "friday"),		//last fri
-				utils.getDateNthString(false, true, "saturday"),	//last sat
-				utils.getDateNthString(false, true, "sunday")		//last sun
-			];
-		},
-		buildRegexFunctions: function () {
-			var $R = Date.CultureInfo.regexPatterns;
-			var __ = Date.i18n.__;
-			var tomorrowRE = new RegExp("(\\b\\d\\d?("+__("AM")+"|"+__("PM")+")? )("+$R.tomorrow.source.slice(1)+")", "i"); // adapted tomorrow regex for AM PM relative dates
-			var todayRE = new RegExp($R.today.source + "(?!\\s*([+-]))\\b"); // today, but excludes the math operators (eg "today + 2h")
-
-			this.replaceFuncs = [
-				[todayRE, function (full) {
-					return (full.length > 1) ? Date.today().toString("d") : full;
-				}],
-				[tomorrowRE,
-				function(full, m1) {
-					var t = Date.today().addDays(1).toString("d");
-					return (t + " " + m1);
-				}],
-				[$R.amThisMorning, function(str, am){return am;}],
-				[$R.pmThisEvening, function(str, pm){return pm;}]
-			];
-
-		},
-		buildReplaceData: function () {
-			this.buildRegexFunctions();
-			this.replaceHash = utils.addToHash(this.basicReplaceHash(), this.keys(), this.regexData());
-		},
-		stringReplaceFuncs: function (s) {
-			for (var i=0; i < this.replaceFuncs.length; i++) {
-				s = s.replace(this.replaceFuncs[i][0], this.replaceFuncs[i][1]);
-			}
-			return s;
-		},
-		parse: function (s) {
-			s = this.stringReplaceFuncs(s);
-			s = utils.multiReplace(s, this.replaceHash);
-
-			try {
-				var n = s.split(/([\s\-\.\,\/\x27]+)/);
-				if (n.length === 3 &&
-					$P.Numeric.isNumeric(n[0]) &&
-					$P.Numeric.isNumeric(n[2]) &&
-					(n[2].length >= 4)) {
-						// ok, so we're dealing with x/year. But that's not a full date.
-						// This fixes wonky dateElementOrder parsing when set to dmy order.
-						if (Date.CultureInfo.dateElementOrder[0] === "d") {
-							s = "1/" + n[0] + "/" + n[2]; // set to 1st of month and normalize the seperator
-						}
-				}
-			} catch (e) {}
-
-			return s;
-		}
-	};
-	$P.Normalizer.buildReplaceData();
-}());
-},{}],72:[function(_dereq_,module,exports){
-(function () {
-	var $D = Date;
-	var lang = Date.CultureStrings ? Date.CultureStrings.lang : null;
-	var loggedKeys = {}; // for debug purposes.
-	var getText = {
-		getFromKey: function (key, countryCode) {
-			var output;
-			if (Date.CultureStrings && Date.CultureStrings[countryCode] && Date.CultureStrings[countryCode][key]) {
-				output = Date.CultureStrings[countryCode][key];
-			} else {
-				output = getText.buildFromDefault(key);
-			}
-			if (key.charAt(0) === "/") { // Assume it's a regex
-				output = getText.buildFromRegex(key, countryCode);
-			}
-			return output;
-		},
-		getFromObjectValues: function (obj, countryCode) {
-			var key, output = {};
-			for(key in obj) {
-				if (obj.hasOwnProperty(key)) {
-					output[key] = getText.getFromKey(obj[key], countryCode);
-				}
-			}
-			return output;
-		},
-		getFromObjectKeys: function (obj, countryCode) {
-			var key, output = {};
-			for(key in obj) {
-				if (obj.hasOwnProperty(key)) {
-					output[getText.getFromKey(key, countryCode)] = obj[key];
-				}
-			}
-			return output;
-		},
-		getFromArray: function (arr, countryCode) {
-			var output = [];
-			for (var i=0; i < arr.length; i++){
-				if (i in arr) {
-					output[i] = getText.getFromKey(arr[i], countryCode);
-				}
-			}
-			return output;
-		},
-		buildFromDefault: function (key) {
-			var output, length, split, last;
-			switch(key) {
-				case "name":
-					output = "en-US";
-					break;
-				case "englishName":
-					output = "English (United States)";
-					break;
-				case "nativeName":
-					output = "English (United States)";
-					break;
-				case "twoDigitYearMax":
-					output = 2049;
-					break;
-				case "firstDayOfWeek":
-					output = 0;
-					break;
-				default:
-					output = key;
-					split = key.split("_");
-					length = split.length;
-					if (length > 1 && key.charAt(0) !== "/") {
-						// if the key isn't a regex and it has a split.
-						last = split[(length - 1)].toLowerCase();
-						if (last === "initial" || last === "abbr") {
-							output = split[0];
-						}
-					}
-					break;
-			}
-			return output;
-		},
-		buildFromRegex: function (key, countryCode) {
-			var output;
-			if (Date.CultureStrings && Date.CultureStrings[countryCode] && Date.CultureStrings[countryCode][key]) {
-				output = new RegExp(Date.CultureStrings[countryCode][key], "i");
-			} else {
-				output = new RegExp(key.replace(new RegExp("/", "g"),""), "i");
-			}
-			return output;
-		}
-	};
-
-	var shallowMerge = function (obj1, obj2) {
-		for (var attrname in obj2) {
-			if (obj2.hasOwnProperty(attrname)) {
-				obj1[attrname] = obj2[attrname];
-			}
-		}
-	};
-
-	var __ = function (key, language) {
-		var countryCode = (language) ? language : lang;
-		loggedKeys[key] = key;
-		if (typeof key === "object") {
-			if (key instanceof Array) {
-				return getText.getFromArray(key, countryCode);
-			} else {
-				return getText.getFromObjectKeys(key, countryCode);
-			}
-		} else {
-			return getText.getFromKey(key, countryCode);
-		}
-	};
-	
-	var loadI18nScript = function (code) {
-		// paatterned after jQuery's getScript.
-		var url = Date.Config.i18n + code + ".js";
-		var head = document.getElementsByTagName("head")[0] || document.documentElement;
-		var script = document.createElement("script");
-		script.src = url;
-
-		var completed = false;
-		var events = {
-			done: function (){} // placeholder function
-		};
-		// Attach handlers for all browsers
-		script.onload = script.onreadystatechange = function() {
-			if ( !completed && (!this.readyState || this.readyState === "loaded" || this.readyState === "complete") ) {
-				events.done();
-				head.removeChild(script);
-			}
-		};
-
-		setTimeout(function() {
-			head.insertBefore(script, head.firstChild);
-		}, 0); // allows return to execute first
-		
-		return {
-			done: function (cb) {
-				events.done = function() {
-					if (cb) {
-						setTimeout(cb,0);
-					}
-				};
-			}
-		};
-	};
-
-	var buildInfo = {
-		buildFromMethodHash: function (obj) {
-			var key;
-			for(key in obj) {
-				if (obj.hasOwnProperty(key)) {
-					obj[key] = buildInfo[obj[key]]();
-				}
-			}
-			return obj;
-		},
-		timeZoneDST: function () {
-			var DST = {
-				"CHADT": "+1345",
-				"NZDT": "+1300",
-				"AEDT": "+1100",
-				"ACDT": "+1030",
-				"AZST": "+0500",
-				"IRDT": "+0430",
-				"EEST": "+0300",
-				"CEST": "+0200",
-				"BST": "+0100",
-				"PMDT": "-0200",
-				"ADT": "-0300",
-				"NDT": "-0230",
-				"EDT": "-0400",
-				"CDT": "-0500",
-				"MDT": "-0600",
-				"PDT": "-0700",
-				"AKDT": "-0800",
-				"HADT": "-0900"
-			};
-			return __(DST);
-		},
-		timeZoneStandard: function () {
-			var standard = {
-				"LINT": "+1400",
-				"TOT": "+1300",
-				"CHAST": "+1245",
-				"NZST": "+1200",
-				"NFT": "+1130",
-				"SBT": "+1100",
-				"AEST": "+1000",
-				"ACST": "+0930",
-				"JST": "+0900",
-				"CWST": "+0845",
-				"CT": "+0800",
-				"ICT": "+0700",
-				"MMT": "+0630",
-				"BST": "+0600",
-				"NPT": "+0545",
-				"IST": "+0530",
-				"PKT": "+0500",
-				"AFT": "+0430",
-				"MSK": "+0400",
-				"IRST": "+0330",
-				"FET": "+0300",
-				"EET": "+0200",
-				"CET": "+0100",
-				"GMT": "+0000",
-				"UTC": "+0000",
-				"CVT": "-0100",
-				"GST": "-0200",
-				"BRT": "-0300",
-				"NST": "-0330",
-				"AST": "-0400",
-				"EST": "-0500",
-				"CST": "-0600",
-				"MST": "-0700",
-				"PST": "-0800",
-				"AKST": "-0900",
-				"MIT": "-0930",
-				"HST": "-1000",
-				"SST": "-1100",
-				"BIT": "-1200"
-			};
-			return __(standard);
-		},
-		timeZones: function (data) {
-			var zone;
-			data.timezones = [];
-			for (zone in data.abbreviatedTimeZoneStandard) {
-				if (data.abbreviatedTimeZoneStandard.hasOwnProperty(zone)) {
-					data.timezones.push({ name: zone, offset: data.abbreviatedTimeZoneStandard[zone]});
-				}
-			}
-			for (zone in data.abbreviatedTimeZoneDST) {
-				if (data.abbreviatedTimeZoneDST.hasOwnProperty(zone)) {
-					data.timezones.push({ name: zone, offset: data.abbreviatedTimeZoneDST[zone], dst: true});
-				}
-			}
-			return data.timezones;
-		},
-		days: function () {
-			return __(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]);
-		},
-		dayAbbr: function () {
-			return __(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
-		},
-		dayShortNames: function () {
-			return __(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]);
-		},
-		dayFirstLetters: function () {
-			return __(["S_Sun_Initial", "M_Mon_Initial", "T_Tues_Initial", "W_Wed_Initial", "T_Thu_Initial", "F_Fri_Initial", "S_Sat_Initial"]);
-		},
-		months: function () {
-			return __(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]);
-		},
-		monthAbbr: function () {
-			return __(["Jan_Abbr", "Feb_Abbr", "Mar_Abbr", "Apr_Abbr", "May_Abbr", "Jun_Abbr", "Jul_Abbr", "Aug_Abbr", "Sep_Abbr", "Oct_Abbr", "Nov_Abbr", "Dec_Abbr"]);
-		},
-		formatPatterns: function () {
-			return getText.getFromObjectValues({
-				shortDate: "M/d/yyyy",
-				longDate: "dddd, MMMM dd, yyyy",
-				shortTime: "h:mm tt",
-				longTime: "h:mm:ss tt",
-				fullDateTime: "dddd, MMMM dd, yyyy h:mm:ss tt",
-				sortableDateTime: "yyyy-MM-ddTHH:mm:ss",
-				universalSortableDateTime: "yyyy-MM-dd HH:mm:ssZ",
-				rfc1123: "ddd, dd MMM yyyy HH:mm:ss",
-				monthDay: "MMMM dd",
-				yearMonth: "MMMM, yyyy"
-			}, Date.i18n.currentLanguage());
-		},
-		regex: function () {
-			return getText.getFromObjectValues({
-				inTheMorning: "/( in the )(morn(ing)?)\\b/",
-				thisMorning: "/(this )(morn(ing)?)\\b/",
-				amThisMorning: "/(\b\\d(am)? )(this )(morn(ing)?)/",
-				inTheEvening: "/( in the )(even(ing)?)\\b/",
-				thisEvening: "/(this )(even(ing)?)\\b/",
-				pmThisEvening: "/(\b\\d(pm)? )(this )(even(ing)?)/",
-				jan: "/jan(uary)?/",
-				feb: "/feb(ruary)?/",
-				mar: "/mar(ch)?/",
-				apr: "/apr(il)?/",
-				may: "/may/",
-				jun: "/jun(e)?/",
-				jul: "/jul(y)?/",
-				aug: "/aug(ust)?/",
-				sep: "/sep(t(ember)?)?/",
-				oct: "/oct(ober)?/",
-				nov: "/nov(ember)?/",
-				dec: "/dec(ember)?/",
-				sun: "/^su(n(day)?)?/",
-				mon: "/^mo(n(day)?)?/",
-				tue: "/^tu(e(s(day)?)?)?/",
-				wed: "/^we(d(nesday)?)?/",
-				thu: "/^th(u(r(s(day)?)?)?)?/",
-				fri: "/fr(i(day)?)?/",
-				sat: "/^sa(t(urday)?)?/",
-				future: "/^next/",
-				past: "/^last|past|prev(ious)?/",
-				add: "/^(\\+|aft(er)?|from|hence)/",
-				subtract: "/^(\\-|bef(ore)?|ago)/",
-				yesterday: "/^yes(terday)?/",
-				today: "/^t(od(ay)?)?/",
-				tomorrow: "/^tom(orrow)?/",
-				now: "/^n(ow)?/",
-				millisecond: "/^ms|milli(second)?s?/",
-				second: "/^sec(ond)?s?/",
-				minute: "/^mn|min(ute)?s?/",
-				hour: "/^h(our)?s?/",
-				week: "/^w(eek)?s?/",
-				month: "/^m(onth)?s?/",
-				day: "/^d(ay)?s?/",
-				year: "/^y(ear)?s?/",
-				shortMeridian: "/^(a|p)/",
-				longMeridian: "/^(a\\.?m?\\.?|p\\.?m?\\.?)/",
-				timezone: "/^((e(s|d)t|c(s|d)t|m(s|d)t|p(s|d)t)|((gmt)?\\s*(\\+|\\-)\\s*\\d\\d\\d\\d?)|gmt|utc)/",
-				ordinalSuffix: "/^\\s*(st|nd|rd|th)/",
-				timeContext: "/^\\s*(\\:|a(?!u|p)|p)/"
-			}, Date.i18n.currentLanguage());
-		}
-	};
-
-	var CultureInfo = function () {
-		var info = getText.getFromObjectValues({
-			name: "name",
-			englishName: "englishName",
-			nativeName: "nativeName",
-			amDesignator: "AM",
-			pmDesignator: "PM",
-			firstDayOfWeek: "firstDayOfWeek",
-			twoDigitYearMax: "twoDigitYearMax",
-			dateElementOrder: "mdy"
-		}, Date.i18n.currentLanguage());
-
-		var constructedInfo = buildInfo.buildFromMethodHash({
-			dayNames: "days",
-			abbreviatedDayNames: "dayAbbr",
-			shortestDayNames: "dayShortNames",
-			firstLetterDayNames: "dayFirstLetters",
-			monthNames: "months",
-			abbreviatedMonthNames: "monthAbbr",
-			formatPatterns: "formatPatterns",
-			regexPatterns: "regex",
-			abbreviatedTimeZoneDST: "timeZoneDST",
-			abbreviatedTimeZoneStandard: "timeZoneStandard"
-		});
-
-		shallowMerge(info, constructedInfo);
-		buildInfo.timeZones(info);
-		return info;
-	};
-
-	$D.i18n = {
-		__: function (key, lang) {
-			return __(key, lang);
-		},
-		currentLanguage: function () {
-			return lang || "en-US";
-		},
-		setLanguage: function (code, force, cb) {
-			var async = false;
-			if (force || code === "en-US" || (!!Date.CultureStrings && !!Date.CultureStrings[code])) {
-				lang = code;
-				Date.CultureStrings = Date.CultureStrings || {};
-				Date.CultureStrings.lang = code;
-				Date.CultureInfo = new CultureInfo();
-			} else {
-				if (!(!!Date.CultureStrings && !!Date.CultureStrings[code])) {
-					if (typeof exports !== "undefined" && this.exports !== exports) {
-						// we're in a Node enviroment, load it using require
-						try {
-							_dereq_("../i18n/" + code + ".js");
-							lang = code;
-							Date.CultureStrings.lang = code;
-							Date.CultureInfo = new CultureInfo();
-						} catch (e) {
-							// var str = "The language for '" + code + "' could not be loaded by Node. It likely does not exist.";
-							throw new Error("The DateJS IETF language tag '" + code + "' could not be loaded by Node. It likely does not exist.");
-						}
-					} else if (Date.Config && Date.Config.i18n) {
-						// we know the location of the files, so lets load them					
-						async = true;
-						loadI18nScript(code).done(function(){
-							lang = code;
-							Date.CultureStrings = Date.CultureStrings || {};
-							Date.CultureStrings.lang = code;
-							Date.CultureInfo = new CultureInfo();
-							$D.Parsing.Normalizer.buildReplaceData(); // because this is async
-							if ($D.Grammar) {
-								$D.Grammar.buildGrammarFormats(); // so we can parse those strings...
-							}
-							if (cb) {
-								setTimeout(cb,0);
-							}
-						});
-					} else {
-						Date.console.error("The DateJS IETF language tag '" + code + "' is not available and has not been loaded.");
-						return false;
-					}
-				}
-			}
-			$D.Parsing.Normalizer.buildReplaceData(); // rebuild normalizer strings
-			if ($D.Grammar) {
-				$D.Grammar.buildGrammarFormats(); // so we can parse those strings...
-			}
-			if (!async && cb) {
-				setTimeout(cb,0);
-			}
-		},
-		getLoggedKeys: function () {
-			return loggedKeys;
-		},
-		updateCultureInfo: function () {
-			Date.CultureInfo = new CultureInfo();
-		}
-	};
-	$D.i18n.updateCultureInfo(); // run automatically
-}());
-},{}],73:[function(_dereq_,module,exports){
-(function () {
-	var $D = Date;
-
-	/**
-	 * @desc Converts the specified string value into its JavaScript Date equivalent using CultureInfo specific format information.
-	 * 
-	 * Example
-	<pre><code>
-	///////////
-	// Dates //
-	///////////
-
-	// 15-Oct-2004
-	var d1 = Date.parse("10/15/2004");
-
-	// 15-Oct-2004
-	var d1 = Date.parse("15-Oct-2004");
-
-	// 15-Oct-2004
-	var d1 = Date.parse("2004.10.15");
-
-	//Fri Oct 15, 2004
-	var d1 = Date.parse("Fri Oct 15, 2004");
-
-	///////////
-	// Times //
-	///////////
-
-	// Today at 10 PM.
-	var d1 = Date.parse("10 PM");
-
-	// Today at 10:30 PM.
-	var d1 = Date.parse("10:30 P.M.");
-
-	// Today at 6 AM.
-	var d1 = Date.parse("06am");
-
-	/////////////////////
-	// Dates and Times //
-	/////////////////////
-
-	// 8-July-2004 @ 10:30 PM
-	var d1 = Date.parse("July 8th, 2004, 10:30 PM");
-
-	// 1-July-2004 @ 10:30 PM
-	var d1 = Date.parse("2004-07-01T22:30:00");
-
-	////////////////////
-	// Relative Dates //
-	////////////////////
-
-	// Returns today's date. The string "today" is culture specific.
-	var d1 = Date.parse("today");
-
-	// Returns yesterday's date. The string "yesterday" is culture specific.
-	var d1 = Date.parse("yesterday");
-
-	// Returns the date of the next thursday.
-	var d1 = Date.parse("Next thursday");
-
-	// Returns the date of the most previous monday.
-	var d1 = Date.parse("last monday");
-
-	// Returns today's day + one year.
-	var d1 = Date.parse("next year");
-
-	///////////////
-	// Date Math //
-	///////////////
-
-	// Today + 2 days
-	var d1 = Date.parse("t+2");
-
-	// Today + 2 days
-	var d1 = Date.parse("today + 2 days");
-
-	// Today + 3 months
-	var d1 = Date.parse("t+3m");
-
-	// Today - 1 year
-	var d1 = Date.parse("today - 1 year");
-
-	// Today - 1 year
-	var d1 = Date.parse("t-1y"); 
-
-
-	/////////////////////////////
-	// Partial Dates and Times //
-	/////////////////////////////
-
-	// July 15th of this year.
-	var d1 = Date.parse("July 15");
-
-	// 15th day of current day and year.
-	var d1 = Date.parse("15");
-
-	// July 1st of current year at 10pm.
-	var d1 = Date.parse("7/1 10pm");
-	</code></pre>
-	 *
-	 * @param {String}   The string value to convert into a Date object [Required]
-	 * @return {Date}    A Date object or null if the string cannot be converted into a Date.
-	 */
-	var parseUtils = {
-		removeOrds: function (s) {
-			ords = s.match(/\b(\d+)(?:st|nd|rd|th)\b/); // find ordinal matches
-			s = ((ords && ords.length === 2) ? s.replace(ords[0], ords[1]) : s);
-			return s;
-		},
-		grammarParser: function (s) {
-			var r = null;
-			try {
-				r = $D.Grammar.start.call({}, s.replace(/^\s*(\S*(\s+\S+)*)\s*$/, "$1"));
-			} catch (e) {
-				return null;
-			}
-			
-			return ((r[1].length === 0) ? r[0] : null);
-		},
-		nativeFallback: function(s) {
-			var t;
-			try {
-				// ok we haven't parsed it, last ditch attempt with the built-in parser.
-				t = Date._parse(s);
-				return (t || t === 0) ? new Date(t) : null;
-			} catch (e) {
-				return null;
-			}
-		}
-	};
-	function parse (s) {
-		var d;
-		if (!s) {
-			return null;
-		}
-		if (s instanceof Date) {
-			return s.clone();
-		}
-		if (s.length >= 4 && s.charAt(0) !== "0" && s.charAt(0) !== "+"&& s.charAt(0) !== "-") { // ie: 2004 will pass, 0800 won't.
-			//  Start with specific formats
-			d = $D.Parsing.ISO.parse(s) || $D.Parsing.Numeric.parse(s);
-		}
-		if (d instanceof Date && !isNaN(d.getTime())) {
-			return d;
-		} else {
-			// find ordinal dates (1st, 3rd, 8th, etc and remove them as they cause parsing issues)
-			s = $D.Parsing.Normalizer.parse(parseUtils.removeOrds(s));
-			d = parseUtils.grammarParser(s);
-			if (d !== null) {
-				return d;
-			} else {
-				return parseUtils.nativeFallback(s);
-			}
-		}
-	}
-
-	if (!$D._parse) {
-		$D._parse = $D.parse;
-	}
-	$D.parse = parse;
-
-	Date.getParseFunction = function (fx) {
-		var fns = Date.Grammar.allformats(fx);
-		return function (s) {
-			var r = null;
-			for (var i = 0; i < fns.length; i++) {
-				try {
-					r = fns[i].call({}, s);
-				} catch (e) {
-					continue;
-				}
-				if (r[1].length === 0) {
-					return r[0];
-				}
-			}
-			return null;
-		};
-	};
-	
-	/**
-	 * Converts the specified string value into its JavaScript Date equivalent using the specified format {String} or formats {Array} and the CultureInfo specific format information.
-	 * The format of the string value must match one of the supplied formats exactly.
-	 * 
-	 * Example
-	<pre><code>
-	// 15-Oct-2004
-	var d1 = Date.parseExact("10/15/2004", "M/d/yyyy");
-
-	// 15-Oct-2004
-	var d1 = Date.parse("15-Oct-2004", "M-ddd-yyyy");
-
-	// 15-Oct-2004
-	var d1 = Date.parse("2004.10.15", "yyyy.MM.dd");
-
-	// Multiple formats
-	var d1 = Date.parseExact("10/15/2004", ["M/d/yyyy", "MMMM d, yyyy"]);
-	</code></pre>
-	 *
-	 * @param {String}   The string value to convert into a Date object [Required].
-	 * @param {Object}   The expected format {String} or an array of expected formats {Array} of the date string [Required].
-	 * @return {Date}    A Date object or null if the string cannot be converted into a Date.
-	 */
-	$D.parseExact = function (s, fx) {
-		return $D.getParseFunction(fx)(s);
-	};
-}());
-
-},{}],74:[function(_dereq_,module,exports){
-(function () {
-	var $D = Date;
-	$D.Grammar = {};
-	var _ = $D.Parsing.Operators, g = $D.Grammar, t = $D.Translator, _fn;
-	// Allow rolling up into general purpose rules
-	_fn = function () {
-		return _.each(_.any.apply(null, arguments), _.not(g.ctoken2("timeContext")));
-	};
-	
-	g.datePartDelimiter = _.rtoken(/^([\s\-\.\,\/\x27]+)/);
-	g.timePartDelimiter = _.stoken(":");
-	g.whiteSpace = _.rtoken(/^\s*/);
-	g.generalDelimiter = _.rtoken(/^(([\s\,]|at|@|on)+)/);
-  
-	var _C = {};
-	g.ctoken = function (keys) {
-		var fn = _C[keys];
-		if (! fn) {
-			var c = Date.CultureInfo.regexPatterns;
-			var kx = keys.split(/\s+/), px = [];
-			for (var i = 0; i < kx.length ; i++) {
-				px.push(_.replace(_.rtoken(c[kx[i]]), kx[i]));
-			}
-			fn = _C[keys] = _.any.apply(null, px);
-		}
-		return fn;
-	};
-	g.ctoken2 = function (key) {
-		return _.rtoken(Date.CultureInfo.regexPatterns[key]);
-	};
-	var cacheProcessRtoken = function (key, token, type, eachToken) {
-		if (eachToken) {
-			g[key] = _.cache(_.process(_.each(_.rtoken(token),_.optional(g.ctoken2(eachToken))), type));
-		} else {
-			g[key] = _.cache(_.process(_.rtoken(token), type));
-		}
-	};
-	var cacheProcessCtoken = function (token, type) {
-		return _.cache(_.process(g.ctoken2(token), type));
-	};
-	var _F = {}; //function cache
-
-	var _get = function (f) {
-		_F[f] = (_F[f] || g.format(f)[0]);
-		return _F[f];
-	};
-
-	g.allformats = function (fx) {
-		var rx = [];
-		if (fx instanceof Array) {
-			for (var i = 0; i < fx.length; i++) {
-				rx.push(_get(fx[i]));
-			}
-		} else {
-			rx.push(_get(fx));
-		}
-		return rx;
-	};
-  
-	g.formats = function (fx) {
-		if (fx instanceof Array) {
-			var rx = [];
-			for (var i = 0 ; i < fx.length ; i++) {
-				rx.push(_get(fx[i]));
-			}
-			return _.any.apply(null, rx);
-		} else {
-			return _get(fx);
-		}
-	};
-
-	var grammarFormats = {
-		 timeFormats: function(){
-			var i,
-			RTokenKeys = [
-				"h",
-				"hh",
-				"H",
-				"HH",
-				"m",
-				"mm",
-				"s",
-				"ss",
-				"ss.s",
-				"z",
-				"zz"
-			],
-			RToken = [
-				/^(0[0-9]|1[0-2]|[1-9])/,
-				/^(0[0-9]|1[0-2])/,
-				/^([0-1][0-9]|2[0-3]|[0-9])/,
-				/^([0-1][0-9]|2[0-3])/,
-				/^([0-5][0-9]|[0-9])/,
-				/^[0-5][0-9]/,
-				/^([0-5][0-9]|[0-9])/,
-				/^[0-5][0-9]/,
-				/^[0-5][0-9]\.[0-9]{1,3}/,
-				/^((\+|\-)\s*\d\d\d\d)|((\+|\-)\d\d\:?\d\d)/,
-				/^((\+|\-)\s*\d\d\d\d)|((\+|\-)\d\d\:?\d\d)/
-			],
-			tokens = [
-				t.hour,
-				t.hour,
-				t.hour,
-				t.minute,
-				t.minute,
-				t.second,
-				t.second,
-				t.secondAndMillisecond,
-				t.timezone,
-				t.timezone,
-				t.timezone
-			];
-
-			for (i=0; i < RTokenKeys.length; i++) {
-				cacheProcessRtoken(RTokenKeys[i], RToken[i], tokens[i]);
-			}
-
-			g.hms = _.cache(_.sequence([g.H, g.m, g.s], g.timePartDelimiter));
-
-			g.t = cacheProcessCtoken("shortMeridian", t.meridian);
-			g.tt = cacheProcessCtoken("longMeridian", t.meridian);
-			g.zzz = cacheProcessCtoken("timezone", t.timezone);
-
-			g.timeSuffix = _.each(_.ignore(g.whiteSpace), _.set([ g.tt, g.zzz ]));
-			g.time = _.each(_.optional(_.ignore(_.stoken("T"))), g.hms, g.timeSuffix);
-		 },
-		 dateFormats: function () {
-			// pre-loaded rules for different date part order preferences
-			var _setfn = function () {
-				return  _.set(arguments, g.datePartDelimiter);
-			};
-			var i,
-			RTokenKeys = [
-				"d",
-				"dd",
-				"M",
-				"MM",
-				"y",
-				"yy",
-				"yyy",
-				"yyyy"
-			],
-			RToken = [
-				/^([0-2]\d|3[0-1]|\d)/,
-				/^([0-2]\d|3[0-1])/,
-				/^(1[0-2]|0\d|\d)/,
-				/^(1[0-2]|0\d)/,
-				/^(\d+)/,
-				/^(\d\d)/,
-				/^(\d\d?\d?\d?)/,
-				/^(\d\d\d\d)/
-			],
-			tokens = [
-				t.day,
-				t.day,
-				t.month,
-				t.month,
-				t.year,
-				t.year,
-				t.year,
-				t.year
-			],
-			eachToken = [
-				"ordinalSuffix",
-				"ordinalSuffix"
-			];
-			for (i=0; i < RTokenKeys.length; i++) {
-				cacheProcessRtoken(RTokenKeys[i], RToken[i], tokens[i], eachToken[i]);
-			}
-
-			g.MMM = g.MMMM = _.cache(_.process(g.ctoken("jan feb mar apr may jun jul aug sep oct nov dec"), t.month));
-			g.ddd = g.dddd = _.cache(_.process(g.ctoken("sun mon tue wed thu fri sat"),
-				function (s) {
-					return function () {
-						this.weekday = s;
-					};
-				}
-			));
-
-			g.day = _fn(g.d, g.dd);
-			g.month = _fn(g.M, g.MMM);
-			g.year = _fn(g.yyyy, g.yy);
-
-			g.mdy = _setfn(g.ddd, g.month, g.day, g.year);
-			g.ymd = _setfn(g.ddd, g.year, g.month, g.day);
-			g.dmy = _setfn(g.ddd, g.day, g.month, g.year);
-						
-			g.date = function (s) {
-				return ((g[Date.CultureInfo.dateElementOrder] || g.mdy).call(this, s));
-			};
-		 },
-		 relative: function () {
-			// relative date / time expressions
-			g.orientation = _.process(g.ctoken("past future"),
-				function (s) {
-					return function () {
-						this.orient = s;
-					};
-				}
-			);
-
-			g.operator = _.process(g.ctoken("add subtract"),
-				function (s) {
-					return function () {
-						this.operator = s;
-					};
-				}
-			);
-			g.rday = _.process(g.ctoken("yesterday tomorrow today now"), t.rday);
-			g.unit = _.process(g.ctoken("second minute hour day week month year"),
-				function (s) {
-					return function () {
-						this.unit = s;
-					};
-				}
-			);
-		 }
-	};
-
-	g.buildGrammarFormats = function () {
-		// these need to be rebuilt every time the language changes.
-		_C = {};
-
-		grammarFormats.timeFormats();
-		grammarFormats.dateFormats();
-		grammarFormats.relative();
-
-		
-		g.value = _.process(_.rtoken(/^([-+]?\d+)?(st|nd|rd|th)?/),
-			function (s) {
-				return function () {
-					this.value = s.replace(/\D/g, "");
-				};
-			}
-		);
-		g.expression = _.set([g.rday, g.operator, g.value, g.unit, g.orientation, g.ddd, g.MMM ]);
-
-		g.format = _.process(_.many(
-			_.any(
-				// translate format specifiers into grammar rules
-				_.process(
-					_.rtoken(/^(dd?d?d?(?!e)|MM?M?M?|yy?y?y?|hh?|HH?|mm?|ss?|tt?|zz?z?)/),
-						function (fmt) {
-							if (g[fmt]) {
-								return g[fmt];
-							} else {
-								throw $D.Parsing.Exception(fmt);
-							}
-						}
-					),
-					// translate separator tokens into token rules
-					_.process(_.rtoken(/^[^dMyhHmstz]+/), // all legal separators 
-						function (s) {
-							return _.ignore(_.stoken(s));
-						}
-					)
-				)
-			),
-			// construct the parser ...
-			function (rules) {
-				return _.process(_.each.apply(null, rules), t.finishExact);
-			}
-		);
-
-		// starting rule for general purpose grammar
-		g._start = _.process(_.set([ g.date, g.time, g.expression ],
-		g.generalDelimiter, g.whiteSpace), t.finish);
-	};
-
-	g.buildGrammarFormats();
-	// parsing date format specifiers - ex: "h:m:s tt" 
-	// this little guy will generate a custom parser based
-	// on the format string, ex: g.format("h:m:s tt")
-	// check for these formats first
-	g._formats = g.formats([
-		"\"yyyy-MM-ddTHH:mm:ssZ\"",
-		"yyyy-MM-ddTHH:mm:ss.sz",
-		"yyyy-MM-ddTHH:mm:ssZ",
-		"yyyy-MM-ddTHH:mm:ssz",
-		"yyyy-MM-ddTHH:mm:ss",
-		"yyyy-MM-ddTHH:mmZ",
-		"yyyy-MM-ddTHH:mmz",
-		"yyyy-MM-ddTHH:mm",
-		"ddd, MMM dd, yyyy H:mm:ss tt",
-		"ddd MMM d yyyy HH:mm:ss zzz",
-		"MMddyyyy",
-		"ddMMyyyy",
-		"Mddyyyy",
-		"ddMyyyy",
-		"Mdyyyy",
-		"dMyyyy",
-		"yyyy",
-		"Mdyy",
-		"dMyy",
-		"d"
-	]);
-	
-	// real starting rule: tries selected formats first, 
-	// then general purpose rule
-	g.start = function (s) {
-		try {
-			var r = g._formats.call({}, s);
-			if (r[1].length === 0) {
-				return r;
-			}
-		} catch (e) {}
-		return g._start.call({}, s);
-	};
-}());
-},{}],75:[function(_dereq_,module,exports){
-(function () {
-	var $P = Date.Parsing;
-	var _ = $P.Operators = {
-		//
-		// Tokenizers
-		//
-		rtoken: function (r) { // regex token
-			return function (s) {
-				var mx = s.match(r);
-				if (mx) {
-					return ([ mx[0], s.substring(mx[0].length) ]);
-				} else {
-					throw new $P.Exception(s);
-				}
-			};
-		},
-		token: function () { // whitespace-eating token
-			return function (s) {
-				return _.rtoken(new RegExp("^\\s*" + s + "\\s*"))(s);
-			};
-		},
-		stoken: function (s) { // string token
-			return _.rtoken(new RegExp("^" + s));
-		},
-
-		// Atomic Operators
-
-		until: function (p) {
-			return function (s) {
-				var qx = [], rx = null;
-				while (s.length) {
-					try {
-						rx = p.call(this, s);
-					} catch (e) {
-						qx.push(rx[0]);
-						s = rx[1];
-						continue;
-					}
-					break;
-				}
-				return [ qx, s ];
-			};
-		},
-		many: function (p) {
-			return function (s) {
-				var rx = [], r = null;
-				while (s.length) {
-					try {
-						r = p.call(this, s);
-					} catch (e) {
-						return [ rx, s ];
-					}
-					rx.push(r[0]);
-					s = r[1];
-				}
-				return [ rx, s ];
-			};
-		},
-
-		// generator operators -- see below
-		optional: function (p) {
-			return function (s) {
-				var r = null;
-				try {
-					r = p.call(this, s);
-				} catch (e) {
-					return [ null, s ];
-				}
-				return [ r[0], r[1] ];
-			};
-		},
-		not: function (p) {
-			return function (s) {
-				try {
-					p.call(this, s);
-				} catch (e) {
-					return [null, s];
-				}
-				throw new $P.Exception(s);
-			};
-		},
-		ignore: function (p) {
-			return p ?
-			function (s) {
-				var r = null;
-				r = p.call(this, s);
-				return [null, r[1]];
-			} : null;
-		},
-		product: function () {
-			var px = arguments[0],
-			qx = Array.prototype.slice.call(arguments, 1), rx = [];
-			for (var i = 0 ; i < px.length ; i++) {
-				rx.push(_.each(px[i], qx));
-			}
-			return rx;
-		},
-		cache: function (rule) {
-			var cache = {}, cache_length = 0, cache_keys = [], CACHE_MAX = Date.Config.CACHE_MAX || 100000, r = null;
-			var cacheCheck = function () {
-				if (cache_length === CACHE_MAX) {
-					// kill several keys, don't want to have to do this all the time...
-					for (var i=0; i < 10; i++) {
-						var key = cache_keys.shift();
-						if (key) {
-							delete cache[key];
-							cache_length--;
-						}
-					}
-				}
-			};
-			return function (s) {
-				cacheCheck();
-				try {
-					r = cache[s] = (cache[s] || rule.call(this, s));
-				} catch (e) {
-					r = cache[s] = e;
-				}
-				cache_length++;
-				cache_keys.push(s);
-				if (r instanceof $P.Exception) {
-					throw r;
-				} else {
-					return r;
-				}
-			};
-		},
-
-		// vector operators -- see below
-		any: function () {
-			var px = arguments;
-			return function (s) {
-				var r = null;
-				for (var i = 0; i < px.length; i++) {
-					if (px[i] == null) {
-						continue;
-					}
-					try {
-						r = (px[i].call(this, s));
-					} catch (e) {
-						r = null;
-					}
-					if (r) {
-						return r;
-					}
-				}
-				throw new $P.Exception(s);
-			};
-		},
-		each: function () {
-			var px = arguments;
-			return function (s) {
-				var rx = [], r = null;
-				for (var i = 0; i < px.length ; i++) {
-					if (px[i] == null) {
-						continue;
-					}
-					try {
-						r = (px[i].call(this, s));
-					} catch (e) {
-						throw new $P.Exception(s);
-					}
-					rx.push(r[0]);
-					s = r[1];
-				}
-				return [ rx, s];
-			};
-		},
-		all: function () {
-			var px = arguments, _ = _;
-			return _.each(_.optional(px));
-		},
-
-		// delimited operators
-		sequence: function (px, d, c) {
-			d = d || _.rtoken(/^\s*/);
-			c = c || null;
-			
-			if (px.length === 1) {
-				return px[0];
-			}
-			return function (s) {
-				var r = null, q = null;
-				var rx = [];
-				for (var i = 0; i < px.length ; i++) {
-					try {
-						r = px[i].call(this, s);
-					} catch (e) {
-						break;
-					}
-					rx.push(r[0]);
-					try {
-						q = d.call(this, r[1]);
-					} catch (ex) {
-						q = null;
-						break;
-					}
-					s = q[1];
-				}
-				if (!r) {
-					throw new $P.Exception(s);
-				}
-				if (q) {
-					throw new $P.Exception(q[1]);
-				}
-				if (c) {
-					try {
-						r = c.call(this, r[1]);
-					} catch (ey) {
-						throw new $P.Exception(r[1]);
-					}
-				}
-				return [ rx, (r?r[1]:s) ];
-			};
-		},
-
-		//
-		// Composite Operators
-		//
-
-		between: function (d1, p, d2) {
-			d2 = d2 || d1;
-			var _fn = _.each(_.ignore(d1), p, _.ignore(d2));
-			return function (s) {
-				var rx = _fn.call(this, s);
-				return [[rx[0][0], r[0][2]], rx[1]];
-			};
-		},
-		list: function (p, d, c) {
-			d = d || _.rtoken(/^\s*/);
-			c = c || null;
-			return (p instanceof Array ?
-				_.each(_.product(p.slice(0, -1), _.ignore(d)), p.slice(-1), _.ignore(c)) :
-				_.each(_.many(_.each(p, _.ignore(d))), px, _.ignore(c)));
-		},
-		set: function (px, d, c) {
-			d = d || _.rtoken(/^\s*/);
-			c = c || null;
-			return function (s) {
-				// r is the current match, best the current 'best' match
-				// which means it parsed the most amount of input
-				var r = null, p = null, q = null, rx = null, best = [[], s], last = false;
-				// go through the rules in the given set
-				for (var i = 0; i < px.length ; i++) {
-
-					// last is a flag indicating whether this must be the last element
-					// if there is only 1 element, then it MUST be the last one
-					q = null;
-					p = null;
-					r = null;
-					last = (px.length === 1);
-					// first, we try simply to match the current pattern
-					// if not, try the next pattern
-					try {
-						r = px[i].call(this, s);
-					} catch (e) {
-						continue;
-					}
-					// since we are matching against a set of elements, the first
-					// thing to do is to add r[0] to matched elements
-					rx = [[r[0]], r[1]];
-					// if we matched and there is still input to parse and 
-					// we don't already know this is the last element,
-					// we're going to next check for the delimiter ...
-					// if there's none, or if there's no input left to parse
-					// than this must be the last element after all ...
-					if (r[1].length > 0 && ! last) {
-						try {
-							q = d.call(this, r[1]);
-						} catch (ex) {
-							last = true;
-						}
-					} else {
-						last = true;
-					}
-
-					// if we parsed the delimiter and now there's no more input,
-					// that means we shouldn't have parsed the delimiter at all
-					// so don't update r and mark this as the last element ...
-					if (!last && q[1].length === 0) {
-						last = true;
-					}
-
-
-					// so, if this isn't the last element, we're going to see if
-					// we can get any more matches from the remaining (unmatched)
-					// elements ...
-					if (!last) {
-						// build a list of the remaining rules we can match against,
-						// i.e., all but the one we just matched against
-						var qx = [];
-						for (var j = 0; j < px.length ; j++) {
-							if (i !== j) {
-								qx.push(px[j]);
-							}
-						}
-
-						// now invoke recursively set with the remaining input
-						// note that we don't include the closing delimiter ...
-						// we'll check for that ourselves at the end
-						p = _.set(qx, d).call(this, q[1]);
-
-						// if we got a non-empty set as a result ...
-						// (otw rx already contains everything we want to match)
-						if (p[0].length > 0) {
-							// update current result, which is stored in rx ...
-							// basically, pick up the remaining text from p[1]
-							// and concat the result from p[0] so that we don't
-							// get endless nesting ...
-							rx[0] = rx[0].concat(p[0]);
-							rx[1] = p[1];
-						}
-					}
-
-					// at this point, rx either contains the last matched element
-					// or the entire matched set that starts with this element.
-
-					// now we just check to see if this variation is better than
-					// our best so far, in terms of how much of the input is parsed
-					if (rx[1].length < best[1].length) {
-						best = rx;
-					}
-
-					// if we've parsed all the input, then we're finished
-					if (best[1].length === 0) {
-						break;
-					}
-				}
-
-				// so now we've either gone through all the patterns trying them
-				// as the initial match; or we found one that parsed the entire
-				// input string ...
-
-				// if best has no matches, just return empty set ...
-				if (best[0].length === 0) {
-					return best;
-				}
-
-				// if a closing delimiter is provided, then we have to check it also
-				if (c) {
-					// we try this even if there is no remaining input because the pattern
-					// may well be optional or match empty input ...
-					try {
-						q = c.call(this, best[1]);
-					} catch (ey) {
-						throw new $P.Exception(best[1]);
-					}
-
-					// it parsed ... be sure to update the best match remaining input
-					best[1] = q[1];
-				}
-				// if we're here, either there was no closing delimiter or we parsed it
-				// so now we have the best match; just return it!
-				return best;
-			};
-		},
-		forward: function (gr, fname) {
-			return function (s) {
-				return gr[fname].call(this, s);
-			};
-		},
-
-		//
-		// Translation Operators
-		//
-		replace: function (rule, repl) {
-			return function (s) {
-				var r = rule.call(this, s);
-				return [repl, r[1]];
-			};
-		},
-		process: function (rule, fn) {
-			return function (s) {
-				var r = rule.call(this, s);
-				return [fn.call(this, r[0]), r[1]];
-			};
-		},
-		min: function (min, rule) {
-			return function (s) {
-				var rx = rule.call(this, s);
-				if (rx[0].length < min) {
-					throw new $P.Exception(s);
-				}
-				return rx;
-			};
-		}
-	};
-	
-
-	// Generator Operators And Vector Operators
-
-	// Generators are operators that have a signature of F(R) => R,
-	// taking a given rule and returning another rule, such as 
-	// ignore, which parses a given rule and throws away the result.
-
-	// Vector operators are those that have a signature of F(R1,R2,...) => R,
-	// take a list of rules and returning a new rule, such as each.
-
-	// Generator operators are converted (via the following _generator
-	// function) into functions that can also take a list or array of rules
-	// and return an array of new rules as though the function had been
-	// called on each rule in turn (which is what actually happens).
-
-	// This allows generators to be used with vector operators more easily.
-	// Example:
-	// each(ignore(foo, bar)) instead of each(ignore(foo), ignore(bar))
-
-	// This also turns generators into vector operators, which allows
-	// constructs like:
-	// not(cache(foo, bar))
-	
-	var _generator = function (op) {
-		function gen() {
-			var args = null, rx = [], px, i;
-			if (arguments.length > 1) {
-				args = Array.prototype.slice.call(arguments);
-			} else if (arguments[0] instanceof Array) {
-				args = arguments[0];
-			}
-			if (args) {
-				px = args.shift();
-				if (px.length > 0) {
-					args.unshift(px[i]);
-					rx.push(op.apply(null, args));
-					args.shift();
-					return rx;
-				}
-			} else {
-				return op.apply(null, arguments);
-			}
-		}
-
-		return gen;
-	};
-	
-	var gx = "optional not ignore cache".split(/\s/);
-	
-	for (var i = 0 ; i < gx.length ; i++) {
-		_[gx[i]] = _generator(_[gx[i]]);
-	}
-
-	var _vector = function (op) {
-		return function () {
-			if (arguments[0] instanceof Array) {
-				return op.apply(null, arguments[0]);
-			} else {
-				return op.apply(null, arguments);
-			}
-		};
-	};
-	
-	var vx = "each any all".split(/\s/);
-	
-	for (var j = 0 ; j < vx.length ; j++) {
-		_[vx[j]] = _vector(_[vx[j]]);
-	}
-	
-}());
-},{}],76:[function(_dereq_,module,exports){
-(function () {
-	var $D = Date;
-
-	var flattenAndCompact = function (ax) {
-		var rx = [];
-		for (var i = 0; i < ax.length; i++) {
-			if (ax[i] instanceof Array) {
-				rx = rx.concat(flattenAndCompact(ax[i]));
-			} else {
-				if (ax[i]) {
-					rx.push(ax[i]);
-				}
-			}
-		}
-		return rx;
-	};
-
-	var parseMeridian = function () {
-		if (this.meridian && (this.hour || this.hour === 0)) {
-			if (this.meridian === "a" && this.hour > 11 && Date.Config.strict24hr){
-				throw "Invalid hour and meridian combination";
-			} else if (this.meridian === "p" && this.hour < 12 && Date.Config.strict24hr){
-				throw "Invalid hour and meridian combination";
-			} else if (this.meridian === "p" && this.hour < 12) {
-				this.hour = this.hour + 12;
-			} else if (this.meridian === "a" && this.hour === 12) {
-				this.hour = 0;
-			}
-		}
-	};
-
-	var setDefaults = function () {
-		var now = new Date();
-		if ((this.hour || this.minute) && (!this.month && !this.year && !this.day)) {
-			this.day = now.getDate();
-		}
-
-		if (!this.year) {
-			this.year = now.getFullYear();
-		}
-		
-		if (!this.month && this.month !== 0) {
-			this.month = now.getMonth();
-		}
-		
-		if (!this.day) {
-			this.day = 1;
-		}
-		
-		if (!this.hour) {
-			this.hour = 0;
-		}
-		
-		if (!this.minute) {
-			this.minute = 0;
-		}
-
-		if (!this.second) {
-			this.second = 0;
-		}
-		if (!this.millisecond) {
-			this.millisecond = 0;
-		}
-	};
-
-	var finishUtils = {
-		getToday: function () {
-			 if (this.now || "hour minute second".indexOf(this.unit) !== -1) {
-				return new Date();
-			} else {
-				return $D.today();
-			}
-		},
-		setDaysFromWeekday: function (today, orient){
-			var gap;
-			orient = orient || 1;
-			this.unit = "day";
-			gap = ($D.getDayNumberFromName(this.weekday) - today.getDay());
-			this.days = gap ? ((gap + (orient * 7)) % 7) : (orient * 7);
-			return this;
-		},
-		setMonthsFromMonth: function (today, orient) {
-			var gap;
-			orient = orient || 1;
-			this.unit = "month";
-			gap = (this.month - today.getMonth());
-			this.months = gap ? ((gap + (orient * 12)) % 12) : (orient * 12);
-			this.month = null;
-			return this;
-		},
-		setDMYFromWeekday: function () {
-			var d = Date[this.weekday]();
-			this.day = d.getDate();
-			if (!this.month) {
-				this.month = d.getMonth();
-			}
-			this.year = d.getFullYear();
-			return this;
-		},
-		setUnitValue: function (orient) {
-			if (!this.value && this.operator && this.operator !== null && this[this.unit + "s"] && this[this.unit + "s"] !== null) {
-				this[this.unit + "s"] = this[this.unit + "s"] + ((this.operator === "add") ? 1 : -1) + (this.value||0) * orient;
-			} else if (this[this.unit + "s"] == null || this.operator != null) {
-				if (!this.value) {
-					this.value = 1;
-				}
-				this[this.unit + "s"] = this.value * orient;
-			}
-		},
-		generateDateFromWeeks: function () {
-			var weekday = (this.weekday !== undefined) ? this.weekday : "today";
-			var d = Date[weekday]().addWeeks(this.weeks);
-			if (this.now) {
-				d.setTimeToNow();
-			}
-			return d;
-		}
-	};
-
-	$D.Translator = {
-		hour: function (s) {
-			return function () {
-				this.hour = Number(s);
-			};
-		},
-		minute: function (s) {
-			return function () {
-				this.minute = Number(s);
-			};
-		},
-		second: function (s) {
-			return function () {
-				this.second = Number(s);
-			};
-		},
-		/* for ss.s format */
-		secondAndMillisecond: function (s) {
-			return function () {
-				var mx = s.match(/^([0-5][0-9])\.([0-9]{1,3})/);
-				this.second = Number(mx[1]);
-				this.millisecond = Number(mx[2]);
-			};
-		},
-		meridian: function (s) {
-			return function () {
-				this.meridian = s.slice(0, 1).toLowerCase();
-			};
-		},
-		timezone: function (s) {
-			return function () {
-				var n = s.replace(/[^\d\+\-]/g, "");
-				if (n.length) {
-					this.timezoneOffset = Number(n);
-				} else {
-					this.timezone = s.toLowerCase();
-				}
-			};
-		},
-		day: function (x) {
-			var s = x[0];
-			return function () {
-				this.day = Number(s.match(/\d+/)[0]);
-				if (this.day < 1) {
-					throw "invalid day";
-				}
-			};
-		},
-		month: function (s) {
-			return function () {
-				this.month = (s.length === 3) ? "jan feb mar apr may jun jul aug sep oct nov dec".indexOf(s)/4 : Number(s) - 1;
-				if (this.month < 0) {
-					throw "invalid month";
-				}
-			};
-		},
-		year: function (s) {
-			return function () {
-				var n = Number(s);
-				this.year = ((s.length > 2) ? n :
-					(n + (((n + 2000) < Date.CultureInfo.twoDigitYearMax) ? 2000 : 1900)));
-			};
-		},
-		rday: function (s) {
-			return function () {
-				switch (s) {
-					case "yesterday":
-						this.days = -1;
-						break;
-					case "tomorrow":
-						this.days = 1;
-						break;
-					case "today":
-						this.days = 0;
-						break;
-					case "now":
-						this.days = 0;
-						this.now = true;
-						break;
-				}
-			};
-		},
-		finishExact: function (x) {
-			var d;
-			x = (x instanceof Array) ? x : [x];
-
-			for (var i = 0 ; i < x.length ; i++) {
-				if (x[i]) {
-					x[i].call(this);
-				}
-			}
-			
-			setDefaults.call(this);
-			parseMeridian.call(this);
-
-			if (this.day > $D.getDaysInMonth(this.year, this.month)) {
-				throw new RangeError(this.day + " is not a valid value for days.");
-			}
-
-			d = new Date(this.year, this.month, this.day, this.hour, this.minute, this.second, this.millisecond);
-			if (this.year < 100) {
-				d.setFullYear(this.year); // means years less that 100 are process correctly. JS will parse it otherwise as 1900-1999.
-			}
-			if (this.timezone) {
-				d.set({ timezone: this.timezone });
-			} else if (this.timezoneOffset) {
-				d.set({ timezoneOffset: this.timezoneOffset });
-			}
-			
-			return d;
-		},
-		finish: function (x) {
-			var today, expression, orient, temp;
-
-			x = (x instanceof Array) ? flattenAndCompact(x) : [ x ];
-
-			if (x.length === 0) {
-				return null;
-			}
-
-			for (var i = 0 ; i < x.length ; i++) {
-				if (typeof x[i] === "function") {
-					x[i].call(this);
-				}
-			}
-			if (this.now && !this.unit && !this.operator) {
-				return new Date();
-			} else {
-				today = finishUtils.getToday.call(this);
-			}
-			
-			expression = !!(this.days && this.days !== null || this.orient || this.operator);
-			orient = ((this.orient === "past" || this.operator === "subtract") ? -1 : 1);
-
-			if (this.month && this.unit === "week") {
-				this.value = this.month + 1;
-				delete this.month;
-				delete this.day;
-			}
-
-			if ((this.month || this.month === 0) && "year day hour minute second".indexOf(this.unit) !== -1) {
-				if (!this.value) {
-					this.value = this.month + 1;
-				}
-				this.month = null;
-				expression = true;
-			}
-
-			if (!expression && this.weekday && !this.day && !this.days) {
-				finishUtils.setDMYFromWeekday.call(this);
-			}
-
-			if (expression && this.weekday && this.unit !== "month" && this.unit !== "week") {
-				finishUtils.setDaysFromWeekday.call(this, today, orient);
-			}
-
-			if (this.weekday && this.unit !== "week" && !this.day && !this.days) {
-				temp = Date[this.weekday]();
-				this.day = temp.getDate();
-				if (temp.getMonth() !== today.getMonth()) {
-					this.month = temp.getMonth();
-				}
-			}
-
-			if (this.month && this.unit === "day" && this.operator) {
-				if (!this.value) {
-					this.value = (this.month + 1);
-				}
-				this.month = null;
-			}
-
-			if (this.value != null && this.month != null && this.year != null) {
-				this.day = this.value * 1;
-			}
-
-			if (this.month && !this.day && this.value) {
-				today.set({ day: this.value * 1 });
-				if (!expression) {
-					this.day = this.value * 1;
-				}
-			}
-
-			if (!this.month && this.value && this.unit === "month" && !this.now) {
-				this.month = this.value;
-				expression = true;
-			}
-
-			if (expression && (this.month || this.month === 0) && this.unit !== "year") {
-				finishUtils.setMonthsFromMonth.call(this, today, orient);
-			}
-
-			if (!this.unit) {
-				this.unit = "day";
-			}
-
-			finishUtils.setUnitValue.call(this, orient);
-			parseMeridian.call(this);
-			
-			if ((this.month || this.month === 0) && !this.day) {
-				this.day = 1;
-			}
-
-			if (!this.orient && !this.operator && this.unit === "week" && this.value && !this.day && !this.month) {
-				return Date.today().setWeek(this.value);
-			}
-
-			if (this.unit === "week" && this.weeks && !this.day && !this.month) {
-				return finishUtils.generateDateFromWeeks.call(this);
-			}
-
-			if (expression && this.timezone && this.day && this.days) {
-				this.day = this.days;
-			}
-
-			if (expression){
-				today.add(this);
-			} else {
-				today.set(this);
-			}
-			
-			if (this.timezone) {
-				this.timezone = this.timezone.toUpperCase();
-				var offset = $D.getTimezoneOffset(this.timezone);
-				var timezone;
-				if (today.hasDaylightSavingTime()) {
-					// lets check that we're being sane with timezone setting
-					timezone = $D.getTimezoneAbbreviation(offset, today.isDaylightSavingTime());
-					if (timezone !== this.timezone) {
-						// bugger, we're in a place where things like EST vs EDT matters.
-						if (today.isDaylightSavingTime()) {
-							today.addHours(-1);
-						} else {
-							today.addHours(1);
-						}
-					}
-				}
-				today.setTimezoneOffset(offset);
-			}
-
-			return today;
-		}
-	};
-}());
-},{}],77:[function(_dereq_,module,exports){
-/*************************************************************
- * SugarPak - Domain Specific Language -  Syntactical Sugar  *
- *************************************************************/
- 
-(function () {
-	var $D = Date, $P = $D.prototype, $N = Number.prototype;
-
-	// private
-	$P._orient = +1;
-
-	// private
-	$P._nth = null;
-
-	// private
-	$P._is = false;
-
-	// private
-	$P._same = false;
-	
-	// private
-	$P._isSecond = false;
-
-	// private
-	$N._dateElement = "days";
-
-	/** 
-	 * Moves the date to the next instance of a date as specified by the subsequent date element function (eg. .day(), .month()), month name function (eg. .january(), .jan()) or day name function (eg. .friday(), fri()).
-	 * Example
-	<pre><code>
-	Date.today().next().friday();
-	Date.today().next().fri();
-	Date.today().next().march();
-	Date.today().next().mar();
-	Date.today().next().week();
-	</code></pre>
-	 * 
-	 * @return {Date}    date
-	 */
-	$P.next = function () {
-		this._move = true;
-		this._orient = +1;
-		return this;
-	};
-
-	/** 
-	 * Creates a new Date (Date.today()) and moves the date to the next instance of the date as specified by the subsequent date element function (eg. .day(), .month()), month name function (eg. .january(), .jan()) or day name function (eg. .friday(), fri()).
-	 * Example
-	<pre><code>
-	Date.next().friday();
-	Date.next().fri();
-	Date.next().march();
-	Date.next().mar();
-	Date.next().week();
-	</code></pre>
-	 * 
-	 * @return {Date}    date
-	 */
-	$D.next = function () {
-		return $D.today().next();
-	};
-
-	/** 
-	 * Moves the date to the previous instance of a date as specified by the subsequent date element function (eg. .day(), .month()), month name function (eg. .january(), .jan()) or day name function (eg. .friday(), fri()).
-	 * Example
-	<pre><code>
-	Date.today().last().friday();
-	Date.today().last().fri();
-	Date.today().last().march();
-	Date.today().last().mar();
-	Date.today().last().week();
-	</code></pre>
-	 *  
-	 * @return {Date}    date
-	 */
-	$P.last = $P.prev = $P.previous = function () {
-		this._move = true;
-		this._orient = -1;
-		return this;
-	};
-
-	/** 
-	 * Creates a new Date (Date.today()) and moves the date to the previous instance of the date as specified by the subsequent date element function (eg. .day(), .month()), month name function (eg. .january(), .jan()) or day name function (eg. .friday(), fri()).
-	 * Example
-	<pre><code>
-	Date.last().friday();
-	Date.last().fri();
-	Date.previous().march();
-	Date.prev().mar();
-	Date.last().week();
-	</code></pre>
-	 *  
-	 * @return {Date}    date
-	 */
-	$D.last = $D.prev = $D.previous = function () {
-		return $D.today().last();
-	};
-
-	/** 
-	 * Performs a equality check when followed by either a month name, day name or .weekday() function.
-	 * Example
-	<pre><code>
-	Date.today().is().friday(); // true|false
-	Date.today().is().fri();
-	Date.today().is().march();
-	Date.today().is().mar();
-	</code></pre>
-	 *  
-	 * @return {Boolean}    true|false
-	 */
-	$P.is = function () {
-		this._is = true;
-		return this;
-	};
-
-	/** 
-	 * Determines if two date objects occur on/in exactly the same instance of the subsequent date part function.
-	 * The function .same() must be followed by a date part function (example: .day(), .month(), .year(), etc).
-	 *
-	 * An optional Date can be passed in the date part function. If now date is passed as a parameter, 'Now' is used. 
-	 *
-	 * The following example demonstrates how to determine if two dates fall on the exact same day.
-	 *
-	 * Example
-	<pre><code>
-	var d1 = Date.today(); // today at 00:00
-	var d2 = new Date();   // exactly now.
-
-	// Do they occur on the same day?
-	d1.same().day(d2); // true
-	
-	// Do they occur on the same hour?
-	d1.same().hour(d2); // false, unless d2 hour is '00' (midnight).
-	
-	// What if it's the same day, but one year apart?
-	var nextYear = Date.today().add(1).year();
-
-	d1.same().day(nextYear); // false, because the dates must occur on the exact same day. 
-	</code></pre>
-	 *
-	 * Scenario: Determine if a given date occurs during some week period 2 months from now. 
-	 *
-	 * Example
-	<pre><code>
-	var future = Date.today().add(2).months();
-	return someDate.same().week(future); // true|false;
-	</code></pre>
-	 *  
-	 * @return {Boolean}    true|false
-	 */
-	$P.same = function () {
-		this._same = true;
-		this._isSecond = false;
-		return this;
-	};
-
-	/** 
-	 * Determines if the current date/time occurs during Today. Must be preceded by the .is() function.
-	 * Example
-	<pre><code>
-	someDate.is().today();    // true|false
-	new Date().is().today();  // true
-	Date.today().is().today();// true
-	Date.today().add(-1).day().is().today(); // false
-	</code></pre>
-	 *  
-	 * @return {Boolean}    true|false
-	 */
-	$P.today = function () {
-		return this.same().day();
-	};
-
-	/** 
-	 * Determines if the current date is a weekday. This function must be preceded by the .is() function.
-	 * Example
-	<pre><code>
-	Date.today().is().weekday(); // true|false
-	</code></pre>
-	 *  
-	 * @return {Boolean}    true|false
-	 */
-	$P.weekday = function () {
-		if (this._nth) {
-			return df("Weekday").call(this);
-		}
-		if (this._move) {
-			return this.addWeekdays(this._orient);
-		}
-		if (this._is) {
-			this._is = false;
-			return (!this.is().sat() && !this.is().sun());
-		}
-		return false;
-	};
-	/** 
-	 * Determines if the current date is on the weekend. This function must be preceded by the .is() function.
-	 * Example
-	<pre><code>
-	Date.today().is().weekend(); // true|false
-	</code></pre>
-	 *  
-	 * @return {Boolean}    true|false
-	 */
-	$P.weekend = function () {
-		if (this._is) {
-			this._is = false;
-			return (this.is().sat() || this.is().sun());
-		}
-		return false;
-	};
-
-	/** 
-	 * Sets the Time of the current Date instance. A string "6:15 pm" or config object {hour:18, minute:15} are accepted.
-	 * Example
-	<pre><code>
-	// Set time to 6:15pm with a String
-	Date.today().at("6:15pm");
-
-	// Set time to 6:15pm with a config object
-	Date.today().at({hour:18, minute:15});
-	</code></pre>
-	 *  
-	 * @return {Date}    date
-	 */
-	$P.at = function (time) {
-		return (typeof time === "string") ? $D.parse(this.toString("d") + " " + time) : this.set(time);
-	};
-		
-	/** 
-	 * Creates a new Date() and adds this (Number) to the date based on the preceding date element function (eg. second|minute|hour|day|month|year).
-	 * Example
-	<pre><code>
-	// Undeclared Numbers must be wrapped with parentheses. Requirment of JavaScript.
-	(3).days().fromNow();
-	(6).months().fromNow();
-
-	// Declared Number variables do not require parentheses. 
-	var n = 6;
-	n.months().fromNow();
-	</code></pre>
-	 *  
-	 * @return {Date}    A new Date instance
-	 */
-	$N.fromNow = $N.after = function (date) {
-		var c = {};
-		c[this._dateElement] = this;
-		return ((!date) ? new Date() : date.clone()).add(c);
-	};
-
-	/** 
-	 * Creates a new Date() and subtract this (Number) from the date based on the preceding date element function (eg. second|minute|hour|day|month|year).
-	 * Example
-	<pre><code>
-	// Undeclared Numbers must be wrapped with parentheses. Requirment of JavaScript.
-	(3).days().ago();
-	(6).months().ago();
-
-	// Declared Number variables do not require parentheses. 
-	var n = 6;
-	n.months().ago();
-	</code></pre>
-	 *  
-	 * @return {Date}    A new Date instance
-	 */
-	$N.ago = $N.before = function (date) {
-		var c = {},
-		s = (this._dateElement[this._dateElement.length-1] !== "s") ? this._dateElement + "s" : this._dateElement;
-		c[s] = this * -1;
-		return ((!date) ? new Date() : date.clone()).add(c);
-	};
-
-	// Do NOT modify the following string tokens. These tokens are used to build dynamic functions.
-	// All culture-specific strings can be found in the CultureInfo files.
-	var dx = ("sunday monday tuesday wednesday thursday friday saturday").split(/\s/),
-		mx = ("january february march april may june july august september october november december").split(/\s/),
-		px = ("Millisecond Second Minute Hour Day Week Month Year Quarter Weekday").split(/\s/),
-		pxf = ("Milliseconds Seconds Minutes Hours Date Week Month FullYear Quarter").split(/\s/),
-		nth = ("final first second third fourth fifth").split(/\s/),
-		de;
-
-   /** 
-	 * Returns an object literal of all the date parts.
-	 * Example
-	<pre><code>
-	var o = new Date().toObject();
-	
-	// { year: 2008, month: 4, week: 20, day: 13, hour: 18, minute: 9, second: 32, millisecond: 812 }
-	
-	// The object properties can be referenced directly from the object.
-	
-	alert(o.day);  // alerts "13"
-	alert(o.year); // alerts "2008"
-	</code></pre>
-	 *  
-	 * @return {Date}    An object literal representing the original date object.
-	 */
-	$P.toObject = function () {
-		var o = {};
-		for (var i = 0; i < px.length; i++) {
-			if (this["get" + pxf[i]]) {
-				o[px[i].toLowerCase()] = this["get" + pxf[i]]();
-			}
-		}
-		return o;
-	};
-   
-   /** 
-	 * Returns a date created from an object literal. Ignores the .week property if set in the config. 
-	 * Example
-	<pre><code>
-	var o = new Date().toObject();
-	
-	return Date.fromObject(o); // will return the same date. 
-
-	var o2 = {month: 1, day: 20, hour: 18}; // birthday party!
-	Date.fromObject(o2);
-	</code></pre>
-	 *  
-	 * @return {Date}    An object literal representing the original date object.
-	 */
-	$D.fromObject = function(config) {
-		config.week = null;
-		return Date.today().set(config);
-	};
-		
-	// Create day name functions and abbreviated day name functions (eg. monday(), friday(), fri()).
-	
-	var df = function (n) {
-		return function () {
-			if (this._is) {
-				this._is = false;
-				return this.getDay() === n;
-			}
-			if (this._move) { this._move = null; }
-			if (this._nth !== null) {
-				// If the .second() function was called earlier, remove the _orient 
-				// from the date, and then continue.
-				// This is required because 'second' can be used in two different context.
-				// 
-				// Example
-				//
-				//   Date.today().add(1).second();
-				//   Date.march().second().monday();
-				// 
-				// Things get crazy with the following...
-				//   Date.march().add(1).second().second().monday(); // but it works!!
-				//  
-				if (this._isSecond) {
-					this.addSeconds(this._orient * -1);
-				}
-				// make sure we reset _isSecond
-				this._isSecond = false;
-
-				var ntemp = this._nth;
-				this._nth = null;
-				var temp = this.clone().moveToLastDayOfMonth();
-				this.moveToNthOccurrence(n, ntemp);
-				if (this > temp) {
-					throw new RangeError($D.getDayName(n) + " does not occur " + ntemp + " times in the month of " + $D.getMonthName(temp.getMonth()) + " " + temp.getFullYear() + ".");
-				}
-				return this;
-			}
-			return this.moveToDayOfWeek(n, this._orient);
-		};
-	};
-	
-	var sdf = function (n) {
-		return function () {
-			var t = $D.today(), shift = n - t.getDay();
-			if (n === 0 && Date.CultureInfo.firstDayOfWeek === 1 && t.getDay() !== 0) {
-				shift = shift + 7;
-			}
-			return t.addDays(shift);
-		};
-	};
-	
-
-	
-	// Create month name functions and abbreviated month name functions (eg. january(), march(), mar()).
-	var month_instance_functions = function (n) {
-		return function () {
-			if (this._is) {
-				this._is = false;
-				return this.getMonth() === n;
-			}
-			return this.moveToMonth(n, this._orient);
-		};
-	};
-	
-	var month_static_functions = function (n) {
-		return function () {
-			return $D.today().set({ month: n, day: 1 });
-		};
-	};
-	
-	var processTerms = function (names, staticFunc, instanceFunc) {
-		for (var i = 0; i < names.length; i++) {
-			// Create constant static Name variables.
-			$D[names[i].toUpperCase()] = $D[names[i].toUpperCase().substring(0, 3)] = i;
-			// Create Name functions.
-			$D[names[i]] = $D[names[i].substring(0, 3)] = staticFunc(i);
-			// Create Name instance functions.
-			$P[names[i]] = $P[names[i].substring(0, 3)] = instanceFunc(i);
-		}
-
-	};
-
-	processTerms(dx, sdf, df);
-	processTerms(mx, month_static_functions, month_instance_functions);
-	
-	// Create date element functions and plural date element functions used with Date (eg. day(), days(), months()).
-	var ef = function (j) {
-		return function () {
-			// if the .second() function was called earlier, the _orient 
-			// has alread been added. Just return this and reset _isSecond.
-			if (this._isSecond) {
-				this._isSecond = false;
-				return this;
-			}
-
-			if (this._same) {
-				this._same = this._is = false;
-				var o1 = this.toObject(),
-					o2 = (arguments[0] || new Date()).toObject(),
-					v = "",
-					k = j.toLowerCase();
-
-				// the substr trick with -1 doesn't work in IE8 or less
-				k = (k[k.length-1] === "s") ? k.substring(0,k.length-1) : k;
-					
-				for (var m = (px.length - 1); m > -1; m--) {
-					v = px[m].toLowerCase();
-					if (o1[v] !== o2[v]) {
-						return false;
-					}
-					if (k === v) {
-						break;
-					}
-				}
-				return true;
-			}
-			
-			if (j.substring(j.length - 1) !== "s") {
-				j += "s";
-			}
-			if (this._move) { this._move = null; }
-			return this["add" + j](this._orient);
-		};
-	};
-	
-	
-	var nf = function (n) {
-		return function () {
-			this._dateElement = n;
-			return this;
-		};
-	};
-   
-	for (var k = 0; k < px.length; k++) {
-		de = px[k].toLowerCase();
-		if(de !== "weekday") {
-			// Create date element functions and plural date element functions used with Date (eg. day(), days(), months()).
-			$P[de] = $P[de + "s"] = ef(px[k]);
-			
-			// Create date element functions and plural date element functions used with Number (eg. day(), days(), months()).
-			$N[de] = $N[de + "s"] = nf(de + "s");
-		}
-	}
-	
-	$P._ss = ef("Second");
-	
-	var nthfn = function (n) {
-		return function (dayOfWeek) {
-			if (this._same) {
-				return this._ss(arguments[0]);
-			}
-			if (dayOfWeek || dayOfWeek === 0) {
-				return this.moveToNthOccurrence(dayOfWeek, n);
-			}
-			this._nth = n;
-
-			// if the operator is 'second' add the _orient, then deal with it later...
-			if (n === 2 && (dayOfWeek === undefined || dayOfWeek === null)) {
-				this._isSecond = true;
-				return this.addSeconds(this._orient);
-			}
-			return this;
-		};
-	};
-
-	for (var l = 0; l < nth.length; l++) {
-		$P[nth[l]] = (l === 0) ? nthfn(-1) : nthfn(l);
-	}
-}());
-
-},{}],78:[function(_dereq_,module,exports){
-(function () {
-	"use strict";
-	var attrs = ["years", "months", "days", "hours", "minutes", "seconds", "milliseconds"];
-	var gFn = function (attr) {
-		return function () {
-			return this[attr];
-		};
-	};
-	
-	var sFn = function (attr) {
-		return function (val) {
-			this[attr] = val;
-			return this;
-		};
-	};
-	var addSetFuncs = function (context, attrs) {
-		for (var i = 0; i < attrs.length ; i++) {
-			var $a = attrs[i], $b = $a.slice(0, 1).toUpperCase() + $a.slice(1);
-			context.prototype[$a] = 0;
-			context.prototype["get" + $b] = gFn($a);
-			context.prototype["set" + $b] = sFn($a);
-		}
-	};
-
-	var setMonthsAndYears = function (orient, d1, d2, context) {
-		function inc() {
-			d1.addMonths(-orient);
-			context.months++;
-			if (context.months === 12) {
-				context.years++;
-				context.months = 0;
-			}
-		}
-		if (orient === +1) {
-			while (d1 > d2) {
-				inc();
-			}
-		} else {
-			while (d1 < d2) {
-				inc();
-			}
-		}
-		context.months--;
-		context.months *= orient;
-		context.years *= orient;
-	};
-
-	var adjustForDST = function(orient, startDate, endDate) {
-		var hasDSTMismatch = (false === (startDate.isDaylightSavingTime() === endDate.isDaylightSavingTime()));
-		if (hasDSTMismatch && orient === 1) {
-			startDate.addHours(-1);
-		} else if (hasDSTMismatch) {
-			startDate.addHours(1);
-		}
-	};
-	/**
-	 * TimePeriod(startDate, endDate);
-	 * TimePeriod(years, months, days, hours, minutes, seconds, milliseconds);
-	 */
-	var TimePeriod = function (years, months, days, hours, minutes, seconds, milliseconds) {
-		if (arguments.length === 7) {
-			this.set(years, months, days, hours, minutes, seconds, milliseconds);
-		} else if (arguments.length === 2 && arguments[0] instanceof Date && arguments[1] instanceof Date) {
-			var startDate = arguments[0].clone();
-			var endDate = arguments[1].clone();
-			var orient = (startDate > endDate) ? +1 : -1;
-			this.dates = {
-				start: arguments[0].clone(),
-				end: arguments[1].clone()
-			};
-
-			setMonthsAndYears(orient, startDate, endDate, this);
-			adjustForDST(orient, startDate, endDate);
-			// // TODO - adjust for DST
-			var diff = endDate - startDate;
-			if (diff !== 0) {
-				var ts = new TimeSpan(diff);
-				this.set(this.years, this.months, ts.getDays(), ts.getHours(), ts.getMinutes(), ts.getSeconds(), ts.getMilliseconds());
-			}
-		}
-		return this;
-	};
-	// create all the set functions.
-	addSetFuncs(TimePeriod, attrs);
-	TimePeriod.prototype.set = function (years, months, days, hours, minutes, seconds, milliseconds){
-		this.setYears(years || this.getYears());
-		this.setMonths(months || this.getMonths());
-		this.setDays(days || this.getDays());
-		this.setHours(hours || this.getHours());
-		this.setMinutes(minutes || this.getMinutes());
-		this.setSeconds(seconds || this.getSeconds());
-		this.setMilliseconds(milliseconds || this.getMilliseconds());
-	};
-
-	Date.TimePeriod = TimePeriod;
-
-	if (typeof window !== "undefined") {
-		// keeping API compatible for v1.x 
-		window.TimePeriod = TimePeriod;
-	}
-}());
-},{}],79:[function(_dereq_,module,exports){
-(function () {
-	"use strict";
-	var gFn = function (attr) {
-		return function () {
-			return this[attr];
-		};
-	};
-	
-	var sFn = function (attr) {
-		return function (val) {
-			this[attr] = val;
-			return this;
-		};
-	};
-	var attrs = ["years", "months", "days", "hours", "minutes", "seconds", "milliseconds"];
-	var addSetFuncs = function (context, attrs) {
-		for (var i = 0; i < attrs.length ; i++) {
-			var $a = attrs[i], $b = $a.slice(0, 1).toUpperCase() + $a.slice(1);
-			context.prototype[$a] = 0;
-			context.prototype["get" + $b] = gFn($a);
-			context.prototype["set" + $b] = sFn($a);
-		}
-	};
-	/**
-	 * new TimeSpan(milliseconds);
-	 * new TimeSpan(days, hours, minutes, seconds);
-	 * new TimeSpan(days, hours, minutes, seconds, milliseconds);
-	 */
-	var TimeSpan = function (days, hours, minutes, seconds, milliseconds) {
-		if (arguments.length === 1 && typeof days === "number") {
-			var orient = (days < 0) ? -1 : +1;
-			var millsLeft = Math.abs(days);
-			this.setDays(Math.floor(millsLeft / 86400000) * orient);
-			millsLeft = millsLeft % 86400000;
-			this.setHours(Math.floor(millsLeft / 3600000) * orient);
-			millsLeft = millsLeft % 3600000;
-			this.setMinutes(Math.floor(millsLeft / 60000) * orient);
-			millsLeft = millsLeft % 60000;
-			this.setSeconds(Math.floor(millsLeft / 1000) * orient);
-			millsLeft = millsLeft % 1000;
-			this.setMilliseconds(millsLeft * orient);
-		} else {
-			this.set(days, hours, minutes, seconds, milliseconds);
-		}
-
-		this.getTotalMilliseconds = function () {
-			return	(this.getDays() * 86400000) +
-					(this.getHours() * 3600000) +
-					(this.getMinutes() * 60000) +
-					(this.getSeconds() * 1000);
-		};
-		
-		this.compareTo = function (time) {
-			var t1 = new Date(1970, 1, 1, this.getHours(), this.getMinutes(), this.getSeconds()), t2;
-			if (time === null) {
-				t2 = new Date(1970, 1, 1, 0, 0, 0);
-			}
-			else {
-				t2 = new Date(1970, 1, 1, time.getHours(), time.getMinutes(), time.getSeconds());
-			}
-			return (t1 < t2) ? -1 : (t1 > t2) ? 1 : 0;
-		};
-
-		this.equals = function (time) {
-			return (this.compareTo(time) === 0);
-		};
-
-		this.add = function (time) {
-			return (time === null) ? this : this.addSeconds(time.getTotalMilliseconds() / 1000);
-		};
-
-		this.subtract = function (time) {
-			return (time === null) ? this : this.addSeconds(-time.getTotalMilliseconds() / 1000);
-		};
-
-		this.addDays = function (n) {
-			return new TimeSpan(this.getTotalMilliseconds() + (n * 86400000));
-		};
-
-		this.addHours = function (n) {
-			return new TimeSpan(this.getTotalMilliseconds() + (n * 3600000));
-		};
-
-		this.addMinutes = function (n) {
-			return new TimeSpan(this.getTotalMilliseconds() + (n * 60000));
-		};
-
-		this.addSeconds = function (n) {
-			return new TimeSpan(this.getTotalMilliseconds() + (n * 1000));
-		};
-
-		this.addMilliseconds = function (n) {
-			return new TimeSpan(this.getTotalMilliseconds() + n);
-		};
-
-		this.get12HourHour = function () {
-			return (this.getHours() > 12) ? this.getHours() - 12 : (this.getHours() === 0) ? 12 : this.getHours();
-		};
-
-		this.getDesignator = function () {
-			return (this.getHours() < 12) ? Date.CultureInfo.amDesignator : Date.CultureInfo.pmDesignator;
-		};
-
-		this.toString = function (format) {
-			this._toString = function () {
-				if (this.getDays() !== null && this.getDays() > 0) {
-					return this.getDays() + "." + this.getHours() + ":" + this.p(this.getMinutes()) + ":" + this.p(this.getSeconds());
-				} else {
-					return this.getHours() + ":" + this.p(this.getMinutes()) + ":" + this.p(this.getSeconds());
-				}
-			};
-			
-			this.p = function (s) {
-				return (s.toString().length < 2) ? "0" + s : s;
-			};
-			
-			var me = this;
-			
-			return format ? format.replace(/dd?|HH?|hh?|mm?|ss?|tt?/g,
-			function (format) {
-				switch (format) {
-				case "d":
-					return me.getDays();
-				case "dd":
-					return me.p(me.getDays());
-				case "H":
-					return me.getHours();
-				case "HH":
-					return me.p(me.getHours());
-				case "h":
-					return me.get12HourHour();
-				case "hh":
-					return me.p(me.get12HourHour());
-				case "m":
-					return me.getMinutes();
-				case "mm":
-					return me.p(me.getMinutes());
-				case "s":
-					return me.getSeconds();
-				case "ss":
-					return me.p(me.getSeconds());
-				case "t":
-					return ((me.getHours() < 12) ? Date.CultureInfo.amDesignator : Date.CultureInfo.pmDesignator).substring(0, 1);
-				case "tt":
-					return (me.getHours() < 12) ? Date.CultureInfo.amDesignator : Date.CultureInfo.pmDesignator;
-				}
-			}
-			) : this._toString();
-		};
-		return this;
-	};
-	addSetFuncs(TimeSpan, attrs.slice(2));
-	TimeSpan.prototype.set = function (days, hours, minutes, seconds, milliseconds){
-		this.setDays(days || this.getDays());
-		this.setHours(hours || this.getHours());
-		this.setMinutes(minutes || this.getMinutes());
-		this.setSeconds(seconds || this.getSeconds());
-		this.setMilliseconds(milliseconds || this.getMilliseconds());
-	};
-
-
-	/**
-	 * Gets the time of day for this date instances. 
-	 * @return {TimeSpan} TimeSpan
-	 */
-	Date.prototype.getTimeOfDay = function () {
-		return new TimeSpan(0, this.getHours(), this.getMinutes(), this.getSeconds(), this.getMilliseconds());
-	};
-
-	Date.TimeSpan = TimeSpan;
-
-	if (typeof window !== "undefined" ) {
-		// keeping API compatible for v1.x 
-		window.TimeSpan = TimeSpan;
-	}
-}());
-},{}],80:[function(_dereq_,module,exports){
+},{"./core":34}],66:[function(_dereq_,module,exports){
 var Stream = _dereq_('stream').Stream;
 var util = _dereq_('util');
 
@@ -23609,7 +19221,7 @@ DelayedStream.prototype._checkIfMaxDataSizeExceeded = function() {
   this.emit('error', new Error(message));
 };
 
-},{"stream":462,"util":473}],81:[function(_dereq_,module,exports){
+},{"stream":677,"util":688}],67:[function(_dereq_,module,exports){
 /*!
  * depd
  * Copyright(c) 2015 Douglas Christopher Wilson
@@ -23690,7 +19302,7 @@ function wrapproperty(obj, prop, message) {
   return
 }
 
-},{}],82:[function(_dereq_,module,exports){
+},{}],68:[function(_dereq_,module,exports){
 (function (Buffer){
 var crypto = _dereq_("crypto");
 var BigInteger = _dereq_("jsbn").BigInteger;
@@ -23751,7 +19363,7 @@ exports.ECKey = function(curve, key, isPublic)
 
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./lib/ec.js":83,"./lib/sec.js":84,"buffer":359,"crypto":369,"jsbn":158}],83:[function(_dereq_,module,exports){
+},{"./lib/ec.js":69,"./lib/sec.js":70,"buffer":574,"crypto":584,"jsbn":143}],69:[function(_dereq_,module,exports){
 // Basic Javascript Elliptic Curve implementation
 // Ported loosely from BouncyCastle's Java EC code
 // Only Fp curves implemented for now
@@ -24314,7 +19926,7 @@ var exports = {
 
 module.exports = exports
 
-},{"jsbn":158}],84:[function(_dereq_,module,exports){
+},{"jsbn":143}],70:[function(_dereq_,module,exports){
 // Named EC curves
 
 // Requires ec.js, jsbn.js, and jsbn2.js
@@ -24486,7 +20098,7 @@ module.exports = {
   "secp256r1":secp256r1
 }
 
-},{"./ec.js":83,"jsbn":158}],85:[function(_dereq_,module,exports){
+},{"./ec.js":69,"jsbn":143}],71:[function(_dereq_,module,exports){
 'use strict';
 
 var elliptic = exports;
@@ -24502,7 +20114,7 @@ elliptic.curves = _dereq_('./elliptic/curves');
 elliptic.ec = _dereq_('./elliptic/ec');
 elliptic.eddsa = _dereq_('./elliptic/eddsa');
 
-},{"../package.json":101,"./elliptic/curve":88,"./elliptic/curves":91,"./elliptic/ec":92,"./elliptic/eddsa":95,"./elliptic/hmac-drbg":98,"./elliptic/utils":100,"brorand":24}],86:[function(_dereq_,module,exports){
+},{"../package.json":87,"./elliptic/curve":74,"./elliptic/curves":77,"./elliptic/ec":78,"./elliptic/eddsa":81,"./elliptic/hmac-drbg":84,"./elliptic/utils":86,"brorand":23}],72:[function(_dereq_,module,exports){
 'use strict';
 
 var BN = _dereq_('bn.js');
@@ -24879,7 +20491,7 @@ BasePoint.prototype.dblp = function dblp(k) {
   return r;
 };
 
-},{"../../elliptic":85,"bn.js":23}],87:[function(_dereq_,module,exports){
+},{"../../elliptic":71,"bn.js":22}],73:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -25314,7 +20926,7 @@ Point.prototype.eqXToP = function eqXToP(x) {
 Point.prototype.toP = Point.prototype.normalize;
 Point.prototype.mixedAdd = Point.prototype.add;
 
-},{"../../elliptic":85,"../curve":88,"bn.js":23,"inherits":143}],88:[function(_dereq_,module,exports){
+},{"../../elliptic":71,"../curve":74,"bn.js":22,"inherits":129}],74:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = exports;
@@ -25324,7 +20936,7 @@ curve.short = _dereq_('./short');
 curve.mont = _dereq_('./mont');
 curve.edwards = _dereq_('./edwards');
 
-},{"./base":86,"./edwards":87,"./mont":89,"./short":90}],89:[function(_dereq_,module,exports){
+},{"./base":72,"./edwards":73,"./mont":75,"./short":76}],75:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -25506,7 +21118,7 @@ Point.prototype.getX = function getX() {
   return this.x.fromRed();
 };
 
-},{"../../elliptic":85,"../curve":88,"bn.js":23,"inherits":143}],90:[function(_dereq_,module,exports){
+},{"../../elliptic":71,"../curve":74,"bn.js":22,"inherits":129}],76:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -26446,7 +22058,7 @@ JPoint.prototype.isInfinity = function isInfinity() {
   return this.z.cmpn(0) === 0;
 };
 
-},{"../../elliptic":85,"../curve":88,"bn.js":23,"inherits":143}],91:[function(_dereq_,module,exports){
+},{"../../elliptic":71,"../curve":74,"bn.js":22,"inherits":129}],77:[function(_dereq_,module,exports){
 'use strict';
 
 var curves = exports;
@@ -26653,7 +22265,7 @@ defineCurve('secp256k1', {
   ]
 });
 
-},{"../elliptic":85,"./precomputed/secp256k1":99,"hash.js":131}],92:[function(_dereq_,module,exports){
+},{"../elliptic":71,"./precomputed/secp256k1":85,"hash.js":117}],78:[function(_dereq_,module,exports){
 'use strict';
 
 var BN = _dereq_('bn.js');
@@ -26891,7 +22503,7 @@ EC.prototype.getKeyRecoveryParam = function(e, signature, Q, enc) {
   throw new Error('Unable to find valid recovery factor');
 };
 
-},{"../../elliptic":85,"./key":93,"./signature":94,"bn.js":23}],93:[function(_dereq_,module,exports){
+},{"../../elliptic":71,"./key":79,"./signature":80,"bn.js":22}],79:[function(_dereq_,module,exports){
 'use strict';
 
 var BN = _dereq_('bn.js');
@@ -27000,7 +22612,7 @@ KeyPair.prototype.inspect = function inspect() {
          ' pub: ' + (this.pub && this.pub.inspect()) + ' >';
 };
 
-},{"bn.js":23}],94:[function(_dereq_,module,exports){
+},{"bn.js":22}],80:[function(_dereq_,module,exports){
 'use strict';
 
 var BN = _dereq_('bn.js');
@@ -27137,7 +22749,7 @@ Signature.prototype.toDER = function toDER(enc) {
   return utils.encode(res, enc);
 };
 
-},{"../../elliptic":85,"bn.js":23}],95:[function(_dereq_,module,exports){
+},{"../../elliptic":71,"bn.js":22}],81:[function(_dereq_,module,exports){
 'use strict';
 
 var hash = _dereq_('hash.js');
@@ -27257,7 +22869,7 @@ EDDSA.prototype.isPoint = function isPoint(val) {
   return val instanceof this.pointClass;
 };
 
-},{"../../elliptic":85,"./key":96,"./signature":97,"hash.js":131}],96:[function(_dereq_,module,exports){
+},{"../../elliptic":71,"./key":82,"./signature":83,"hash.js":117}],82:[function(_dereq_,module,exports){
 'use strict';
 
 var elliptic = _dereq_('../../elliptic');
@@ -27355,7 +22967,7 @@ KeyPair.prototype.getPublic = function getPublic(enc) {
 
 module.exports = KeyPair;
 
-},{"../../elliptic":85}],97:[function(_dereq_,module,exports){
+},{"../../elliptic":71}],83:[function(_dereq_,module,exports){
 'use strict';
 
 var BN = _dereq_('bn.js');
@@ -27423,7 +23035,7 @@ Signature.prototype.toHex = function toHex() {
 
 module.exports = Signature;
 
-},{"../../elliptic":85,"bn.js":23}],98:[function(_dereq_,module,exports){
+},{"../../elliptic":71,"bn.js":22}],84:[function(_dereq_,module,exports){
 'use strict';
 
 var hash = _dereq_('hash.js');
@@ -27539,7 +23151,7 @@ HmacDRBG.prototype.generate = function generate(len, enc, add, addEnc) {
   return utils.encode(res, enc);
 };
 
-},{"../elliptic":85,"hash.js":131}],99:[function(_dereq_,module,exports){
+},{"../elliptic":71,"hash.js":117}],85:[function(_dereq_,module,exports){
 module.exports = {
   doubles: {
     step: 4,
@@ -28321,7 +23933,7 @@ module.exports = {
   }
 };
 
-},{}],100:[function(_dereq_,module,exports){
+},{}],86:[function(_dereq_,module,exports){
 'use strict';
 
 var utils = exports;
@@ -28495,7 +24107,7 @@ function intFromLE(bytes) {
 utils.intFromLE = intFromLE;
 
 
-},{"bn.js":23}],101:[function(_dereq_,module,exports){
+},{"bn.js":22}],87:[function(_dereq_,module,exports){
 module.exports={
   "_args": [
     [
@@ -28507,7 +24119,7 @@ module.exports={
         "spec": ">=6.2.3 <7.0.0",
         "type": "range"
       },
-      "/Users/zackcoburn/Sites/live/etheropt.github.io/node_modules/secp256k1"
+      "/Users/zackcoburn/Sites/live/etheropt.github.io/common/node_modules/secp256k1"
     ]
   ],
   "_from": "elliptic@>=6.2.3 <7.0.0",
@@ -28541,7 +24153,7 @@ module.exports={
   "_shasum": "17781f2109ab0ec686b146bdcff5d2e8c6aeceda",
   "_shrinkwrap": null,
   "_spec": "elliptic@^6.2.3",
-  "_where": "/Users/zackcoburn/Sites/live/etheropt.github.io/node_modules/secp256k1",
+  "_where": "/Users/zackcoburn/Sites/live/etheropt.github.io/common/node_modules/secp256k1",
   "author": {
     "email": "fedor@indutny.com",
     "name": "Fedor Indutny"
@@ -28613,7 +24225,7 @@ module.exports={
   "version": "6.3.1"
 }
 
-},{}],102:[function(_dereq_,module,exports){
+},{}],88:[function(_dereq_,module,exports){
 (function (global,Buffer){
 const ethUtil = _dereq_('ethereumjs-util')
 const fees = _dereq_('ethereum-common/params')
@@ -28873,7 +24485,7 @@ Transaction.prototype.validate = function (stringError) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
-},{"buffer":359,"ethereum-common/params":104,"ethereumjs-util":105}],103:[function(_dereq_,module,exports){
+},{"buffer":574,"ethereum-common/params":90,"ethereumjs-util":91}],89:[function(_dereq_,module,exports){
 module.exports={
   "genesisGasLimit": {
     "v": 5000,
@@ -29106,10 +24718,10 @@ module.exports={
   }
 }
 
-},{}],104:[function(_dereq_,module,exports){
+},{}],90:[function(_dereq_,module,exports){
 module.exports = _dereq_('./params.json')
 
-},{"./params.json":103}],105:[function(_dereq_,module,exports){
+},{"./params.json":89}],91:[function(_dereq_,module,exports){
 (function (Buffer){
 const SHA3 = _dereq_('keccakjs')
 const secp256k1 = _dereq_('secp256k1')
@@ -29778,7 +25390,7 @@ exports.defineProperties = function (self, fields, data) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"assert":327,"bn.js":23,"buffer":359,"create-hash":30,"keccakjs":163,"rlp":213,"secp256k1":214}],106:[function(_dereq_,module,exports){
+},{"assert":542,"bn.js":22,"buffer":574,"create-hash":29,"keccakjs":148,"rlp":198,"secp256k1":199}],92:[function(_dereq_,module,exports){
 'use strict';
 
 var hasOwn = Object.prototype.hasOwnProperty;
@@ -29866,7 +25478,7 @@ module.exports = function extend() {
 };
 
 
-},{}],107:[function(_dereq_,module,exports){
+},{}],93:[function(_dereq_,module,exports){
 /*
  * extsprintf.js: extended POSIX-style sprintf
  */
@@ -30034,7 +25646,7 @@ function dumpException(ex)
 	return (ret);
 }
 
-},{"assert":327,"util":473}],108:[function(_dereq_,module,exports){
+},{"assert":542,"util":688}],94:[function(_dereq_,module,exports){
 module.exports = ForeverAgent
 ForeverAgent.SSL = ForeverAgentSSL
 
@@ -30174,11 +25786,11 @@ function createConnectionSSL (port, host, options) {
   return tls.connect(options);
 }
 
-},{"http":463,"https":405,"net":312,"tls":312,"util":473}],109:[function(_dereq_,module,exports){
+},{"http":678,"https":620,"net":527,"tls":527,"util":688}],95:[function(_dereq_,module,exports){
 /* eslint-env browser */
 module.exports = FormData;
 
-},{}],110:[function(_dereq_,module,exports){
+},{}],96:[function(_dereq_,module,exports){
 var util = _dereq_('util')
 
 var INDENT_START = /[\{\[]/
@@ -30241,7 +25853,7 @@ module.exports = function() {
   return line
 }
 
-},{"util":473}],111:[function(_dereq_,module,exports){
+},{"util":688}],97:[function(_dereq_,module,exports){
 var isProperty = _dereq_('is-property')
 
 var gen = function(obj, prop) {
@@ -30255,7 +25867,7 @@ gen.property = function (prop) {
 
 module.exports = gen
 
-},{"is-property":147}],112:[function(_dereq_,module,exports){
+},{"is-property":133}],98:[function(_dereq_,module,exports){
 'use strict'
 
 function ValidationError (errors) {
@@ -30267,7 +25879,7 @@ ValidationError.prototype = Error.prototype
 
 module.exports = ValidationError
 
-},{}],113:[function(_dereq_,module,exports){
+},{}],99:[function(_dereq_,module,exports){
 'use strict'
 
 var Promise = _dereq_('pinkie-promise')
@@ -30291,7 +25903,7 @@ Object.keys(schemas).map(function (name) {
   module.exports[name] = promisify(schemas[name])
 })
 
-},{"./runner":114,"./schemas":122,"pinkie-promise":193}],114:[function(_dereq_,module,exports){
+},{"./runner":100,"./schemas":108,"pinkie-promise":178}],100:[function(_dereq_,module,exports){
 'use strict'
 
 var schemas = _dereq_('./schemas')
@@ -30322,7 +25934,7 @@ module.exports = function (schema, data, cb) {
   return valid
 }
 
-},{"./error":112,"./schemas":122,"is-my-json-valid":145}],115:[function(_dereq_,module,exports){
+},{"./error":98,"./schemas":108,"is-my-json-valid":131}],101:[function(_dereq_,module,exports){
 module.exports={
   "properties": {
     "beforeRequest": {
@@ -30337,7 +25949,7 @@ module.exports={
   }
 }
 
-},{}],116:[function(_dereq_,module,exports){
+},{}],102:[function(_dereq_,module,exports){
 module.exports={
   "oneOf": [{
     "type": "object",
@@ -30370,7 +25982,7 @@ module.exports={
   }]
 }
 
-},{}],117:[function(_dereq_,module,exports){
+},{}],103:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "required": [
@@ -30399,7 +26011,7 @@ module.exports={
   }
 }
 
-},{}],118:[function(_dereq_,module,exports){
+},{}],104:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "required": [
@@ -30435,7 +26047,7 @@ module.exports={
   }
 }
 
-},{}],119:[function(_dereq_,module,exports){
+},{}],105:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "required": [
@@ -30455,7 +26067,7 @@ module.exports={
   }
 }
 
-},{}],120:[function(_dereq_,module,exports){
+},{}],106:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "optional": true,
@@ -30508,7 +26120,7 @@ module.exports={
   }
 }
 
-},{}],121:[function(_dereq_,module,exports){
+},{}],107:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "required": [
@@ -30521,7 +26133,7 @@ module.exports={
   }
 }
 
-},{}],122:[function(_dereq_,module,exports){
+},{}],108:[function(_dereq_,module,exports){
 'use strict'
 
 var schemas = {
@@ -30572,7 +26184,7 @@ schemas.har.properties.log = schemas.log
 
 module.exports = schemas
 
-},{"./cache.json":115,"./cacheEntry.json":116,"./content.json":117,"./cookie.json":118,"./creator.json":119,"./entry.json":120,"./har.json":121,"./log.json":123,"./page.json":124,"./pageTimings.json":125,"./postData.json":126,"./record.json":127,"./request.json":128,"./response.json":129,"./timings.json":130}],123:[function(_dereq_,module,exports){
+},{"./cache.json":101,"./cacheEntry.json":102,"./content.json":103,"./cookie.json":104,"./creator.json":105,"./entry.json":106,"./har.json":107,"./log.json":109,"./page.json":110,"./pageTimings.json":111,"./postData.json":112,"./record.json":113,"./request.json":114,"./response.json":115,"./timings.json":116}],109:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "required": [
@@ -30608,7 +26220,7 @@ module.exports={
   }
 }
 
-},{}],124:[function(_dereq_,module,exports){
+},{}],110:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "optional": true,
@@ -30640,7 +26252,7 @@ module.exports={
   }
 }
 
-},{}],125:[function(_dereq_,module,exports){
+},{}],111:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "properties": {
@@ -30658,7 +26270,7 @@ module.exports={
   }
 }
 
-},{}],126:[function(_dereq_,module,exports){
+},{}],112:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "optional": true,
@@ -30701,7 +26313,7 @@ module.exports={
   }
 }
 
-},{}],127:[function(_dereq_,module,exports){
+},{}],113:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "required": [
@@ -30721,7 +26333,7 @@ module.exports={
   }
 }
 
-},{}],128:[function(_dereq_,module,exports){
+},{}],114:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "required": [
@@ -30778,7 +26390,7 @@ module.exports={
   }
 }
 
-},{}],129:[function(_dereq_,module,exports){
+},{}],115:[function(_dereq_,module,exports){
 module.exports={
   "type": "object",
   "required": [
@@ -30832,7 +26444,7 @@ module.exports={
   }
 }
 
-},{}],130:[function(_dereq_,module,exports){
+},{}],116:[function(_dereq_,module,exports){
 module.exports={
   "required": [
     "send",
@@ -30874,7 +26486,7 @@ module.exports={
   }
 }
 
-},{}],131:[function(_dereq_,module,exports){
+},{}],117:[function(_dereq_,module,exports){
 var hash = exports;
 
 hash.utils = _dereq_('./hash/utils');
@@ -30891,7 +26503,7 @@ hash.sha384 = hash.sha.sha384;
 hash.sha512 = hash.sha.sha512;
 hash.ripemd160 = hash.ripemd.ripemd160;
 
-},{"./hash/common":132,"./hash/hmac":133,"./hash/ripemd":134,"./hash/sha":135,"./hash/utils":136}],132:[function(_dereq_,module,exports){
+},{"./hash/common":118,"./hash/hmac":119,"./hash/ripemd":120,"./hash/sha":121,"./hash/utils":122}],118:[function(_dereq_,module,exports){
 var hash = _dereq_('../hash');
 var utils = hash.utils;
 var assert = utils.assert;
@@ -30984,7 +26596,7 @@ BlockHash.prototype._pad = function pad() {
   return res;
 };
 
-},{"../hash":131}],133:[function(_dereq_,module,exports){
+},{"../hash":117}],119:[function(_dereq_,module,exports){
 var hmac = exports;
 
 var hash = _dereq_('../hash');
@@ -31034,7 +26646,7 @@ Hmac.prototype.digest = function digest(enc) {
   return this.outer.digest(enc);
 };
 
-},{"../hash":131}],134:[function(_dereq_,module,exports){
+},{"../hash":117}],120:[function(_dereq_,module,exports){
 var hash = _dereq_('../hash');
 var utils = hash.utils;
 
@@ -31180,7 +26792,7 @@ var sh = [
   8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11
 ];
 
-},{"../hash":131}],135:[function(_dereq_,module,exports){
+},{"../hash":117}],121:[function(_dereq_,module,exports){
 var hash = _dereq_('../hash');
 var utils = hash.utils;
 var assert = utils.assert;
@@ -31746,7 +27358,7 @@ function g1_512_lo(xh, xl) {
   return r;
 }
 
-},{"../hash":131}],136:[function(_dereq_,module,exports){
+},{"../hash":117}],122:[function(_dereq_,module,exports){
 var utils = exports;
 var inherits = _dereq_('inherits');
 
@@ -32005,7 +27617,7 @@ function shr64_lo(ah, al, num) {
 };
 exports.shr64_lo = shr64_lo;
 
-},{"inherits":143}],137:[function(_dereq_,module,exports){
+},{"inherits":129}],123:[function(_dereq_,module,exports){
 /*
     HTTP Hawk Authentication Scheme
     Copyright (c) 2012-2014, Eran Hammer <eran@hammer.io>
@@ -32644,7 +28256,7 @@ if (typeof module !== 'undefined' && module.exports) {
 /* eslint-enable */
 // $lab:coverage:on$
 
-},{}],138:[function(_dereq_,module,exports){
+},{}],124:[function(_dereq_,module,exports){
 // Copyright 2015 Joyent, Inc.
 
 var parser = _dereq_('./parser');
@@ -32675,7 +28287,7 @@ module.exports = {
   verifyHMAC: verify.verifyHMAC
 };
 
-},{"./parser":139,"./signer":140,"./utils":141,"./verify":142}],139:[function(_dereq_,module,exports){
+},{"./parser":125,"./signer":126,"./utils":127,"./verify":128}],125:[function(_dereq_,module,exports){
 // Copyright 2012 Joyent, Inc.  All rights reserved.
 
 var assert = _dereq_('assert-plus');
@@ -32995,7 +28607,7 @@ module.exports = {
 
 };
 
-},{"./utils":141,"assert-plus":9,"util":473}],140:[function(_dereq_,module,exports){
+},{"./utils":127,"assert-plus":8,"util":688}],126:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2012 Joyent, Inc.  All rights reserved.
 
@@ -33397,8 +29009,8 @@ module.exports = {
 
 };
 
-}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":409,"./utils":141,"assert-plus":9,"crypto":369,"http":463,"jsprim":162,"sshpk":239,"util":473}],141:[function(_dereq_,module,exports){
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"./utils":127,"assert-plus":8,"crypto":584,"http":678,"jsprim":147,"sshpk":224,"util":688}],127:[function(_dereq_,module,exports){
 // Copyright 2012 Joyent, Inc.  All rights reserved.
 
 var assert = _dereq_('assert-plus');
@@ -33512,7 +29124,7 @@ module.exports = {
   }
 };
 
-},{"assert-plus":9,"sshpk":239,"util":473}],142:[function(_dereq_,module,exports){
+},{"assert-plus":8,"sshpk":224,"util":688}],128:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -33604,7 +29216,7 @@ module.exports = {
 };
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./utils":141,"assert-plus":9,"buffer":359,"crypto":369,"sshpk":239}],143:[function(_dereq_,module,exports){
+},{"./utils":127,"assert-plus":8,"buffer":574,"crypto":584,"sshpk":224}],129:[function(_dereq_,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -33629,7 +29241,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],144:[function(_dereq_,module,exports){
+},{}],130:[function(_dereq_,module,exports){
 exports['date-time'] = /^\d{4}-(?:0[0-9]{1}|1[0-2]{1})-[0-9]{2}[tT ]\d{2}:\d{2}:\d{2}(\.\d+)?([zZ]|[+-]\d{2}:\d{2})$/
 exports['date'] = /^\d{4}-(?:0[0-9]{1}|1[0-2]{1})-[0-9]{2}$/
 exports['time'] = /^\d{2}:\d{2}:\d{2}$/
@@ -33645,7 +29257,7 @@ exports['style'] = /\s*(.+?):\s*([^;]+);?/g
 exports['phone'] = /^\+(?:[0-9] ?){6,14}[0-9]$/
 exports['utc-millisec'] = /^[0-9]{1,15}\.?[0-9]{0,15}$/
 
-},{}],145:[function(_dereq_,module,exports){
+},{}],131:[function(_dereq_,module,exports){
 var genobj = _dereq_('generate-object-property')
 var genfun = _dereq_('generate-function')
 var jsonpointer = _dereq_('jsonpointer')
@@ -34231,7 +29843,7 @@ module.exports.filter = function(schema, opts) {
   }
 }
 
-},{"./formats":144,"generate-function":110,"generate-object-property":111,"jsonpointer":161,"xtend":146}],146:[function(_dereq_,module,exports){
+},{"./formats":130,"generate-function":96,"generate-object-property":97,"jsonpointer":146,"xtend":132}],132:[function(_dereq_,module,exports){
 module.exports = extend
 
 var hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -34252,13 +29864,13 @@ function extend() {
     return target
 }
 
-},{}],147:[function(_dereq_,module,exports){
+},{}],133:[function(_dereq_,module,exports){
 "use strict"
 function isProperty(str) {
   return /^[$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc][$A-Z\_a-z\xaa\xb5\xba\xc0-\xd6\xd8-\xf6\xf8-\u02c1\u02c6-\u02d1\u02e0-\u02e4\u02ec\u02ee\u0370-\u0374\u0376\u0377\u037a-\u037d\u0386\u0388-\u038a\u038c\u038e-\u03a1\u03a3-\u03f5\u03f7-\u0481\u048a-\u0527\u0531-\u0556\u0559\u0561-\u0587\u05d0-\u05ea\u05f0-\u05f2\u0620-\u064a\u066e\u066f\u0671-\u06d3\u06d5\u06e5\u06e6\u06ee\u06ef\u06fa-\u06fc\u06ff\u0710\u0712-\u072f\u074d-\u07a5\u07b1\u07ca-\u07ea\u07f4\u07f5\u07fa\u0800-\u0815\u081a\u0824\u0828\u0840-\u0858\u08a0\u08a2-\u08ac\u0904-\u0939\u093d\u0950\u0958-\u0961\u0971-\u0977\u0979-\u097f\u0985-\u098c\u098f\u0990\u0993-\u09a8\u09aa-\u09b0\u09b2\u09b6-\u09b9\u09bd\u09ce\u09dc\u09dd\u09df-\u09e1\u09f0\u09f1\u0a05-\u0a0a\u0a0f\u0a10\u0a13-\u0a28\u0a2a-\u0a30\u0a32\u0a33\u0a35\u0a36\u0a38\u0a39\u0a59-\u0a5c\u0a5e\u0a72-\u0a74\u0a85-\u0a8d\u0a8f-\u0a91\u0a93-\u0aa8\u0aaa-\u0ab0\u0ab2\u0ab3\u0ab5-\u0ab9\u0abd\u0ad0\u0ae0\u0ae1\u0b05-\u0b0c\u0b0f\u0b10\u0b13-\u0b28\u0b2a-\u0b30\u0b32\u0b33\u0b35-\u0b39\u0b3d\u0b5c\u0b5d\u0b5f-\u0b61\u0b71\u0b83\u0b85-\u0b8a\u0b8e-\u0b90\u0b92-\u0b95\u0b99\u0b9a\u0b9c\u0b9e\u0b9f\u0ba3\u0ba4\u0ba8-\u0baa\u0bae-\u0bb9\u0bd0\u0c05-\u0c0c\u0c0e-\u0c10\u0c12-\u0c28\u0c2a-\u0c33\u0c35-\u0c39\u0c3d\u0c58\u0c59\u0c60\u0c61\u0c85-\u0c8c\u0c8e-\u0c90\u0c92-\u0ca8\u0caa-\u0cb3\u0cb5-\u0cb9\u0cbd\u0cde\u0ce0\u0ce1\u0cf1\u0cf2\u0d05-\u0d0c\u0d0e-\u0d10\u0d12-\u0d3a\u0d3d\u0d4e\u0d60\u0d61\u0d7a-\u0d7f\u0d85-\u0d96\u0d9a-\u0db1\u0db3-\u0dbb\u0dbd\u0dc0-\u0dc6\u0e01-\u0e30\u0e32\u0e33\u0e40-\u0e46\u0e81\u0e82\u0e84\u0e87\u0e88\u0e8a\u0e8d\u0e94-\u0e97\u0e99-\u0e9f\u0ea1-\u0ea3\u0ea5\u0ea7\u0eaa\u0eab\u0ead-\u0eb0\u0eb2\u0eb3\u0ebd\u0ec0-\u0ec4\u0ec6\u0edc-\u0edf\u0f00\u0f40-\u0f47\u0f49-\u0f6c\u0f88-\u0f8c\u1000-\u102a\u103f\u1050-\u1055\u105a-\u105d\u1061\u1065\u1066\u106e-\u1070\u1075-\u1081\u108e\u10a0-\u10c5\u10c7\u10cd\u10d0-\u10fa\u10fc-\u1248\u124a-\u124d\u1250-\u1256\u1258\u125a-\u125d\u1260-\u1288\u128a-\u128d\u1290-\u12b0\u12b2-\u12b5\u12b8-\u12be\u12c0\u12c2-\u12c5\u12c8-\u12d6\u12d8-\u1310\u1312-\u1315\u1318-\u135a\u1380-\u138f\u13a0-\u13f4\u1401-\u166c\u166f-\u167f\u1681-\u169a\u16a0-\u16ea\u16ee-\u16f0\u1700-\u170c\u170e-\u1711\u1720-\u1731\u1740-\u1751\u1760-\u176c\u176e-\u1770\u1780-\u17b3\u17d7\u17dc\u1820-\u1877\u1880-\u18a8\u18aa\u18b0-\u18f5\u1900-\u191c\u1950-\u196d\u1970-\u1974\u1980-\u19ab\u19c1-\u19c7\u1a00-\u1a16\u1a20-\u1a54\u1aa7\u1b05-\u1b33\u1b45-\u1b4b\u1b83-\u1ba0\u1bae\u1baf\u1bba-\u1be5\u1c00-\u1c23\u1c4d-\u1c4f\u1c5a-\u1c7d\u1ce9-\u1cec\u1cee-\u1cf1\u1cf5\u1cf6\u1d00-\u1dbf\u1e00-\u1f15\u1f18-\u1f1d\u1f20-\u1f45\u1f48-\u1f4d\u1f50-\u1f57\u1f59\u1f5b\u1f5d\u1f5f-\u1f7d\u1f80-\u1fb4\u1fb6-\u1fbc\u1fbe\u1fc2-\u1fc4\u1fc6-\u1fcc\u1fd0-\u1fd3\u1fd6-\u1fdb\u1fe0-\u1fec\u1ff2-\u1ff4\u1ff6-\u1ffc\u2071\u207f\u2090-\u209c\u2102\u2107\u210a-\u2113\u2115\u2119-\u211d\u2124\u2126\u2128\u212a-\u212d\u212f-\u2139\u213c-\u213f\u2145-\u2149\u214e\u2160-\u2188\u2c00-\u2c2e\u2c30-\u2c5e\u2c60-\u2ce4\u2ceb-\u2cee\u2cf2\u2cf3\u2d00-\u2d25\u2d27\u2d2d\u2d30-\u2d67\u2d6f\u2d80-\u2d96\u2da0-\u2da6\u2da8-\u2dae\u2db0-\u2db6\u2db8-\u2dbe\u2dc0-\u2dc6\u2dc8-\u2dce\u2dd0-\u2dd6\u2dd8-\u2dde\u2e2f\u3005-\u3007\u3021-\u3029\u3031-\u3035\u3038-\u303c\u3041-\u3096\u309d-\u309f\u30a1-\u30fa\u30fc-\u30ff\u3105-\u312d\u3131-\u318e\u31a0-\u31ba\u31f0-\u31ff\u3400-\u4db5\u4e00-\u9fcc\ua000-\ua48c\ua4d0-\ua4fd\ua500-\ua60c\ua610-\ua61f\ua62a\ua62b\ua640-\ua66e\ua67f-\ua697\ua6a0-\ua6ef\ua717-\ua71f\ua722-\ua788\ua78b-\ua78e\ua790-\ua793\ua7a0-\ua7aa\ua7f8-\ua801\ua803-\ua805\ua807-\ua80a\ua80c-\ua822\ua840-\ua873\ua882-\ua8b3\ua8f2-\ua8f7\ua8fb\ua90a-\ua925\ua930-\ua946\ua960-\ua97c\ua984-\ua9b2\ua9cf\uaa00-\uaa28\uaa40-\uaa42\uaa44-\uaa4b\uaa60-\uaa76\uaa7a\uaa80-\uaaaf\uaab1\uaab5\uaab6\uaab9-\uaabd\uaac0\uaac2\uaadb-\uaadd\uaae0-\uaaea\uaaf2-\uaaf4\uab01-\uab06\uab09-\uab0e\uab11-\uab16\uab20-\uab26\uab28-\uab2e\uabc0-\uabe2\uac00-\ud7a3\ud7b0-\ud7c6\ud7cb-\ud7fb\uf900-\ufa6d\ufa70-\ufad9\ufb00-\ufb06\ufb13-\ufb17\ufb1d\ufb1f-\ufb28\ufb2a-\ufb36\ufb38-\ufb3c\ufb3e\ufb40\ufb41\ufb43\ufb44\ufb46-\ufbb1\ufbd3-\ufd3d\ufd50-\ufd8f\ufd92-\ufdc7\ufdf0-\ufdfb\ufe70-\ufe74\ufe76-\ufefc\uff21-\uff3a\uff41-\uff5a\uff66-\uffbe\uffc2-\uffc7\uffca-\uffcf\uffd2-\uffd7\uffda-\uffdc0-9\u0300-\u036f\u0483-\u0487\u0591-\u05bd\u05bf\u05c1\u05c2\u05c4\u05c5\u05c7\u0610-\u061a\u064b-\u0669\u0670\u06d6-\u06dc\u06df-\u06e4\u06e7\u06e8\u06ea-\u06ed\u06f0-\u06f9\u0711\u0730-\u074a\u07a6-\u07b0\u07c0-\u07c9\u07eb-\u07f3\u0816-\u0819\u081b-\u0823\u0825-\u0827\u0829-\u082d\u0859-\u085b\u08e4-\u08fe\u0900-\u0903\u093a-\u093c\u093e-\u094f\u0951-\u0957\u0962\u0963\u0966-\u096f\u0981-\u0983\u09bc\u09be-\u09c4\u09c7\u09c8\u09cb-\u09cd\u09d7\u09e2\u09e3\u09e6-\u09ef\u0a01-\u0a03\u0a3c\u0a3e-\u0a42\u0a47\u0a48\u0a4b-\u0a4d\u0a51\u0a66-\u0a71\u0a75\u0a81-\u0a83\u0abc\u0abe-\u0ac5\u0ac7-\u0ac9\u0acb-\u0acd\u0ae2\u0ae3\u0ae6-\u0aef\u0b01-\u0b03\u0b3c\u0b3e-\u0b44\u0b47\u0b48\u0b4b-\u0b4d\u0b56\u0b57\u0b62\u0b63\u0b66-\u0b6f\u0b82\u0bbe-\u0bc2\u0bc6-\u0bc8\u0bca-\u0bcd\u0bd7\u0be6-\u0bef\u0c01-\u0c03\u0c3e-\u0c44\u0c46-\u0c48\u0c4a-\u0c4d\u0c55\u0c56\u0c62\u0c63\u0c66-\u0c6f\u0c82\u0c83\u0cbc\u0cbe-\u0cc4\u0cc6-\u0cc8\u0cca-\u0ccd\u0cd5\u0cd6\u0ce2\u0ce3\u0ce6-\u0cef\u0d02\u0d03\u0d3e-\u0d44\u0d46-\u0d48\u0d4a-\u0d4d\u0d57\u0d62\u0d63\u0d66-\u0d6f\u0d82\u0d83\u0dca\u0dcf-\u0dd4\u0dd6\u0dd8-\u0ddf\u0df2\u0df3\u0e31\u0e34-\u0e3a\u0e47-\u0e4e\u0e50-\u0e59\u0eb1\u0eb4-\u0eb9\u0ebb\u0ebc\u0ec8-\u0ecd\u0ed0-\u0ed9\u0f18\u0f19\u0f20-\u0f29\u0f35\u0f37\u0f39\u0f3e\u0f3f\u0f71-\u0f84\u0f86\u0f87\u0f8d-\u0f97\u0f99-\u0fbc\u0fc6\u102b-\u103e\u1040-\u1049\u1056-\u1059\u105e-\u1060\u1062-\u1064\u1067-\u106d\u1071-\u1074\u1082-\u108d\u108f-\u109d\u135d-\u135f\u1712-\u1714\u1732-\u1734\u1752\u1753\u1772\u1773\u17b4-\u17d3\u17dd\u17e0-\u17e9\u180b-\u180d\u1810-\u1819\u18a9\u1920-\u192b\u1930-\u193b\u1946-\u194f\u19b0-\u19c0\u19c8\u19c9\u19d0-\u19d9\u1a17-\u1a1b\u1a55-\u1a5e\u1a60-\u1a7c\u1a7f-\u1a89\u1a90-\u1a99\u1b00-\u1b04\u1b34-\u1b44\u1b50-\u1b59\u1b6b-\u1b73\u1b80-\u1b82\u1ba1-\u1bad\u1bb0-\u1bb9\u1be6-\u1bf3\u1c24-\u1c37\u1c40-\u1c49\u1c50-\u1c59\u1cd0-\u1cd2\u1cd4-\u1ce8\u1ced\u1cf2-\u1cf4\u1dc0-\u1de6\u1dfc-\u1dff\u200c\u200d\u203f\u2040\u2054\u20d0-\u20dc\u20e1\u20e5-\u20f0\u2cef-\u2cf1\u2d7f\u2de0-\u2dff\u302a-\u302f\u3099\u309a\ua620-\ua629\ua66f\ua674-\ua67d\ua69f\ua6f0\ua6f1\ua802\ua806\ua80b\ua823-\ua827\ua880\ua881\ua8b4-\ua8c4\ua8d0-\ua8d9\ua8e0-\ua8f1\ua900-\ua909\ua926-\ua92d\ua947-\ua953\ua980-\ua983\ua9b3-\ua9c0\ua9d0-\ua9d9\uaa29-\uaa36\uaa43\uaa4c\uaa4d\uaa50-\uaa59\uaa7b\uaab0\uaab2-\uaab4\uaab7\uaab8\uaabe\uaabf\uaac1\uaaeb-\uaaef\uaaf5\uaaf6\uabe3-\uabea\uabec\uabed\uabf0-\uabf9\ufb1e\ufe00-\ufe0f\ufe20-\ufe26\ufe33\ufe34\ufe4d-\ufe4f\uff10-\uff19\uff3f]*$/.test(str)
 }
 module.exports = isProperty
-},{}],148:[function(_dereq_,module,exports){
+},{}],134:[function(_dereq_,module,exports){
 module.exports      = isTypedArray
 isTypedArray.strict = isStrictTypedArray
 isTypedArray.loose  = isLooseTypedArray
@@ -34301,7 +29913,7 @@ function isLooseTypedArray(arr) {
   return names[toString.call(arr)]
 }
 
-},{}],149:[function(_dereq_,module,exports){
+},{}],135:[function(_dereq_,module,exports){
 var stream = _dereq_('stream')
 
 
@@ -34330,7 +29942,7 @@ module.exports.isReadable = isReadable
 module.exports.isWritable = isWritable
 module.exports.isDuplex   = isDuplex
 
-},{"stream":462}],150:[function(_dereq_,module,exports){
+},{"stream":677}],136:[function(_dereq_,module,exports){
 "use strict";
 
 /*
@@ -34367,7 +29979,7 @@ var utils = _dereq_('./lib/utils');
 
 module.exports = ns;
 
-},{"./lib/curve255":152,"./lib/dh":153,"./lib/eddsa":154,"./lib/utils":155}],151:[function(_dereq_,module,exports){
+},{"./lib/curve255":138,"./lib/dh":139,"./lib/eddsa":140,"./lib/utils":141}],137:[function(_dereq_,module,exports){
 "use strict";
 /**
  * @fileOverview
@@ -34850,7 +30462,7 @@ var crypto = _dereq_('crypto');
 
 module.exports = ns;
 
-},{"crypto":369}],152:[function(_dereq_,module,exports){
+},{"crypto":584}],138:[function(_dereq_,module,exports){
 "use strict";
 /**
  * @fileOverview
@@ -35073,7 +30685,7 @@ var utils = _dereq_('./utils');
 
 module.exports = ns;
 
-},{"./core":151,"./utils":155}],153:[function(_dereq_,module,exports){
+},{"./core":137,"./utils":141}],139:[function(_dereq_,module,exports){
 (function (Buffer){
 "use strict";
 /**
@@ -35188,7 +30800,7 @@ var curve255 = _dereq_('./curve255');
 module.exports = ns;
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./core":151,"./curve255":152,"./utils":155,"buffer":359}],154:[function(_dereq_,module,exports){
+},{"./core":137,"./curve255":138,"./utils":141,"buffer":574}],140:[function(_dereq_,module,exports){
 (function (Buffer){
 "use strict";
 /**
@@ -35764,8 +31376,8 @@ var crypto = _dereq_('crypto');
 
 module.exports = ns;
 
-}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":409,"./core":151,"./curve255":152,"./utils":155,"crypto":369,"jsbn":158}],155:[function(_dereq_,module,exports){
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"./core":137,"./curve255":138,"./utils":141,"crypto":584,"jsbn":143}],141:[function(_dereq_,module,exports){
 "use strict";
 /**
  * @fileOverview
@@ -35965,240 +31577,7 @@ var core = _dereq_('./core');
 
 module.exports = ns;
 
-},{"./core":151}],156:[function(_dereq_,module,exports){
-(function (global){
-/*
- * js-sha256 v0.3.0
- * https://github.com/emn178/js-sha256
- *
- * Copyright 2014-2015, emn178@gmail.com
- *
- * Licensed under the MIT license:
- * http://www.opensource.org/licenses/MIT
- */
-;(function(root, undefined) {
-  'use strict';
-
-  var NODE_JS = typeof(module) != 'undefined';
-  if(NODE_JS) {
-    root = global;
-  }
-  var TYPED_ARRAY = typeof(Uint8Array) != 'undefined';
-  var HEX_CHARS = '0123456789abcdef'.split('');
-  var EXTRA = [-2147483648, 8388608, 32768, 128];
-  var SHIFT = [24, 16, 8, 0];
-  var K =[0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-          0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-          0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-          0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-          0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-          0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-          0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-          0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
-
-  var blocks = [];
-
-  var sha224 = function(message) {
-    return sha256(message, true);
-  };
-
-  var sha256 = function(message, is224) {
-    var notString = typeof(message) != 'string';
-    if(notString && message.constructor == root.ArrayBuffer) {
-      message = new Uint8Array(message);
-    }
-
-    var h0, h1, h2, h3, h4, h5, h6, h7, block, code, first = true, end = false,
-        i, j, index = 0, start = 0, bytes = 0, length = message.length,
-        s0, s1, maj, t1, t2, ch, ab, da, cd, bc;
-
-    if(is224) {
-      h0 = 0xc1059ed8;
-      h1 = 0x367cd507;
-      h2 = 0x3070dd17;
-      h3 = 0xf70e5939;
-      h4 = 0xffc00b31;
-      h5 = 0x68581511;
-      h6 = 0x64f98fa7;
-      h7 = 0xbefa4fa4;
-    } else { // 256
-      h0 = 0x6a09e667;
-      h1 = 0xbb67ae85;
-      h2 = 0x3c6ef372;
-      h3 = 0xa54ff53a;
-      h4 = 0x510e527f;
-      h5 = 0x9b05688c;
-      h6 = 0x1f83d9ab;
-      h7 = 0x5be0cd19;
-    }
-    block = 0;
-    do {
-      blocks[0] = block;
-      blocks[16] = blocks[1] = blocks[2] = blocks[3] =
-      blocks[4] = blocks[5] = blocks[6] = blocks[7] =
-      blocks[8] = blocks[9] = blocks[10] = blocks[11] =
-      blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
-      if(notString) {
-        for (i = start;index < length && i < 64; ++index) {
-          blocks[i >> 2] |= message[index] << SHIFT[i++ & 3];
-        }
-      } else {
-        for (i = start;index < length && i < 64; ++index) {
-          code = message.charCodeAt(index);
-          if (code < 0x80) {
-            blocks[i >> 2] |= code << SHIFT[i++ & 3];
-          } else if (code < 0x800) {
-            blocks[i >> 2] |= (0xc0 | (code >> 6)) << SHIFT[i++ & 3];
-            blocks[i >> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
-          } else if (code < 0xd800 || code >= 0xe000) {
-            blocks[i >> 2] |= (0xe0 | (code >> 12)) << SHIFT[i++ & 3];
-            blocks[i >> 2] |= (0x80 | ((code >> 6) & 0x3f)) << SHIFT[i++ & 3];
-            blocks[i >> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
-          } else {
-            code = 0x10000 + (((code & 0x3ff) << 10) | (message.charCodeAt(++index) & 0x3ff));
-            blocks[i >> 2] |= (0xf0 | (code >> 18)) << SHIFT[i++ & 3];
-            blocks[i >> 2] |= (0x80 | ((code >> 12) & 0x3f)) << SHIFT[i++ & 3];
-            blocks[i >> 2] |= (0x80 | ((code >> 6) & 0x3f)) << SHIFT[i++ & 3];
-            blocks[i >> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
-          }
-        }
-      }
-      bytes += i - start;
-      start = i - 64;
-      if(index == length) {
-        blocks[i >> 2] |= EXTRA[i & 3];
-        ++index;
-      }
-      block = blocks[16];
-      if(index > length && i < 56) {
-        blocks[15] = bytes << 3;
-        end = true;
-      }
-
-      var a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
-      for(j = 16;j < 64;++j) {
-        // rightrotate
-        t1 = blocks[j - 15];
-        s0 = ((t1 >>> 7) | (t1 << 25)) ^ ((t1 >>> 18) | (t1 << 14)) ^ (t1 >>> 3);
-        t1 = blocks[j - 2];
-        s1 = ((t1 >>> 17) | (t1 << 15)) ^ ((t1 >>> 19) | (t1 << 13)) ^ (t1 >>> 10);
-        blocks[j] = blocks[j - 16] + s0 + blocks[j - 7] + s1 << 0;
-      }
-
-      bc = b & c;
-      for(j = 0;j < 64;j += 4) {
-        if(first) {
-          if(is224) {
-            ab = 300032;
-            t1 = blocks[0] - 1413257819;
-            h = t1 - 150054599 << 0;
-            d = t1 + 24177077 << 0;
-          } else {
-            ab = 704751109;
-            t1 = blocks[0] - 210244248;
-            h = t1 - 1521486534 << 0;
-            d = t1 + 143694565 << 0;
-          }
-          first = false;
-        } else {
-          s0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
-          s1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
-          ab = a & b;
-          maj = ab ^ (a & c) ^ bc;
-          ch = (e & f) ^ (~e & g);
-          t1 = h + s1 + ch + K[j] + blocks[j];
-          t2 = s0 + maj;
-          h = d + t1 << 0;
-          d = t1 + t2 << 0;
-        }
-        s0 = ((d >>> 2) | (d << 30)) ^ ((d >>> 13) | (d << 19)) ^ ((d >>> 22) | (d << 10));
-        s1 = ((h >>> 6) | (h << 26)) ^ ((h >>> 11) | (h << 21)) ^ ((h >>> 25) | (h << 7));
-        da = d & a;
-        maj = da ^ (d & b) ^ ab;
-        ch = (h & e) ^ (~h & f);
-        t1 = g + s1 + ch + K[j + 1] + blocks[j + 1];
-        t2 = s0 + maj;
-        g = c + t1 << 0;
-        c = t1 + t2 << 0;
-        s0 = ((c >>> 2) | (c << 30)) ^ ((c >>> 13) | (c << 19)) ^ ((c >>> 22) | (c << 10));
-        s1 = ((g >>> 6) | (g << 26)) ^ ((g >>> 11) | (g << 21)) ^ ((g >>> 25) | (g << 7));
-        cd = c & d;
-        maj = cd ^ (c & a) ^ da;
-        ch = (g & h) ^ (~g & e);
-        t1 = f + s1 + ch + K[j + 2] + blocks[j + 2];
-        t2 = s0 + maj;
-        f = b + t1 << 0;
-        b = t1 + t2 << 0;
-        s0 = ((b >>> 2) | (b << 30)) ^ ((b >>> 13) | (b << 19)) ^ ((b >>> 22) | (b << 10));
-        s1 = ((f >>> 6) | (f << 26)) ^ ((f >>> 11) | (f << 21)) ^ ((f >>> 25) | (f << 7));
-        bc = b & c;
-        maj = bc ^ (b & d) ^ cd;
-        ch = (f & g) ^ (~f & h);
-        t1 = e + s1 + ch + K[j + 3] + blocks[j + 3];
-        t2 = s0 + maj;
-        e = a + t1 << 0;
-        a = t1 + t2 << 0;
-      }
-
-      h0 = h0 + a << 0;
-      h1 = h1 + b << 0;
-      h2 = h2 + c << 0;
-      h3 = h3 + d << 0;
-      h4 = h4 + e << 0;
-      h5 = h5 + f << 0;
-      h6 = h6 + g << 0;
-      h7 = h7 + h << 0;
-    } while(!end);
-
-    var hex = HEX_CHARS[(h0 >> 28) & 0x0F] + HEX_CHARS[(h0 >> 24) & 0x0F] +
-              HEX_CHARS[(h0 >> 20) & 0x0F] + HEX_CHARS[(h0 >> 16) & 0x0F] +
-              HEX_CHARS[(h0 >> 12) & 0x0F] + HEX_CHARS[(h0 >> 8) & 0x0F] +
-              HEX_CHARS[(h0 >> 4) & 0x0F] + HEX_CHARS[h0 & 0x0F] +
-              HEX_CHARS[(h1 >> 28) & 0x0F] + HEX_CHARS[(h1 >> 24) & 0x0F] +
-              HEX_CHARS[(h1 >> 20) & 0x0F] + HEX_CHARS[(h1 >> 16) & 0x0F] +
-              HEX_CHARS[(h1 >> 12) & 0x0F] + HEX_CHARS[(h1 >> 8) & 0x0F] +
-              HEX_CHARS[(h1 >> 4) & 0x0F] + HEX_CHARS[h1 & 0x0F] +
-              HEX_CHARS[(h2 >> 28) & 0x0F] + HEX_CHARS[(h2 >> 24) & 0x0F] +
-              HEX_CHARS[(h2 >> 20) & 0x0F] + HEX_CHARS[(h2 >> 16) & 0x0F] +
-              HEX_CHARS[(h2 >> 12) & 0x0F] + HEX_CHARS[(h2 >> 8) & 0x0F] +
-              HEX_CHARS[(h2 >> 4) & 0x0F] + HEX_CHARS[h2 & 0x0F] +
-              HEX_CHARS[(h3 >> 28) & 0x0F] + HEX_CHARS[(h3 >> 24) & 0x0F] +
-              HEX_CHARS[(h3 >> 20) & 0x0F] + HEX_CHARS[(h3 >> 16) & 0x0F] +
-              HEX_CHARS[(h3 >> 12) & 0x0F] + HEX_CHARS[(h3 >> 8) & 0x0F] +
-              HEX_CHARS[(h3 >> 4) & 0x0F] + HEX_CHARS[h3 & 0x0F] +
-              HEX_CHARS[(h4 >> 28) & 0x0F] + HEX_CHARS[(h4 >> 24) & 0x0F] +
-              HEX_CHARS[(h4 >> 20) & 0x0F] + HEX_CHARS[(h4 >> 16) & 0x0F] +
-              HEX_CHARS[(h4 >> 12) & 0x0F] + HEX_CHARS[(h4 >> 8) & 0x0F] +
-              HEX_CHARS[(h4 >> 4) & 0x0F] + HEX_CHARS[h4 & 0x0F] +
-              HEX_CHARS[(h5 >> 28) & 0x0F] + HEX_CHARS[(h5 >> 24) & 0x0F] +
-              HEX_CHARS[(h5 >> 20) & 0x0F] + HEX_CHARS[(h5 >> 16) & 0x0F] +
-              HEX_CHARS[(h5 >> 12) & 0x0F] + HEX_CHARS[(h5 >> 8) & 0x0F] +
-              HEX_CHARS[(h5 >> 4) & 0x0F] + HEX_CHARS[h5 & 0x0F] +
-              HEX_CHARS[(h6 >> 28) & 0x0F] + HEX_CHARS[(h6 >> 24) & 0x0F] +
-              HEX_CHARS[(h6 >> 20) & 0x0F] + HEX_CHARS[(h6 >> 16) & 0x0F] +
-              HEX_CHARS[(h6 >> 12) & 0x0F] + HEX_CHARS[(h6 >> 8) & 0x0F] +
-              HEX_CHARS[(h6 >> 4) & 0x0F] + HEX_CHARS[h6 & 0x0F];
-    if(!is224) {
-      hex += HEX_CHARS[(h7 >> 28) & 0x0F] + HEX_CHARS[(h7 >> 24) & 0x0F] +
-             HEX_CHARS[(h7 >> 20) & 0x0F] + HEX_CHARS[(h7 >> 16) & 0x0F] +
-             HEX_CHARS[(h7 >> 12) & 0x0F] + HEX_CHARS[(h7 >> 8) & 0x0F] +
-             HEX_CHARS[(h7 >> 4) & 0x0F] + HEX_CHARS[h7 & 0x0F];
-    }
-    return hex;
-  };
-  
-  if(!root.JS_SHA256_TEST && NODE_JS) {
-    sha256.sha256 = sha256;
-    sha256.sha224 = sha224;
-    module.exports = sha256;
-  } else if(root) {
-    root.sha256 = sha256;
-    root.sha224 = sha224;
-  }
-}(this));
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],157:[function(_dereq_,module,exports){
+},{"./core":137}],142:[function(_dereq_,module,exports){
 (function (global){
 /*
  * js-sha3 v0.3.1
@@ -36634,7 +32013,7 @@ module.exports = ns;
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],158:[function(_dereq_,module,exports){
+},{}],143:[function(_dereq_,module,exports){
 (function(){
 
     // Copyright (c) 2005  Tom Wu
@@ -37994,7 +33373,7 @@ module.exports = ns;
 
 }).call(this);
 
-},{}],159:[function(_dereq_,module,exports){
+},{}],144:[function(_dereq_,module,exports){
 /**
  * JSONSchema Validator - Validates JavaScript objects using JSON Schemas
  *	(http://www.json.com/json-schema-proposal/)
@@ -38256,7 +33635,7 @@ exports.mustBeValid = function(result){
 return exports;
 });
 
-},{}],160:[function(_dereq_,module,exports){
+},{}],145:[function(_dereq_,module,exports){
 exports = module.exports = stringify
 exports.getSerialize = serializer
 
@@ -38285,7 +33664,7 @@ function serializer(replacer, cycleReplacer) {
   }
 }
 
-},{}],161:[function(_dereq_,module,exports){
+},{}],146:[function(_dereq_,module,exports){
 var untilde = function(str) {
   return str.replace(/~./g, function(m) {
     switch (m) {
@@ -38363,7 +33742,7 @@ var set = function(obj, pointer, value) {
 exports.get = get
 exports.set = set
 
-},{}],162:[function(_dereq_,module,exports){
+},{}],147:[function(_dereq_,module,exports){
 /*
  * lib/jsprim.js: utilities for primitive JavaScript types
  */
@@ -38381,6 +33760,7 @@ var mod_jsonschema = _dereq_('json-schema');
 exports.deepCopy = deepCopy;
 exports.deepEqual = deepEqual;
 exports.isEmpty = isEmpty;
+exports.hasKey = hasKey;
 exports.forEachKey = forEachKey;
 exports.pluck = pluck;
 exports.flattenObject = flattenObject;
@@ -38488,10 +33868,19 @@ function isEmpty(obj)
 	return (true);
 }
 
+function hasKey(obj, key)
+{
+	mod_assert.equal(typeof (key), 'string');
+	return (Object.prototype.hasOwnProperty.call(obj, key));
+}
+
 function forEachKey(obj, callback)
 {
-	for (var key in obj)
-		callback(key, obj[key]);
+	for (var key in obj) {
+		if (hasKey(obj, key)) {
+			callback(key, obj[key]);
+		}
+	}
 }
 
 function pluck(obj, key)
@@ -38843,10 +34232,10 @@ function mergeObjects(provided, overrides, defaults)
 	return (rv);
 }
 
-},{"assert":327,"extsprintf":107,"json-schema":159,"util":473,"verror":260}],163:[function(_dereq_,module,exports){
+},{"assert":542,"extsprintf":93,"json-schema":144,"util":688,"verror":245}],148:[function(_dereq_,module,exports){
 module.exports = _dereq_('browserify-sha3').SHA3Hash
 
-},{"browserify-sha3":25}],164:[function(_dereq_,module,exports){
+},{"browserify-sha3":24}],149:[function(_dereq_,module,exports){
 (function (process,Buffer){
 /**
  * keythereum: create/import/export ethereum keys
@@ -39452,7 +34841,7 @@ module.exports = {
 };
 
 }).call(this,_dereq_('_process'),_dereq_("buffer").Buffer)
-},{"./lib/keccak":165,"./lib/scrypt":166,"_process":431,"buffer":359,"crypto":369,"elliptic":169,"ethereumjs-util":186,"fs":312,"node-uuid":191,"path":428,"validator":259}],165:[function(_dereq_,module,exports){
+},{"./lib/keccak":150,"./lib/scrypt":151,"_process":646,"buffer":574,"crypto":584,"elliptic":154,"ethereumjs-util":171,"fs":527,"node-uuid":176,"path":643,"validator":244}],150:[function(_dereq_,module,exports){
 /* keccak.js
  * A Javascript implementation of the Keccak SHA-3 candidate from Bertoni,
  * Daemen, Peeters and van Assche. This version is not optimized with any of 
@@ -39646,7 +35035,7 @@ module.exports = (function () {
     };
 }());
 
-},{}],166:[function(_dereq_,module,exports){
+},{}],151:[function(_dereq_,module,exports){
 (function (process,__dirname){
 // https://github.com/tonyg/js-scrypt
 module.exports = function (requested_total_memory) {
@@ -51366,8 +46755,8 @@ module.exports = function (requested_total_memory) {
     return scrypt;
 };
 
-}).call(this,_dereq_('_process'),"/node_modules/keythereum/lib")
-},{"_process":431,"fs":312,"path":428}],167:[function(_dereq_,module,exports){
+}).call(this,_dereq_('_process'),"/common/node_modules/keythereum/lib")
+},{"_process":646,"fs":527,"path":643}],152:[function(_dereq_,module,exports){
 (function (module, exports) {
 
 'use strict';
@@ -53816,7 +49205,7 @@ Mont.prototype.invm = function invm(a) {
 
 })(typeof module === 'undefined' || module, this);
 
-},{}],168:[function(_dereq_,module,exports){
+},{}],153:[function(_dereq_,module,exports){
 (function (Buffer){
 const Sha3 = _dereq_('js-sha3')
 
@@ -53842,9 +49231,9 @@ module.exports = {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"js-sha3":157}],169:[function(_dereq_,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"../package.json":185,"./elliptic/curve":172,"./elliptic/curves":175,"./elliptic/ec":176,"./elliptic/eddsa":179,"./elliptic/hmac-drbg":182,"./elliptic/utils":184,"brorand":24,"dup":85}],170:[function(_dereq_,module,exports){
+},{"buffer":574,"js-sha3":142}],154:[function(_dereq_,module,exports){
+arguments[4][71][0].apply(exports,arguments)
+},{"../package.json":170,"./elliptic/curve":157,"./elliptic/curves":160,"./elliptic/ec":161,"./elliptic/eddsa":164,"./elliptic/hmac-drbg":167,"./elliptic/utils":169,"brorand":23,"dup":71}],155:[function(_dereq_,module,exports){
 'use strict';
 
 var bn = _dereq_('bn.js');
@@ -54197,7 +49586,7 @@ BasePoint.prototype.dblp = function dblp(k) {
   return r;
 };
 
-},{"../../elliptic":169,"bn.js":167}],171:[function(_dereq_,module,exports){
+},{"../../elliptic":154,"bn.js":152}],156:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -54605,9 +49994,9 @@ Point.prototype.eq = function eq(other) {
 Point.prototype.toP = Point.prototype.normalize;
 Point.prototype.mixedAdd = Point.prototype.add;
 
-},{"../../elliptic":169,"../curve":172,"bn.js":167,"inherits":143}],172:[function(_dereq_,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"./base":170,"./edwards":171,"./mont":173,"./short":174,"dup":88}],173:[function(_dereq_,module,exports){
+},{"../../elliptic":154,"../curve":157,"bn.js":152,"inherits":129}],157:[function(_dereq_,module,exports){
+arguments[4][74][0].apply(exports,arguments)
+},{"./base":155,"./edwards":156,"./mont":158,"./short":159,"dup":74}],158:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -54785,7 +50174,7 @@ Point.prototype.getX = function getX() {
   return this.x.fromRed();
 };
 
-},{"../../elliptic":169,"../curve":172,"bn.js":167,"inherits":143}],174:[function(_dereq_,module,exports){
+},{"../../elliptic":154,"../curve":157,"bn.js":152,"inherits":129}],159:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -55694,9 +51083,9 @@ JPoint.prototype.isInfinity = function isInfinity() {
   return this.z.cmpn(0) === 0;
 };
 
-},{"../../elliptic":169,"../curve":172,"bn.js":167,"inherits":143}],175:[function(_dereq_,module,exports){
-arguments[4][91][0].apply(exports,arguments)
-},{"../elliptic":169,"./precomputed/secp256k1":183,"dup":91,"hash.js":131}],176:[function(_dereq_,module,exports){
+},{"../../elliptic":154,"../curve":157,"bn.js":152,"inherits":129}],160:[function(_dereq_,module,exports){
+arguments[4][77][0].apply(exports,arguments)
+},{"../elliptic":154,"./precomputed/secp256k1":168,"dup":77,"hash.js":117}],161:[function(_dereq_,module,exports){
 'use strict';
 
 var bn = _dereq_('bn.js');
@@ -55908,7 +51297,7 @@ EC.prototype.getKeyRecoveryParam = function(e, signature, Q, enc) {
   throw new Error('Unable to find valid recovery factor');
 };
 
-},{"../../elliptic":169,"./key":177,"./signature":178,"bn.js":167}],177:[function(_dereq_,module,exports){
+},{"../../elliptic":154,"./key":162,"./signature":163,"bn.js":152}],162:[function(_dereq_,module,exports){
 'use strict';
 
 var bn = _dereq_('bn.js');
@@ -56017,7 +51406,7 @@ KeyPair.prototype.inspect = function inspect() {
          ' pub: ' + (this.pub && this.pub.inspect()) + ' >';
 };
 
-},{"bn.js":167}],178:[function(_dereq_,module,exports){
+},{"bn.js":152}],163:[function(_dereq_,module,exports){
 'use strict';
 
 var bn = _dereq_('bn.js');
@@ -56154,9 +51543,9 @@ Signature.prototype.toDER = function toDER(enc) {
   return utils.encode(res, enc);
 };
 
-},{"../../elliptic":169,"bn.js":167}],179:[function(_dereq_,module,exports){
-arguments[4][95][0].apply(exports,arguments)
-},{"../../elliptic":169,"./key":180,"./signature":181,"dup":95,"hash.js":131}],180:[function(_dereq_,module,exports){
+},{"../../elliptic":154,"bn.js":152}],164:[function(_dereq_,module,exports){
+arguments[4][81][0].apply(exports,arguments)
+},{"../../elliptic":154,"./key":165,"./signature":166,"dup":81,"hash.js":117}],165:[function(_dereq_,module,exports){
 'use strict';
 
 var elliptic = _dereq_('../../elliptic');
@@ -56254,7 +51643,7 @@ KeyPair.prototype.getPublic = function getPublic(enc) {
 
 module.exports = KeyPair;
 
-},{"../../elliptic":169}],181:[function(_dereq_,module,exports){
+},{"../../elliptic":154}],166:[function(_dereq_,module,exports){
 'use strict';
 
 var bn = _dereq_('bn.js');
@@ -56322,11 +51711,11 @@ Signature.prototype.toHex = function toHex() {
 
 module.exports = Signature;
 
-},{"../../elliptic":169,"bn.js":167}],182:[function(_dereq_,module,exports){
-arguments[4][98][0].apply(exports,arguments)
-},{"../elliptic":169,"dup":98,"hash.js":131}],183:[function(_dereq_,module,exports){
-arguments[4][99][0].apply(exports,arguments)
-},{"dup":99}],184:[function(_dereq_,module,exports){
+},{"../../elliptic":154,"bn.js":152}],167:[function(_dereq_,module,exports){
+arguments[4][84][0].apply(exports,arguments)
+},{"../elliptic":154,"dup":84,"hash.js":117}],168:[function(_dereq_,module,exports){
+arguments[4][85][0].apply(exports,arguments)
+},{"dup":85}],169:[function(_dereq_,module,exports){
 'use strict';
 
 var utils = exports;
@@ -56501,7 +51890,7 @@ function intFromLE(bytes) {
 utils.intFromLE = intFromLE;
 
 
-},{"bn.js":167}],185:[function(_dereq_,module,exports){
+},{"bn.js":152}],170:[function(_dereq_,module,exports){
 module.exports={
   "_args": [
     [
@@ -56513,7 +51902,7 @@ module.exports={
         "spec": ">=5.1.0 <6.0.0",
         "type": "range"
       },
-      "/Users/zackcoburn/Sites/live/etheropt.github.io/node_modules/keythereum"
+      "/Users/zackcoburn/Sites/live/etheropt.github.io/common/node_modules/keythereum"
     ]
   ],
   "_from": "elliptic@>=5.1.0 <6.0.0",
@@ -56544,7 +51933,7 @@ module.exports={
   "_shasum": "fa294b6563c6ddbc9ba3dc8594687ae840858f10",
   "_shrinkwrap": null,
   "_spec": "elliptic@^5.1.0",
-  "_where": "/Users/zackcoburn/Sites/live/etheropt.github.io/node_modules/keythereum",
+  "_where": "/Users/zackcoburn/Sites/live/etheropt.github.io/common/node_modules/keythereum",
   "author": {
     "email": "fedor@indutny.com",
     "name": "Fedor Indutny"
@@ -56603,7 +51992,7 @@ module.exports={
   "version": "5.2.1"
 }
 
-},{}],186:[function(_dereq_,module,exports){
+},{}],171:[function(_dereq_,module,exports){
 (function (Buffer){
 const SHA3 = _dereq_('sha3')
 const ec = _dereq_('elliptic').ec('secp256k1')
@@ -56980,7 +52369,7 @@ function padToEven (a) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"assert":327,"bn.js":167,"buffer":359,"elliptic":169,"rlp":187,"sha3":168}],187:[function(_dereq_,module,exports){
+},{"assert":542,"bn.js":152,"buffer":574,"elliptic":154,"rlp":172,"sha3":153}],172:[function(_dereq_,module,exports){
 (function (Buffer){
 const assert = _dereq_('assert')
 /**
@@ -57209,7 +52598,7 @@ function toBuffer (v) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"assert":327,"buffer":359}],188:[function(_dereq_,module,exports){
+},{"assert":542,"buffer":574}],173:[function(_dereq_,module,exports){
 module.exports={
   "application/1d-interleaved-parityfec": {
     "source": "iana"
@@ -63838,7 +59227,7 @@ module.exports={
   }
 }
 
-},{}],189:[function(_dereq_,module,exports){
+},{}],174:[function(_dereq_,module,exports){
 /*!
  * mime-db
  * Copyright(c) 2014 Jonathan Ong
@@ -63851,7 +59240,7 @@ module.exports={
 
 module.exports = _dereq_('./db.json')
 
-},{"./db.json":188}],190:[function(_dereq_,module,exports){
+},{"./db.json":173}],175:[function(_dereq_,module,exports){
 /*!
  * mime-types
  * Copyright(c) 2014 Jonathan Ong
@@ -64041,7 +59430,7 @@ function populateMaps(extensions, types) {
   })
 }
 
-},{"mime-db":189,"path":428}],191:[function(_dereq_,module,exports){
+},{"mime-db":174,"path":643}],176:[function(_dereq_,module,exports){
 (function (Buffer){
 //     uuid.js
 //
@@ -64317,7 +59706,7 @@ function populateMaps(extensions, types) {
 })('undefined' !== typeof window ? window : null);
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"crypto":369}],192:[function(_dereq_,module,exports){
+},{"buffer":574,"crypto":584}],177:[function(_dereq_,module,exports){
 var crypto = _dereq_('crypto')
   , qs = _dereq_('querystring')
   ;
@@ -64455,12 +59844,12 @@ exports.rfc3986 = rfc3986
 exports.generateBase = generateBase
 
 
-},{"crypto":369,"querystring":441}],193:[function(_dereq_,module,exports){
+},{"crypto":584,"querystring":656}],178:[function(_dereq_,module,exports){
 'use strict';
 
 module.exports = typeof Promise === 'function' ? Promise : _dereq_('pinkie');
 
-},{"pinkie":194}],194:[function(_dereq_,module,exports){
+},{"pinkie":179}],179:[function(_dereq_,module,exports){
 (function (global){
 'use strict';
 
@@ -64756,7 +60145,7 @@ Promise.reject = function (reason) {
 module.exports = Promise;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],195:[function(_dereq_,module,exports){
+},{}],180:[function(_dereq_,module,exports){
 (function (process){
 'use strict';
 
@@ -64803,7 +60192,7 @@ function nextTick(fn, arg1, arg2, arg3) {
 }
 
 }).call(this,_dereq_('_process'))
-},{"_process":431}],196:[function(_dereq_,module,exports){
+},{"_process":646}],181:[function(_dereq_,module,exports){
 // Copyright 2010-2012 Mikeal Rogers
 //
 //    Licensed under the Apache License, Version 2.0 (the "License");
@@ -64962,7 +60351,7 @@ Object.defineProperty(request, 'debug', {
   }
 })
 
-},{"./lib/cookies":198,"./lib/helpers":201,"./request":211,"extend":106}],197:[function(_dereq_,module,exports){
+},{"./lib/cookies":183,"./lib/helpers":186,"./request":196,"extend":92}],182:[function(_dereq_,module,exports){
 'use strict'
 
 var caseless = _dereq_('caseless')
@@ -65132,7 +60521,7 @@ Auth.prototype.onResponse = function (response) {
 
 exports.Auth = Auth
 
-},{"./helpers":201,"caseless":26,"node-uuid":191}],198:[function(_dereq_,module,exports){
+},{"./helpers":186,"caseless":25,"node-uuid":176}],183:[function(_dereq_,module,exports){
 'use strict'
 
 var tough = _dereq_('tough-cookie')
@@ -65173,7 +60562,7 @@ exports.jar = function(store) {
   return new RequestJar(store)
 }
 
-},{"tough-cookie":248}],199:[function(_dereq_,module,exports){
+},{"tough-cookie":233}],184:[function(_dereq_,module,exports){
 (function (process){
 'use strict'
 
@@ -65256,7 +60645,7 @@ function getProxyFromURI(uri) {
 module.exports = getProxyFromURI
 
 }).call(this,_dereq_('_process'))
-},{"_process":431}],200:[function(_dereq_,module,exports){
+},{"_process":646}],185:[function(_dereq_,module,exports){
 'use strict'
 
 var fs = _dereq_('fs')
@@ -65473,7 +60862,7 @@ Har.prototype.options = function (options) {
 
 exports.Har = Har
 
-},{"extend":106,"fs":312,"har-validator":113,"querystring":441}],201:[function(_dereq_,module,exports){
+},{"extend":92,"fs":527,"har-validator":99,"querystring":656}],186:[function(_dereq_,module,exports){
 (function (process,Buffer){
 'use strict'
 
@@ -65551,7 +60940,7 @@ exports.version               = version
 exports.defer                 = deferMethod()
 
 }).call(this,_dereq_('_process'),_dereq_("buffer").Buffer)
-},{"_process":431,"buffer":359,"crypto":369,"json-stringify-safe":160}],202:[function(_dereq_,module,exports){
+},{"_process":646,"buffer":574,"crypto":584,"json-stringify-safe":145}],187:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -65667,7 +61056,7 @@ Multipart.prototype.onRequest = function (options) {
 exports.Multipart = Multipart
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"combined-stream":28,"isstream":149,"node-uuid":191}],203:[function(_dereq_,module,exports){
+},{"buffer":574,"combined-stream":27,"isstream":135,"node-uuid":176}],188:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -65818,7 +61207,7 @@ OAuth.prototype.onRequest = function (_oauth) {
 exports.OAuth = OAuth
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"caseless":26,"crypto":369,"node-uuid":191,"oauth-sign":192,"qs":207,"url":469}],204:[function(_dereq_,module,exports){
+},{"buffer":574,"caseless":25,"crypto":584,"node-uuid":176,"oauth-sign":177,"qs":192,"url":684}],189:[function(_dereq_,module,exports){
 'use strict'
 
 var qs = _dereq_('qs')
@@ -65871,7 +61260,7 @@ Querystring.prototype.unescape = querystring.unescape
 
 exports.Querystring = Querystring
 
-},{"qs":207,"querystring":441}],205:[function(_dereq_,module,exports){
+},{"qs":192,"querystring":656}],190:[function(_dereq_,module,exports){
 'use strict'
 
 var url = _dereq_('url')
@@ -66026,7 +61415,7 @@ Redirect.prototype.onResponse = function (response) {
 
 exports.Redirect = Redirect
 
-},{"url":469}],206:[function(_dereq_,module,exports){
+},{"url":684}],191:[function(_dereq_,module,exports){
 'use strict'
 
 var url = _dereq_('url')
@@ -66204,7 +61593,7 @@ Tunnel.defaultProxyHeaderWhiteList = defaultProxyHeaderWhiteList
 Tunnel.defaultProxyHeaderExclusiveList = defaultProxyHeaderExclusiveList
 exports.Tunnel = Tunnel
 
-},{"tunnel-agent":255,"url":469}],207:[function(_dereq_,module,exports){
+},{"tunnel-agent":240,"url":684}],192:[function(_dereq_,module,exports){
 'use strict';
 
 var Stringify = _dereq_('./stringify');
@@ -66215,7 +61604,7 @@ module.exports = {
     parse: Parse
 };
 
-},{"./parse":208,"./stringify":209}],208:[function(_dereq_,module,exports){
+},{"./parse":193,"./stringify":194}],193:[function(_dereq_,module,exports){
 'use strict';
 
 var Utils = _dereq_('./utils');
@@ -66381,7 +61770,7 @@ module.exports = function (str, opts) {
     return Utils.compact(obj);
 };
 
-},{"./utils":210}],209:[function(_dereq_,module,exports){
+},{"./utils":195}],194:[function(_dereq_,module,exports){
 'use strict';
 
 var Utils = _dereq_('./utils');
@@ -66514,7 +61903,7 @@ module.exports = function (object, opts) {
     return keys.join(delimiter);
 };
 
-},{"./utils":210}],210:[function(_dereq_,module,exports){
+},{"./utils":195}],195:[function(_dereq_,module,exports){
 'use strict';
 
 var hexTable = (function () {
@@ -66678,7 +62067,7 @@ exports.isBuffer = function (obj) {
     return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
 };
 
-},{}],211:[function(_dereq_,module,exports){
+},{}],196:[function(_dereq_,module,exports){
 (function (process,Buffer){
 'use strict'
 
@@ -68140,7 +63529,7 @@ Request.prototype.toJSON = requestToJSON
 module.exports = Request
 
 }).call(this,_dereq_('_process'),_dereq_("buffer").Buffer)
-},{"./lib/auth":197,"./lib/cookies":198,"./lib/getProxyFromURI":199,"./lib/har":200,"./lib/helpers":201,"./lib/multipart":202,"./lib/oauth":203,"./lib/querystring":204,"./lib/redirect":205,"./lib/tunnel":206,"_process":431,"aws-sign2":12,"aws4":13,"bl":17,"buffer":359,"caseless":26,"extend":106,"forever-agent":108,"form-data":109,"hawk":137,"http":463,"http-signature":138,"https":405,"is-typedarray":148,"isstream":149,"mime-types":190,"stream":462,"stringstream":247,"url":469,"util":473,"zlib":357}],212:[function(_dereq_,module,exports){
+},{"./lib/auth":182,"./lib/cookies":183,"./lib/getProxyFromURI":184,"./lib/har":185,"./lib/helpers":186,"./lib/multipart":187,"./lib/oauth":188,"./lib/querystring":189,"./lib/redirect":190,"./lib/tunnel":191,"_process":646,"aws-sign2":11,"aws4":12,"bl":16,"buffer":574,"caseless":25,"extend":92,"forever-agent":94,"form-data":95,"hawk":123,"http":678,"http-signature":124,"https":620,"is-typedarray":134,"isstream":135,"mime-types":175,"stream":677,"stringstream":232,"url":684,"util":688,"zlib":572}],197:[function(_dereq_,module,exports){
 (function (Buffer){
 /*
 CryptoJS v3.1.2
@@ -68354,7 +63743,7 @@ function ripemd160 (message) {
 module.exports = ripemd160
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],213:[function(_dereq_,module,exports){
+},{"buffer":574}],198:[function(_dereq_,module,exports){
 (function (Buffer){
 const assert = _dereq_('assert')
 /**
@@ -68587,11 +63976,11 @@ function toBuffer (v) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"assert":327,"buffer":359}],214:[function(_dereq_,module,exports){
+},{"assert":542,"buffer":574}],199:[function(_dereq_,module,exports){
 'use strict'
 module.exports = _dereq_('./lib')(_dereq_('./lib/elliptic'))
 
-},{"./lib":217,"./lib/elliptic":216}],215:[function(_dereq_,module,exports){
+},{"./lib":202,"./lib/elliptic":201}],200:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict'
 var toString = Object.prototype.toString
@@ -68638,8 +64027,8 @@ exports.isNumberInInterval = function (number, x, y, message) {
   if (number <= x || number >= y) throw RangeError(message)
 }
 
-}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":409}],216:[function(_dereq_,module,exports){
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624}],201:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict'
 var createHash = _dereq_('create-hash')
@@ -68890,7 +64279,7 @@ exports.ecdhUnsafe = function (publicKey, privateKey, compressed) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"../messages.json":218,"bn.js":23,"buffer":359,"create-hash":30,"elliptic":85}],217:[function(_dereq_,module,exports){
+},{"../messages.json":203,"bn.js":22,"buffer":574,"create-hash":29,"elliptic":71}],202:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict'
 var bip66 = _dereq_('bip66')
@@ -69210,7 +64599,7 @@ module.exports = function (secp256k1) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./assert":215,"./messages.json":218,"bip66":16,"buffer":359}],218:[function(_dereq_,module,exports){
+},{"./assert":200,"./messages.json":203,"bip66":15,"buffer":574}],203:[function(_dereq_,module,exports){
 module.exports={
   "COMPRESSED_TYPE_INVALID": "compressed should be a boolean",
   "EC_PRIVATE_KEY_TYPE_INVALID": "private key should be a Buffer",
@@ -69248,7 +64637,7 @@ module.exports={
   "TWEAK_LENGTH_INVALID": "tweak length is invalid"
 }
 
-},{}],219:[function(_dereq_,module,exports){
+},{}],204:[function(_dereq_,module,exports){
 (function (Buffer){
 // prototype class for hash functions
 function Hash (blockSize, finalSize) {
@@ -69321,7 +64710,7 @@ Hash.prototype._update = function () {
 module.exports = Hash
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],220:[function(_dereq_,module,exports){
+},{"buffer":574}],205:[function(_dereq_,module,exports){
 var exports = module.exports = function SHA (algorithm) {
   algorithm = algorithm.toLowerCase()
 
@@ -69338,7 +64727,7 @@ exports.sha256 = _dereq_('./sha256')
 exports.sha384 = _dereq_('./sha384')
 exports.sha512 = _dereq_('./sha512')
 
-},{"./sha":221,"./sha1":222,"./sha224":223,"./sha256":224,"./sha384":225,"./sha512":226}],221:[function(_dereq_,module,exports){
+},{"./sha":206,"./sha1":207,"./sha224":208,"./sha256":209,"./sha384":210,"./sha512":211}],206:[function(_dereq_,module,exports){
 (function (Buffer){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-0, as defined
@@ -69435,7 +64824,7 @@ Sha.prototype._hash = function () {
 module.exports = Sha
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":219,"buffer":359,"inherits":143}],222:[function(_dereq_,module,exports){
+},{"./hash":204,"buffer":574,"inherits":129}],207:[function(_dereq_,module,exports){
 (function (Buffer){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-1, as defined
@@ -69537,7 +64926,7 @@ Sha1.prototype._hash = function () {
 module.exports = Sha1
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":219,"buffer":359,"inherits":143}],223:[function(_dereq_,module,exports){
+},{"./hash":204,"buffer":574,"inherits":129}],208:[function(_dereq_,module,exports){
 (function (Buffer){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
@@ -69593,7 +64982,7 @@ Sha224.prototype._hash = function () {
 module.exports = Sha224
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":219,"./sha256":224,"buffer":359,"inherits":143}],224:[function(_dereq_,module,exports){
+},{"./hash":204,"./sha256":209,"buffer":574,"inherits":129}],209:[function(_dereq_,module,exports){
 (function (Buffer){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
@@ -69731,7 +65120,7 @@ Sha256.prototype._hash = function () {
 module.exports = Sha256
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":219,"buffer":359,"inherits":143}],225:[function(_dereq_,module,exports){
+},{"./hash":204,"buffer":574,"inherits":129}],210:[function(_dereq_,module,exports){
 (function (Buffer){
 var inherits = _dereq_('inherits')
 var SHA512 = _dereq_('./sha512')
@@ -69791,7 +65180,7 @@ Sha384.prototype._hash = function () {
 module.exports = Sha384
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":219,"./sha512":226,"buffer":359,"inherits":143}],226:[function(_dereq_,module,exports){
+},{"./hash":204,"./sha512":211,"buffer":574,"inherits":129}],211:[function(_dereq_,module,exports){
 (function (Buffer){
 var inherits = _dereq_('inherits')
 var Hash = _dereq_('./hash')
@@ -70054,7 +65443,7 @@ Sha512.prototype._hash = function () {
 module.exports = Sha512
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":219,"buffer":359,"inherits":143}],227:[function(_dereq_,module,exports){
+},{"./hash":204,"buffer":574,"inherits":129}],212:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -70226,7 +65615,7 @@ module.exports = {
 };
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],228:[function(_dereq_,module,exports){
+},{"buffer":574}],213:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -70541,7 +65930,7 @@ ECPrivate.prototype.deriveSharedSecret = function (pubKey) {
 };
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./algs":227,"./key":240,"./private-key":241,"./utils":244,"assert-plus":245,"buffer":359,"crypto":369,"ecc-jsbn":82,"ecc-jsbn/lib/ec":83,"jodid25519":150,"jsbn":158}],229:[function(_dereq_,module,exports){
+},{"./algs":212,"./key":225,"./private-key":226,"./utils":229,"assert-plus":230,"buffer":574,"crypto":584,"ecc-jsbn":68,"ecc-jsbn/lib/ec":69,"jodid25519":136,"jsbn":143}],214:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -70641,7 +66030,7 @@ Signer.prototype.sign = function () {
 };
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./signature":242,"assert-plus":245,"buffer":359,"stream":462,"tweetnacl":256,"util":473}],230:[function(_dereq_,module,exports){
+},{"./signature":227,"assert-plus":230,"buffer":574,"stream":677,"tweetnacl":241,"util":688}],215:[function(_dereq_,module,exports){
 // Copyright 2015 Joyent, Inc.
 
 var assert = _dereq_('assert-plus');
@@ -70714,7 +66103,7 @@ module.exports = {
 	KeyEncryptedError: KeyEncryptedError
 };
 
-},{"assert-plus":245,"util":473}],231:[function(_dereq_,module,exports){
+},{"assert-plus":230,"util":688}],216:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -70858,7 +66247,7 @@ Fingerprint._oldVersionDetect = function (obj) {
 };
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./algs":227,"./errors":230,"./key":240,"./utils":244,"assert-plus":245,"buffer":359,"crypto":369}],232:[function(_dereq_,module,exports){
+},{"./algs":212,"./errors":215,"./key":225,"./utils":229,"assert-plus":230,"buffer":574,"crypto":584}],217:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -70935,7 +66324,7 @@ function write(key, options) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"../key":240,"../private-key":241,"../utils":244,"./pem":233,"./rfc4253":236,"./ssh":238,"assert-plus":245,"buffer":359}],233:[function(_dereq_,module,exports){
+},{"../key":225,"../private-key":226,"../utils":229,"./pem":218,"./rfc4253":221,"./ssh":223,"assert-plus":230,"buffer":574}],218:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -71125,7 +66514,7 @@ function write(key, options, type) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"../algs":227,"../errors":230,"../key":240,"../private-key":241,"../utils":244,"./pkcs1":234,"./pkcs8":235,"./rfc4253":236,"./ssh-private":237,"asn1":8,"assert-plus":245,"buffer":359,"crypto":369}],234:[function(_dereq_,module,exports){
+},{"../algs":212,"../errors":215,"../key":225,"../private-key":226,"../utils":229,"./pkcs1":219,"./pkcs8":220,"./rfc4253":221,"./ssh-private":222,"asn1":7,"assert-plus":230,"buffer":574,"crypto":584}],219:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -71449,7 +66838,7 @@ function writePkcs1ECDSAPrivate(der, key) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"../algs":227,"../key":240,"../private-key":241,"../utils":244,"./pem":233,"./pkcs8":235,"asn1":8,"assert-plus":245,"buffer":359}],235:[function(_dereq_,module,exports){
+},{"../algs":212,"../key":225,"../private-key":226,"../utils":229,"./pem":218,"./pkcs8":220,"asn1":7,"assert-plus":230,"buffer":574}],220:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -71963,7 +67352,7 @@ function writePkcs8ECDSAPrivate(key, der) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"../algs":227,"../key":240,"../private-key":241,"../utils":244,"./pem":233,"asn1":8,"assert-plus":245,"buffer":359}],236:[function(_dereq_,module,exports){
+},{"../algs":212,"../key":225,"../private-key":226,"../utils":229,"./pem":218,"asn1":7,"assert-plus":230,"buffer":574}],221:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -72113,7 +67502,7 @@ function write(key, options) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"../algs":227,"../key":240,"../private-key":241,"../ssh-buffer":243,"../utils":244,"assert-plus":245,"buffer":359}],237:[function(_dereq_,module,exports){
+},{"../algs":212,"../key":225,"../private-key":226,"../ssh-buffer":228,"../utils":229,"assert-plus":230,"buffer":574}],222:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -72255,7 +67644,7 @@ function write(key, options) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"../algs":227,"../key":240,"../private-key":241,"../ssh-buffer":243,"../utils":244,"./pem":233,"./rfc4253":236,"asn1":8,"assert-plus":245,"buffer":359,"crypto":369}],238:[function(_dereq_,module,exports){
+},{"../algs":212,"../key":225,"../private-key":226,"../ssh-buffer":228,"../utils":229,"./pem":218,"./rfc4253":221,"asn1":7,"assert-plus":230,"buffer":574,"crypto":584}],223:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -72373,7 +67762,7 @@ function write(key, options) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"../key":240,"../private-key":241,"../utils":244,"./rfc4253":236,"./ssh-private":237,"assert-plus":245,"buffer":359}],239:[function(_dereq_,module,exports){
+},{"../key":225,"../private-key":226,"../utils":229,"./rfc4253":221,"./ssh-private":222,"assert-plus":230,"buffer":574}],224:[function(_dereq_,module,exports){
 // Copyright 2015 Joyent, Inc.
 
 var Key = _dereq_('./key');
@@ -72401,7 +67790,7 @@ module.exports = {
 	KeyEncryptedError: errs.KeyEncryptedError
 };
 
-},{"./errors":230,"./fingerprint":231,"./key":240,"./private-key":241,"./signature":242}],240:[function(_dereq_,module,exports){
+},{"./errors":215,"./fingerprint":216,"./key":225,"./private-key":226,"./signature":227}],225:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -72673,8 +68062,8 @@ Key._oldVersionDetect = function (obj) {
 	return ([1, 0]);
 };
 
-}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":409,"./algs":227,"./dhe":228,"./ed-compat":229,"./errors":230,"./fingerprint":231,"./formats/auto":232,"./formats/pem":233,"./formats/pkcs1":234,"./formats/pkcs8":235,"./formats/rfc4253":236,"./formats/ssh":238,"./formats/ssh-private":237,"./private-key":241,"./signature":242,"./utils":244,"assert-plus":245,"crypto":369}],241:[function(_dereq_,module,exports){
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"./algs":212,"./dhe":213,"./ed-compat":214,"./errors":215,"./fingerprint":216,"./formats/auto":217,"./formats/pem":218,"./formats/pkcs1":219,"./formats/pkcs8":220,"./formats/rfc4253":221,"./formats/ssh":223,"./formats/ssh-private":222,"./private-key":226,"./signature":227,"./utils":229,"assert-plus":230,"crypto":584}],226:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -72909,7 +68298,7 @@ PrivateKey._oldVersionDetect = function (obj) {
 };
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./algs":227,"./ed-compat":229,"./errors":230,"./fingerprint":231,"./formats/auto":232,"./formats/pem":233,"./formats/pkcs1":234,"./formats/pkcs8":235,"./formats/rfc4253":236,"./formats/ssh-private":237,"./key":240,"./signature":242,"./utils":244,"assert-plus":245,"buffer":359,"crypto":369,"jodid25519":150,"util":473}],242:[function(_dereq_,module,exports){
+},{"./algs":212,"./ed-compat":214,"./errors":215,"./fingerprint":216,"./formats/auto":217,"./formats/pem":218,"./formats/pkcs1":219,"./formats/pkcs8":220,"./formats/rfc4253":221,"./formats/ssh-private":222,"./key":225,"./signature":227,"./utils":229,"assert-plus":230,"buffer":574,"crypto":584,"jodid25519":136,"util":688}],227:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -73150,7 +68539,7 @@ Signature._oldVersionDetect = function (obj) {
 };
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./algs":227,"./errors":230,"./ssh-buffer":243,"./utils":244,"asn1":8,"assert-plus":245,"buffer":359,"crypto":369}],243:[function(_dereq_,module,exports){
+},{"./algs":212,"./errors":215,"./ssh-buffer":228,"./utils":229,"asn1":7,"assert-plus":230,"buffer":574,"crypto":584}],228:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -73278,7 +68667,7 @@ SSHBuffer.prototype.write = function (buf) {
 };
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"assert-plus":245,"buffer":359}],244:[function(_dereq_,module,exports){
+},{"assert-plus":230,"buffer":574}],229:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright 2015 Joyent, Inc.
 
@@ -73528,7 +68917,7 @@ function addRSAMissing(key) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./private-key":241,"assert-plus":245,"buffer":359,"crypto":369,"jsbn":158}],245:[function(_dereq_,module,exports){
+},{"./private-key":226,"assert-plus":230,"buffer":574,"crypto":584,"jsbn":143}],230:[function(_dereq_,module,exports){
 (function (Buffer,process){
 // Copyright (c) 2012, Mark Cavage. All rights reserved.
 // Copyright 2015 Joyent, Inc.
@@ -73742,8 +69131,8 @@ function _setExports(ndebug) {
 
 module.exports = _setExports(process.env.NODE_NDEBUG);
 
-}).call(this,{"isBuffer":_dereq_("../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")},_dereq_('_process'))
-},{"../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":409,"_process":431,"assert":327,"stream":462,"util":473}],246:[function(_dereq_,module,exports){
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")},_dereq_('_process'))
+},{"../../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"_process":646,"assert":542,"stream":677,"util":688}],231:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -73966,7 +69355,7 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":359}],247:[function(_dereq_,module,exports){
+},{"buffer":574}],232:[function(_dereq_,module,exports){
 (function (Buffer){
 var util = _dereq_('util')
 var Stream = _dereq_('stream')
@@ -74072,7 +69461,7 @@ function alignedWrite(buffer) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"stream":462,"string_decoder":467,"util":473}],248:[function(_dereq_,module,exports){
+},{"buffer":574,"stream":677,"string_decoder":682,"util":688}],233:[function(_dereq_,module,exports){
 /*!
  * Copyright (c) 2015, Salesforce.com, Inc.
  * All rights reserved.
@@ -75416,7 +70805,7 @@ module.exports = {
   canonicalDomain: canonicalDomain
 };
 
-},{"../package.json":254,"./memstore":249,"./pathMatch":250,"./permuteDomain":251,"./pubsuffix":252,"./store":253,"net":312,"punycode":438,"url":469}],249:[function(_dereq_,module,exports){
+},{"../package.json":239,"./memstore":234,"./pathMatch":235,"./permuteDomain":236,"./pubsuffix":237,"./store":238,"net":527,"punycode":653,"url":684}],234:[function(_dereq_,module,exports){
 /*!
  * Copyright (c) 2015, Salesforce.com, Inc.
  * All rights reserved.
@@ -75588,7 +70977,7 @@ MemoryCookieStore.prototype.getAllCookies = function(cb) {
   cb(null, cookies);
 };
 
-},{"./pathMatch":250,"./permuteDomain":251,"./store":253,"util":473}],250:[function(_dereq_,module,exports){
+},{"./pathMatch":235,"./permuteDomain":236,"./store":238,"util":688}],235:[function(_dereq_,module,exports){
 /*!
  * Copyright (c) 2015, Salesforce.com, Inc.
  * All rights reserved.
@@ -75651,7 +71040,7 @@ function pathMatch (reqPath, cookiePath) {
 
 exports.pathMatch = pathMatch;
 
-},{}],251:[function(_dereq_,module,exports){
+},{}],236:[function(_dereq_,module,exports){
 /*!
  * Copyright (c) 2015, Salesforce.com, Inc.
  * All rights reserved.
@@ -75709,7 +71098,7 @@ function permuteDomain (domain) {
 
 exports.permuteDomain = permuteDomain;
 
-},{"./pubsuffix":252}],252:[function(_dereq_,module,exports){
+},{"./pubsuffix":237}],237:[function(_dereq_,module,exports){
 /****************************************************
  * AUTOMATICALLY GENERATED by generate-pubsuffix.js *
  *                  DO NOT EDIT!                    *
@@ -75809,7 +71198,7 @@ var index = module.exports.index = Object.freeze(
 
 // END of automatically generated file
 
-},{"punycode":438}],253:[function(_dereq_,module,exports){
+},{"punycode":653}],238:[function(_dereq_,module,exports){
 /*!
  * Copyright (c) 2015, Salesforce.com, Inc.
  * All rights reserved.
@@ -75882,7 +71271,7 @@ Store.prototype.getAllCookies = function(cb) {
   throw new Error('getAllCookies is not implemented (therefore jar cannot be serialized)');
 };
 
-},{}],254:[function(_dereq_,module,exports){
+},{}],239:[function(_dereq_,module,exports){
 module.exports={
   "_args": [
     [
@@ -75894,7 +71283,7 @@ module.exports={
         "spec": ">=2.2.0 <2.3.0",
         "type": "range"
       },
-      "/Users/zackcoburn/Sites/live/etheropt.github.io/node_modules/request"
+      "/Users/zackcoburn/Sites/live/etheropt.github.io/common/node_modules/request"
     ]
   ],
   "_from": "tough-cookie@>=2.2.0 <2.3.0",
@@ -75928,7 +71317,7 @@ module.exports={
   "_shasum": "c83a1830f4e5ef0b93ef2a3488e724f8de016ac7",
   "_shrinkwrap": null,
   "_spec": "tough-cookie@~2.2.0",
-  "_where": "/Users/zackcoburn/Sites/live/etheropt.github.io/node_modules/request",
+  "_where": "/Users/zackcoburn/Sites/live/etheropt.github.io/common/node_modules/request",
   "author": {
     "email": "jstashewsky@salesforce.com",
     "name": "Jeremy Stashewsky"
@@ -76011,7 +71400,7 @@ module.exports={
   "version": "2.2.2"
 }
 
-},{}],255:[function(_dereq_,module,exports){
+},{}],240:[function(_dereq_,module,exports){
 (function (process,Buffer){
 'use strict'
 
@@ -76258,7 +71647,7 @@ if (process.env.NODE_DEBUG && /\btunnel\b/.test(process.env.NODE_DEBUG)) {
 exports.debug = debug // for test
 
 }).call(this,_dereq_('_process'),_dereq_("buffer").Buffer)
-},{"_process":431,"assert":327,"buffer":359,"events":397,"http":463,"https":405,"net":312,"tls":312,"util":473}],256:[function(_dereq_,module,exports){
+},{"_process":646,"assert":542,"buffer":574,"events":612,"http":678,"https":620,"net":527,"tls":527,"util":688}],241:[function(_dereq_,module,exports){
 (function (Buffer){
 (function(nacl) {
 'use strict';
@@ -78680,7 +74069,7 @@ nacl.setPRNG = function(fn) {
 })(typeof module !== 'undefined' && module.exports ? module.exports : (window.nacl = window.nacl || {}));
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":331,"crypto":331}],257:[function(_dereq_,module,exports){
+},{"buffer":546,"crypto":546}],242:[function(_dereq_,module,exports){
 (function (global){
 /*! https://mths.be/utf8js v2.0.0 by @mathias */
 ;(function(root) {
@@ -78928,7 +74317,7 @@ nacl.setPRNG = function(fn) {
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],258:[function(_dereq_,module,exports){
+},{}],243:[function(_dereq_,module,exports){
 (function (global){
 
 /**
@@ -78999,7 +74388,7 @@ function config (name) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],259:[function(_dereq_,module,exports){
+},{}],244:[function(_dereq_,module,exports){
 (function (process){
 /*!
  * Copyright (c) 2015 Chris O'Hara <cohara87@gmail.com>
@@ -79984,7 +75373,7 @@ function config (name) {
 });
 
 }).call(this,_dereq_('_process'))
-},{"_process":431,"depd":81}],260:[function(_dereq_,module,exports){
+},{"_process":646,"depd":67}],245:[function(_dereq_,module,exports){
 /*
  * verror.js: richer JavaScript errors
  */
@@ -80143,7 +75532,7 @@ WError.prototype.cause = function we_cause(c)
 	return (this.we_cause);
 };
 
-},{"assert":327,"extsprintf":107,"util":473}],261:[function(_dereq_,module,exports){
+},{"assert":542,"extsprintf":93,"util":688}],246:[function(_dereq_,module,exports){
 var Web3 = _dereq_('./lib/web3');
 
 // dont override global variable
@@ -80153,7 +75542,7 @@ if (typeof window !== 'undefined' && typeof window.Web3 === 'undefined') {
 
 module.exports = Web3;
 
-},{"./lib/web3":283}],262:[function(_dereq_,module,exports){
+},{"./lib/web3":268}],247:[function(_dereq_,module,exports){
 module.exports=[
   {
     "constant": true,
@@ -80409,7 +75798,7 @@ module.exports=[
   }
 ]
 
-},{}],263:[function(_dereq_,module,exports){
+},{}],248:[function(_dereq_,module,exports){
 module.exports=[
   {
     "constant": true,
@@ -80519,7 +75908,7 @@ module.exports=[
   }
 ]
 
-},{}],264:[function(_dereq_,module,exports){
+},{}],249:[function(_dereq_,module,exports){
 module.exports=[
   {
     "constant": false,
@@ -80667,7 +76056,7 @@ module.exports=[
   }
 ]
 
-},{}],265:[function(_dereq_,module,exports){
+},{}],250:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -80700,7 +76089,7 @@ SolidityTypeAddress.prototype.staticPartLength = function (name) {
 module.exports = SolidityTypeAddress;
 
 
-},{"./formatters":270,"./type":275}],266:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],251:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -80732,7 +76121,7 @@ SolidityTypeBool.prototype.staticPartLength = function (name) {
 
 module.exports = SolidityTypeBool;
 
-},{"./formatters":270,"./type":275}],267:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],252:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -80772,7 +76161,7 @@ SolidityTypeBytes.prototype.staticPartLength = function (name) {
 
 module.exports = SolidityTypeBytes;
 
-},{"./formatters":270,"./type":275}],268:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],253:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -81034,7 +76423,7 @@ var coder = new SolidityCoder([
 module.exports = coder;
 
 
-},{"./address":265,"./bool":266,"./bytes":267,"./dynamicbytes":269,"./formatters":270,"./int":271,"./real":273,"./string":274,"./uint":276,"./ureal":277}],269:[function(_dereq_,module,exports){
+},{"./address":250,"./bool":251,"./bytes":252,"./dynamicbytes":254,"./formatters":255,"./int":256,"./real":258,"./string":259,"./uint":261,"./ureal":262}],254:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -81061,7 +76450,7 @@ SolidityTypeDynamicBytes.prototype.isDynamicType = function () {
 module.exports = SolidityTypeDynamicBytes;
 
 
-},{"./formatters":270,"./type":275}],270:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],255:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -81313,7 +76702,7 @@ module.exports = {
 };
 
 
-},{"../utils/config":279,"../utils/utils":281,"./param":272,"bignumber.js":310}],271:[function(_dereq_,module,exports){
+},{"../utils/config":264,"../utils/utils":266,"./param":257,"bignumber.js":295}],256:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -81351,7 +76740,7 @@ SolidityTypeInt.prototype.staticPartLength = function (name) {
 
 module.exports = SolidityTypeInt;
 
-},{"./formatters":270,"./type":275}],272:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],257:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -81505,7 +76894,7 @@ SolidityParam.encodeList = function (params) {
 module.exports = SolidityParam;
 
 
-},{"../utils/utils":281}],273:[function(_dereq_,module,exports){
+},{"../utils/utils":266}],258:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -81543,7 +76932,7 @@ SolidityTypeReal.prototype.staticPartLength = function (name) {
 
 module.exports = SolidityTypeReal;
 
-},{"./formatters":270,"./type":275}],274:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],259:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -81570,7 +76959,7 @@ SolidityTypeString.prototype.isDynamicType = function () {
 module.exports = SolidityTypeString;
 
 
-},{"./formatters":270,"./type":275}],275:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],260:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityParam = _dereq_('./param');
 
@@ -81817,7 +77206,7 @@ SolidityType.prototype.decode = function (bytes, offset, name) {
 
 module.exports = SolidityType;
 
-},{"./formatters":270,"./param":272}],276:[function(_dereq_,module,exports){
+},{"./formatters":255,"./param":257}],261:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -81855,7 +77244,7 @@ SolidityTypeUInt.prototype.staticPartLength = function (name) {
 
 module.exports = SolidityTypeUInt;
 
-},{"./formatters":270,"./type":275}],277:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],262:[function(_dereq_,module,exports){
 var f = _dereq_('./formatters');
 var SolidityType = _dereq_('./type');
 
@@ -81893,7 +77282,7 @@ SolidityTypeUReal.prototype.staticPartLength = function (name) {
 
 module.exports = SolidityTypeUReal;
 
-},{"./formatters":270,"./type":275}],278:[function(_dereq_,module,exports){
+},{"./formatters":255,"./type":260}],263:[function(_dereq_,module,exports){
 'use strict';
 
 // go env doesn't have and need XMLHttpRequest
@@ -81904,7 +77293,7 @@ if (typeof XMLHttpRequest === 'undefined') {
 }
 
 
-},{}],279:[function(_dereq_,module,exports){
+},{}],264:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -81985,7 +77374,7 @@ module.exports = {
 };
 
 
-},{"bignumber.js":310}],280:[function(_dereq_,module,exports){
+},{"bignumber.js":295}],265:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -82025,7 +77414,7 @@ module.exports = function (value, options) {
 };
 
 
-},{"crypto-js":41,"crypto-js/sha3":62}],281:[function(_dereq_,module,exports){
+},{"crypto-js":40,"crypto-js/sha3":61}],266:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -82624,12 +78013,12 @@ module.exports = {
     isJson: isJson
 };
 
-},{"./sha3.js":280,"bignumber.js":310,"utf8":257}],282:[function(_dereq_,module,exports){
+},{"./sha3.js":265,"bignumber.js":295,"utf8":242}],267:[function(_dereq_,module,exports){
 module.exports={
     "version": "0.15.3"
 }
 
-},{}],283:[function(_dereq_,module,exports){
+},{}],268:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -82773,7 +78162,7 @@ Web3.prototype.createBatch = function () {
 module.exports = Web3;
 
 
-},{"./utils/sha3":280,"./utils/utils":281,"./version.json":282,"./web3/batch":285,"./web3/extend":289,"./web3/httpprovider":293,"./web3/iban":294,"./web3/ipcprovider":295,"./web3/methods/db":298,"./web3/methods/eth":299,"./web3/methods/net":300,"./web3/methods/personal":301,"./web3/methods/shh":302,"./web3/property":305,"./web3/requestmanager":306,"./web3/settings":307}],284:[function(_dereq_,module,exports){
+},{"./utils/sha3":265,"./utils/utils":266,"./version.json":267,"./web3/batch":270,"./web3/extend":274,"./web3/httpprovider":278,"./web3/iban":279,"./web3/ipcprovider":280,"./web3/methods/db":283,"./web3/methods/eth":284,"./web3/methods/net":285,"./web3/methods/personal":286,"./web3/methods/shh":287,"./web3/property":290,"./web3/requestmanager":291,"./web3/settings":292}],269:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -82863,7 +78252,7 @@ AllSolidityEvents.prototype.attachToContract = function (contract) {
 module.exports = AllSolidityEvents;
 
 
-},{"../utils/sha3":280,"../utils/utils":281,"./event":288,"./filter":290,"./formatters":291,"./methods/watches":303}],285:[function(_dereq_,module,exports){
+},{"../utils/sha3":265,"../utils/utils":266,"./event":273,"./filter":275,"./formatters":276,"./methods/watches":288}],270:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -82931,7 +78320,7 @@ Batch.prototype.execute = function () {
 module.exports = Batch;
 
 
-},{"./errors":287,"./jsonrpc":296}],286:[function(_dereq_,module,exports){
+},{"./errors":272,"./jsonrpc":281}],271:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -83231,7 +78620,7 @@ var Contract = function (eth, abi, address) {
 
 module.exports = ContractFactory;
 
-},{"../solidity/coder":268,"../utils/utils":281,"./allevents":284,"./event":288,"./function":292}],287:[function(_dereq_,module,exports){
+},{"../solidity/coder":253,"../utils/utils":266,"./allevents":269,"./event":273,"./function":277}],272:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -83271,7 +78660,7 @@ module.exports = {
 };
 
 
-},{}],288:[function(_dereq_,module,exports){
+},{}],273:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -83481,7 +78870,7 @@ SolidityEvent.prototype.attachToContract = function (contract) {
 module.exports = SolidityEvent;
 
 
-},{"../solidity/coder":268,"../utils/sha3":280,"../utils/utils":281,"./filter":290,"./formatters":291,"./methods/watches":303}],289:[function(_dereq_,module,exports){
+},{"../solidity/coder":253,"../utils/sha3":265,"../utils/utils":266,"./filter":275,"./formatters":276,"./methods/watches":288}],274:[function(_dereq_,module,exports){
 var formatters = _dereq_('./formatters');
 var utils = _dereq_('./../utils/utils');
 var Method = _dereq_('./method');
@@ -83531,7 +78920,7 @@ var extend = function (web3) {
 module.exports = extend;
 
 
-},{"./../utils/utils":281,"./formatters":291,"./method":297,"./property":305}],290:[function(_dereq_,module,exports){
+},{"./../utils/utils":266,"./formatters":276,"./method":282,"./property":290}],275:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -83763,7 +79152,7 @@ Filter.prototype.get = function (callback) {
 module.exports = Filter;
 
 
-},{"../utils/utils":281,"./formatters":291}],291:[function(_dereq_,module,exports){
+},{"../utils/utils":266,"./formatters":276}],276:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -84064,7 +79453,7 @@ module.exports = {
 };
 
 
-},{"../utils/config":279,"../utils/utils":281,"./iban":294}],292:[function(_dereq_,module,exports){
+},{"../utils/config":264,"../utils/utils":266,"./iban":279}],277:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -84313,7 +79702,7 @@ SolidityFunction.prototype.attachToContract = function (contract) {
 module.exports = SolidityFunction;
 
 
-},{"../solidity/coder":268,"../utils/sha3":280,"../utils/utils":281,"./formatters":291}],293:[function(_dereq_,module,exports){
+},{"../solidity/coder":253,"../utils/sha3":265,"../utils/utils":266,"./formatters":276}],278:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -84461,7 +79850,7 @@ HttpProvider.prototype.isConnected = function() {
 module.exports = HttpProvider;
 
 
-},{"./errors":287,"xmlhttprequest":278}],294:[function(_dereq_,module,exports){
+},{"./errors":272,"xmlhttprequest":263}],279:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -84690,7 +80079,7 @@ Iban.prototype.toString = function () {
 module.exports = Iban;
 
 
-},{"bignumber.js":310}],295:[function(_dereq_,module,exports){
+},{"bignumber.js":295}],280:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -84899,7 +80288,7 @@ IpcProvider.prototype.sendAsync = function (payload, callback) {
 module.exports = IpcProvider;
 
 
-},{"../utils/utils":281,"./errors":287}],296:[function(_dereq_,module,exports){
+},{"../utils/utils":266,"./errors":272}],281:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -84992,7 +80381,7 @@ Jsonrpc.prototype.toBatchPayload = function (messages) {
 module.exports = Jsonrpc;
 
 
-},{}],297:[function(_dereq_,module,exports){
+},{}],282:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -85159,7 +80548,7 @@ Method.prototype.request = function () {
 module.exports = Method;
 
 
-},{"../utils/utils":281,"./errors":287}],298:[function(_dereq_,module,exports){
+},{"../utils/utils":266,"./errors":272}],283:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -85227,7 +80616,7 @@ var methods = function () {
 
 module.exports = DB;
 
-},{"../method":297}],299:[function(_dereq_,module,exports){
+},{"../method":282}],284:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -85572,7 +80961,7 @@ Eth.prototype.isSyncing = function (callback) {
 module.exports = Eth;
 
 
-},{"../../utils/config":279,"../../utils/utils":281,"../contract":286,"../filter":290,"../formatters":291,"../iban":294,"../method":297,"../namereg":304,"../property":305,"../syncing":308,"../transfer":309,"./watches":303}],300:[function(_dereq_,module,exports){
+},{"../../utils/config":264,"../../utils/utils":266,"../contract":271,"../filter":275,"../formatters":276,"../iban":279,"../method":282,"../namereg":289,"../property":290,"../syncing":293,"../transfer":294,"./watches":288}],285:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -85626,7 +81015,7 @@ var properties = function () {
 
 module.exports = Net;
 
-},{"../../utils/utils":281,"../property":305}],301:[function(_dereq_,module,exports){
+},{"../../utils/utils":266,"../property":290}],286:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -85704,7 +81093,7 @@ var properties = function () {
 
 module.exports = Personal;
 
-},{"../method":297,"../property":305}],302:[function(_dereq_,module,exports){
+},{"../method":282,"../property":290}],287:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -85792,7 +81181,7 @@ var methods = function () {
 module.exports = Shh;
 
 
-},{"../filter":290,"../formatters":291,"../method":297,"./watches":303}],303:[function(_dereq_,module,exports){
+},{"../filter":275,"../formatters":276,"../method":282,"./watches":288}],288:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -85908,7 +81297,7 @@ module.exports = {
 };
 
 
-},{"../method":297}],304:[function(_dereq_,module,exports){
+},{"../method":282}],289:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -85949,7 +81338,7 @@ module.exports = {
 };
 
 
-},{"../contracts/GlobalRegistrar.json":262,"../contracts/ICAPRegistrar.json":263}],305:[function(_dereq_,module,exports){
+},{"../contracts/GlobalRegistrar.json":247,"../contracts/ICAPRegistrar.json":248}],290:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -86095,7 +81484,7 @@ Property.prototype.request = function () {
 module.exports = Property;
 
 
-},{"../utils/utils":281}],306:[function(_dereq_,module,exports){
+},{"../utils/utils":266}],291:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -86362,7 +81751,7 @@ RequestManager.prototype.poll = function () {
 module.exports = RequestManager;
 
 
-},{"../utils/config":279,"../utils/utils":281,"./errors":287,"./jsonrpc":296}],307:[function(_dereq_,module,exports){
+},{"../utils/config":264,"../utils/utils":266,"./errors":272,"./jsonrpc":281}],292:[function(_dereq_,module,exports){
 
 
 var Settings = function () {
@@ -86373,7 +81762,7 @@ var Settings = function () {
 module.exports = Settings;
 
 
-},{}],308:[function(_dereq_,module,exports){
+},{}],293:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -86468,7 +81857,7 @@ IsSyncing.prototype.stopWatching = function () {
 module.exports = IsSyncing;
 
 
-},{"../utils/utils":281,"./formatters":291}],309:[function(_dereq_,module,exports){
+},{"../utils/utils":266,"./formatters":276}],294:[function(_dereq_,module,exports){
 /*
     This file is part of web3.js.
 
@@ -86562,7 +81951,7 @@ var deposit = function (eth, from, to, value, client, callback) {
 module.exports = transfer;
 
 
-},{"../contracts/SmartExchange.json":264,"./iban":294}],310:[function(_dereq_,module,exports){
+},{"../contracts/SmartExchange.json":249,"./iban":279}],295:[function(_dereq_,module,exports){
 /*! bignumber.js v2.0.7 https://github.com/MikeMcl/bignumber.js/LICENCE */
 
 ;(function (global) {
@@ -89247,9 +84636,9 @@ module.exports = transfer;
     }
 })(this);
 
-},{"crypto":369}],311:[function(_dereq_,module,exports){
+},{"crypto":584}],296:[function(_dereq_,module,exports){
 (function (global,Buffer){
-var config = (typeof(global.config) == 'undefined' && typeof(config) == 'undefined') ? _dereq_('./config.js') : global.config;
+var config = (typeof(global.config) == 'undefined' && typeof(config) == 'undefined') ? _dereq_('../config.js') : global.config;
 var fs = _dereq_('fs');
 var request = _dereq_('request');
 var async = (typeof(window) === 'undefined') ? _dereq_('async') : _dereq_('async/dist/async.min.js');
@@ -89264,53 +84653,49 @@ var keythereum = _dereq_('keythereum');
 var ethUtil = _dereq_('ethereumjs-util');
 var BigNumber = _dereq_('bignumber.js');
 
-function roundToNearest(numToRound, numToRoundTo) {
-    numToRoundTo = 1 / (numToRoundTo);
-    return Math.round(numToRound * numToRoundTo) / numToRoundTo;
-}
-
 function weiToEth(wei) {
   return (wei/1000000000000000000).toFixed(3);
 }
 
 function ethToWei(eth) {
-  return eth*1000000000000000000;
+  return parseFloat((eth*1000000000000000000).toPrecision(10));
 }
 
-function roundTo(numToRound, numToRoundTo) {
-  return numToRound.toFixed(numToRoundTo);
+function roundToNearest(numToRound, numToRoundTo) {
+    numToRoundTo = 1 / (numToRoundTo);
+    return Math.round(numToRound * numToRoundTo) / numToRoundTo;
 }
 
 function readFile(filename, callback) {
-  if (callback) {
-    try {
-      if (typeof(window) === 'undefined') {
-        fs.readFile(filename,{ encoding: 'utf8' }, function(err, data) {
-          if (callback) {
-            callback(data);
-          }
-        });
-      } else {
-        request.get(config.home_url+"/"+filename, function(err, httpResponse, body){
-          callback(body);
-        });
-      }
-    } catch (err) {
-      callback(undefined);
+  try {
+    if (typeof(window) === 'undefined') {
+      fs.readFile(filename,{ encoding: 'utf8' }, function(err, data) {
+        if (err) {
+          callback(err, undefined);
+        } else {
+          callback(undefined, data);
+        }
+      });
+    } else {
+      request.get(config.homeURL+"/"+filename, function(err, httpResponse, body){
+        if (err) {
+          callback(err, undefined);
+        } else {
+          callback(undefined, body);
+        }
+      });
     }
-  } else {
-    try {
-      return fs.readFileSync(filename,{ encoding: 'utf8' });
-    } catch (err) {
-      return undefined;
-    }
+  } catch (err) {
+    callback(err, undefined);
   }
 }
 
 function writeFile(filename, data) {
   fs.writeFile(filename, data, function(err) {
     if(err) {
-        console.error("Could not write file: %s", err);
+      callback(err, false);
+    } else {
+      callback(undefined, true);
     }
 	});
 }
@@ -89322,7 +84707,7 @@ function testCall(web3, contract, address, functionName, args, callback) {
   web3.eth.call(options, function(err, result) {
     if (!err) {
       var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-      var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
+      var solidityFunction = new SolidityFunction(web3.Eth, functionAbi, address);
       callback(err, solidityFunction.unpackOutput(result));
     } else {
       callback(err, result);
@@ -89335,26 +84720,26 @@ function call(web3, contract, address, functionName, args, callback) {
     var web3 = new Web3();
     var data = contract[functionName].getData.apply(null, args);
     var result = undefined;
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_call&to='+address+'&data='+data;
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_Call&to='+address+'&data='+data;
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         try {
           result = JSON.parse(body);
           var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-          var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
+          var solidityFunction = new SolidityFunction(web3.Eth, functionAbi, address);
           var result = solidityFunction.unpackOutput(result['result']);
-          callback(result);
+          callback(undefined, result);
         } catch (err) {
           if (retries>0) {
             setTimeout(function(){
               proxy(retries-1);
             }, 1000);
           } else {
-            callback(undefined);
+            callback(err, undefined);
           }
         }
       } else {
-        callback(undefined);
+        callback(err, undefined);
       }
     });
   }
@@ -89364,12 +84749,12 @@ function call(web3, contract, address, functionName, args, callback) {
       web3.eth.call({to: address, data: data}, function(err, result){
         if (!err) {
           var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-          var solidityFunction = new SolidityFunction(web3._eth, functionAbi, address);
+          var solidityFunction = new SolidityFunction(web3.Eth, functionAbi, address);
           try {
             var result = solidityFunction.unpackOutput(result);
-            callback(result);
+            callback(undefined, result);
           } catch (err) {
-            callback(undefined);
+            proxy(1);
           }
         } else {
           proxy(1);
@@ -89384,22 +84769,40 @@ function call(web3, contract, address, functionName, args, callback) {
 }
 
 function testSend(web3, contract, address, functionName, args, fromAddress, privateKey, nonce, callback) {
+  function encodeConstructorParams(abi, params) {
+      return abi.filter(function (json) {
+        return json.type === 'constructor' && json.inputs.length === params.length;
+      }).map(function (json) {
+        return json.inputs.map(function (input) {
+          return input.type;
+        });
+      }).map(function (types) {
+        return coder.encodeParams(types, params);
+      })[0] || '';
+  }
   args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
   var options = {};
-  var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
-  var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
   if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
-    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasPrice = config.ethGasPrice;
     args[args.length-1].gasLimit = args[args.length-1].gas;
     delete args[args.length-1].gas;
   }
-  if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
-      options = args[args.length - 1];
+  if (utils.isObject(args[args.length-1])) {
+    options = args.pop();
   }
-  var typeName = inputTypes.join();
-  options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
-  options.to = address;
-  options.from = fromAddress;
+  if (functionName=="constructor") {
+    if (options.data.slice(0,2)!="0x") {
+      options.data = '0x' + options.data;
+    }
+    options.data += encodeConstructorParams(contract.abi, args);
+  } else {
+    options.to = address;
+    var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
+    var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
+    var typeName = inputTypes.join();
+    options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
+  }
+  if (options.from == undefined) options.from = fromAddress;
   web3.eth.sendTransaction(options, function(err, result) {
     callback(err, result);
   });
@@ -89423,18 +84826,18 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
   args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
   var options = {};
   if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
-    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasPrice = config.ethGasPrice;
     args[args.length-1].gasLimit = args[args.length-1].gas;
     delete args[args.length-1].gas;
   }
-  if (utils.isObject(args[args.length -1])) {
+  if (utils.isObject(args[args.length-1])) {
     options = args.pop();
   }
-  getNextNonce(web3, fromAddress, function(nextNonce){
+  getNextNonce(web3, fromAddress, function(err, nextNonce){
     if (nonce==undefined || nonce<nextNonce) {
       nonce = nextNonce;
     }
-    console.log("Nonce:", nonce);
+    // console.log("Nonce:", nonce);
     options.nonce = nonce;
     if (functionName=="constructor") {
       if (options.data.slice(0,2)!="0x") {
@@ -89449,28 +84852,25 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
       options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
     }
     var tx = new Tx(options);
-    signTx(web3, fromAddress, tx, privateKey, function(tx){
-      if (tx) {
+    signTx(web3, fromAddress, tx, privateKey, function(err, tx){
+      if (!err) {
         var serializedTx = tx.serialize().toString('hex');
         function proxy() {
-          var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api';
+          var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api';
           request.post({url: url, form: {module: 'proxy', action: 'eth_sendRawTransaction', hex: serializedTx}}, function(err, httpResponse, body){
             if (!err) {
               try {
                 var result = JSON.parse(body);
                 if (result['result']) {
-                  callback([result['result'], nonce+1]);
+                  callback(undefined, {txHash: result['result'], nonce: nonce+1});
                 } else if (result['error']) {
-                  console.log(result['error']['message']);
-                  callback([undefined, nonce]);
+                  callback(result['error']['message'], {txHash: undefined, nonce: nonce+1});
                 }
               } catch (err) {
-                console.log('Failed to parse JSON response from proxy.');
-                callback([undefined, nonce]);
+                callback(err, {txHash: undefined, nonce: nonce+1});
               }
             } else {
-              console.log(err);
-              callback([undefined, nonce]);
+              callback(err, {txHash: undefined, nonce: nonce+1});
             }
           });
         }
@@ -89478,22 +84878,19 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
           try {
             web3.eth.sendRawTransaction(serializedTx, function (err, hash) {
               if (err) {
-                console.log(err);
-                callback([undefined, nonce]);
+                proxy();
               } else {
-                callback([hash, nonce+1]);
+                callback(undefined, {txHash: hash, nonce: nonce+1});
               }
             });
           } catch (err) {
-            console.log('Attempting to send transaction through the proxy.');
             proxy();
           }
         } else {
           proxy();
         }
       } else {
-        callback([undefined, nonce]);
-        console.log('Failed to sign transaction.');
+        callback('Failed to sign transaction', {txHash: undefined, nonce: nonce+1});
       }
     });
   });
@@ -89508,12 +84905,12 @@ function estimateGas(web3, contract, address, functionName, args, fromAddress, p
   var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
   var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
   if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
-    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasPrice = config.ethGasPrice;
     args[args.length-1].gasLimit = args[args.length-1].gas;
     delete args[args.length-1].gas;
   }
-  if (args.length > inputTypes.length && utils.isObject(args[args.length -1])) {
-      options = args[args.length - 1];
+  if (args.length > inputTypes.length && utils.isObject(args[args.length-1])) {
+      options = args[args.length-1];
   }
   getNextNonce(web3, fromAddress, function(nextNonce){
     if (nonce==undefined) {
@@ -89531,19 +84928,19 @@ function estimateGas(web3, contract, address, functionName, args, fromAddress, p
           try {
             web3.eth.estimateGas(options, function (err, result) {
               if (err) {
-                callback(undefined);
+                callback(err, undefined);
               } else {
-                callback(result);
+                callback(undefined, result);
               }
             });
           } catch (err) {
-            callback(undefined);
+            callback(err, undefined);
           }
         } else {
-          callback(undefined);
+          callback('No provider set for web3', undefined);
         }
       } else {
-        callback(undefined);
+        callback('Failed to sign transaction', undefined);
       }
     });
   });
@@ -89551,17 +84948,19 @@ function estimateGas(web3, contract, address, functionName, args, fromAddress, p
 
 function txReceipt(web3, txHash, callback) {
   function proxy(){
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getTransactionReceipt&txhash='+txHash;
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_GetTransactionReceipt&txhash='+txHash;
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         result = JSON.parse(body);
-        callback(result['result']);
+        callback(undefined, result['result']);
+      } else {
+        callback(err, undefined);
       }
     });
   }
   try {
     if (web3.currentProvider) {
-      callback(web3.eth.getTransactionReceipt(txHash));
+      callback(undefined, web3.eth.getTransactionReceipt(txHash));
     } else {
       proxy();
     }
@@ -89578,23 +84977,23 @@ function logs(web3, contract, address, fromBlock, toBlock, callback) {
       var eventAbi = eventAbis[0];
       var event = new SolidityEvent(web3, eventAbi, address);
       var result = event.decode(item);
-      callback(result);
+      callback(undefined, result);
     }
   }
   function proxy(retries) {
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=logs&action=getLogs&address='+address+'&fromBlock='+fromBlock+'&toBlock='+toBlock;
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=logs&action=getLogs&address='+address+'&fromBlock='+fromBlock+'&toBlock='+toBlock;
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         try {
           var result = JSON.parse(body);
           var items = result['result'];
           async.each(items,
-            function(item, callback_foreach){
-              item.blockNumber = hex_to_dec(item.blockNumber);
-              item.logIndex = hex_to_dec(item.logIndex);
-              item.transactionIndex = hex_to_dec(item.transactionIndex);
+            function(item, callbackForeach){
+              item.blockNumber = hexToDec(item.blockNumber);
+              item.logIndex = hexToDec(item.logIndex);
+              item.transactionIndex = hexToDec(item.transactionIndex);
               decodeEvent(item);
-              callback_foreach();
+              callbackForeach();
             },
             function(err){
               setTimeout(function(){
@@ -89629,17 +85028,25 @@ function logs(web3, contract, address, fromBlock, toBlock, callback) {
 
 function getBalance(web3, address, callback) {
   function proxy(){
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=balance&address='+address+'&tag=latest';
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=balance&address='+address+'&tag=latest';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         result = JSON.parse(body);
-        callback(result['result']);
+        callback(undefined, result['result']);
+      } else {
+        callback(err, undefined);
       }
     });
   }
   try {
     if (web3.currentProvider) {
-      callback(web3.eth.getBalance(address));
+      web3.eth.getBalance(address, function(err, balance){
+        if (!err) {
+          callback(undefined, balance);
+        } else {
+          callback(err, undefined);
+        }
+      });
     } else {
       proxy();
     }
@@ -89650,12 +85057,14 @@ function getBalance(web3, address, callback) {
 
 function getNextNonce(web3, address, callback) {
   function proxy(){
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getTransactionCount&address='+address+'&tag=latest';
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_GetTransactionCount&address='+address+'&tag=latest';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         result = JSON.parse(body);
         var nextNonce = Number(result['result']);
-        callback(nextNonce);
+        callback(undefined, nextNonce);
+      } else {
+        callback(err, undefined);
       }
     });
   }
@@ -89663,7 +85072,7 @@ function getNextNonce(web3, address, callback) {
     if (web3.currentProvider) {
       var nextNonce = Number(web3.eth.getTransactionCount(address));
       //Note. initial nonce is 2^20 on testnet, but getTransactionCount already starts at 2^20.
-      callback(nextNonce);
+      callback(undefined, nextNonce);
     } else {
       proxy();
     }
@@ -89674,18 +85083,20 @@ function getNextNonce(web3, address, callback) {
 
 function blockNumber(web3, callback) {
   function proxy() {
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_BlockNumber';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         var result = JSON.parse(body);
-        callback(Number(hex_to_dec(result['result'])));
+        callback(undefined, Number(hexToDec(result['result'])));
+      } else {
+        callback(err, undefined);
       }
     });
   }
   if (web3.currentProvider) {
     web3.eth.getBlockNumber(function(err, blockNumber){
       if (!err) {
-        callback(Number(blockNumber));
+        callback(undefined, Number(blockNumber));
       } else {
         proxy();
       }
@@ -89698,13 +85109,13 @@ function blockNumber(web3, callback) {
 function signTx(web3, address, tx, privateKey, callback) {
   if (privateKey) {
     tx.sign(new Buffer(privateKey, 'hex'));
-    callback(tx);
+    callback(undefined, tx);
   } else {
     var msgHash = '0x'+tx.hash(false).toString('hex');
     web3.eth.sign(address, msgHash, function(err, sig) {
       if (!err) {
         try {
-          function hex_to_uint8array(s) {
+          function hexToUint8array(s) {
             if (s.slice(0,2)=='0x') s=s.slice(2)
             var ua = new Uint8Array(s.length);
             for (var i = 0; i < s.length; i++) {
@@ -89716,18 +85127,16 @@ function signTx(web3, address, tx, privateKey, callback) {
           var s = '0x' + sig.slice(66, 130);
           var v = web3.toDecimal('0x' + sig.slice(130, 132));
           if (v!=27 && v!=28) v+=27;
-          sig = {r: hex_to_uint8array(r), s: hex_to_uint8array(s), v: hex_to_uint8array(v.toString(16))};
+          sig = {r: hexToUint8array(r), s: hexToUint8array(s), v: hexToUint8array(v.toString(16))};
           tx.r = r;
           tx.s = s;
           tx.v = v;
-          callback(tx);
+          callback(undefined, tx);
         } catch (err) {
-          console.log(err);
-          callback(undefined);
+          callback(err, undefined);
         }
       } else {
-        console.log(err);
-        callback(undefined);
+        callback(err, undefined);
       }
     });
   }
@@ -89743,9 +85152,9 @@ function sign(web3, address, value, privateKey, callback) {
       var s = '0x'+sig.s.toString('hex');
       var v = sig.v;
       var result = {r: r, s: s, v: v};
-      callback(result);
+      callback(undefined, result);
     } catch (err) {
-      callback(undefined);
+      callback(err, undefined);
     }
   } else {
     web3.eth.sign(address, value, function(err, sig) {
@@ -89754,10 +85163,9 @@ function sign(web3, address, value, privateKey, callback) {
         var s = '0x' + sig.slice(66, 130);
         var v = web3.toDecimal('0x' + sig.slice(130, 132));
         if (v!=27 && v!=28) v+=27;
-        callback({r: r, s: s, v: v});
+        callback(undefined, {r: r, s: s, v: v});
       } catch (err) {
-        console.log(err);
-        callback(undefined);
+        callback(err, undefined);
       }
     });
   }
@@ -89770,20 +85178,16 @@ function verify(web3, address, v, r, s, value, callback) {
   if (value.substring(0,2)=='0x') value=value.substring(2,value.length);
   var pubKey = ethUtil.ecrecover(new Buffer(value, 'hex'), Number(v), new Buffer(r, 'hex'), new Buffer(s, 'hex'));
   var result = address == '0x'+ethUtil.pubToAddress(new Buffer(pubKey, 'hex')).toString('hex');
-  if (callback) {
-    callback(result);
-  } else {
-    return result;
-  }
+  callback(undefined, result);
 }
 
-function createAddress() {
+function createAccount() {
   var dk = keythereum.create();
-  var pk = dk.privateKey;
-  var addr = ethUtil.privateToAddress(pk);
-  addr = ethUtil.toChecksumAddress(addr.toString('hex'));
-  pk = pk.toString('hex');
-  return [addr, pk];
+  var privateKey = dk.privateKey;
+  var address = ethUtil.privateToAddress(privateKey);
+  address = ethUtil.toChecksumAddress(address.toString('hex'));
+  privateKey = privateKey.toString('hex');
+  return {address: address, privateKey: privateKey};
 }
 
 function verifyPrivateKey(addr, privateKey) {
@@ -89800,79 +85204,82 @@ function toChecksumAddress(addr) {
   return ethUtil.toChecksumAddress(addr);
 }
 
-function diffs(data) {
-  var result = [];
-  for (var i=1; i<data.length; i++) {
-    result.push(data[i]-data[i-1]);
-  }
-  return result;
+function loadContract(web3, sourceCode, address, callback) {
+  readFile(sourceCode+'.bytecode', function(err, bytecode){
+    readFile(sourceCode+'.interface', function(err, abi){
+      abi = JSON.parse(abi);
+      bytecode = JSON.parse(bytecode);
+      var contract = web3.eth.contract(abi);
+      contract = contract.at(address);
+      callback(undefined, contract);
+    });
+  });
 }
 
-function rets(data, direction) {
-  if (typeof(direction)=="undefined") direction=0;
-  var result = [];
-  for (var i=1; i<data.length; i++) {
-    if (direction==0 || (direction>0 && data[i]-data[i-1]>0) || (direction<0 && data[i]-data[i-1]<0)) {
-      result.push((data[i]-data[i-1])/data[i-1]);
-    }
-  }
-  return result;
+function deployContract(web3, sourceFile, contractName, constructorParams, address, callback) {
+  utility.readFile(sourceFile+'.bytecode', function(err, bytecode){
+    utility.readFile(sourceFile+'.interface', function(err, abi){
+      utility.readFile(sourceFile, function(err, source){
+        if (abi && bytecode) {
+          abi = JSON.parse(abi);
+          bytecode = JSON.parse(bytecode);
+        } else {
+          callback('Could not load bytecode and ABI', undefined)
+          // var solc = require('solc');
+          // var compiled = solc.compile(source, 1).contracts[contractName];
+          // abi = JSON.parse(compiled.interface);
+          // bytecode = compiled.bytecode;
+        }
+        var contract = web3.eth.contract(abi);
+        utility.testSend(web3, contract, undefined, 'constructor', constructorParams.concat([{from: address, data: bytecode}]), address, undefined, 0, function(err, result) {
+          if (!err) {
+            txReceipt(result.txHash, function(err, receipt) {
+              if (!err) {
+                var addr = receipt.contractAddress;
+                contract = contract.at(addr);
+                callback(undefined, {contract: contract, addr: addr});
+              } else {
+                callback(err, undefined);
+              }
+            });
+          } else {
+            callback(err, undefined);
+          }
+        });
+      });
+    });
+  });
 }
 
-function mean(data){
-  return data.reduce(function(sum, value){ return sum + value; }, 0) / data.length;
-}
-
-function std_zero(data){
-  return Math.sqrt(mean(data.map(function(value){ return Math.pow(value, 2) })));
-}
-
-function std(data){
-  var avg = mean(data);
-  return Math.sqrt(mean(data.map(function(value){ return Math.pow(value - avg, 2) })));
-}
-
-function random_hex(n) {
-    var text = "";
-    var possible = "ABCDEF0123456789";
-    for( var i=0; i < n; i++ )
-        text += possible.charAt(Math.floor(Math.random() * possible.length));
-    return text;
-}
-
-function getRandomInt(min, max) {
-  return Math.floor(Math.random() * (max - min)) + min;
-}
-
-function zero_pad(num, places) {
+function zeroPad(num, places) {
   var zero = places - num.toString().length + 1;
   return Array(+(zero > 0 && zero)).join("0") + num;
 }
 
-function dec_to_hex(dec, length) {
+function decToHex(dec, length) {
   if (typeof(length)==='undefined') length = 32;
   if (dec < 0) {
-    // return convert_base((Math.pow(2, length) + decStr).toString(), 10, 16);
+    // return convertBase((Math.pow(2, length) + decStr).toString(), 10, 16);
     return (new BigNumber(2)).pow(length).add(new BigNumber(dec)).toString(16);
   } else {
     try {
-      return convert_base(dec.toString(), 10, 16);
+      return convertBase(dec.toString(), 10, 16);
     } catch (err) {
       return (new BigNumber(dec)).toString(16);
     }
   }
 }
 
-function hex_to_dec(hexStr, length) { //length implies this is a two's complement number
+function hexToDec(hexStr, length) { //length implies this is a two's complement number
   if (hexStr.substring(0, 2) === '0x') hexStr = hexStr.substring(2);
   hexStr = hexStr.toLowerCase();
   if (typeof(length)==='undefined'){
-    return convert_base(hexStr, 16, 10);
+    return convertBase(hexStr, 16, 10);
   } else {
     var max = Math.pow(2, length);
-    var answer = convert_base(hexStr, 16, 10);
+    var answer = convertBase(hexStr, 16, 10);
     if (answer>max/2) {
-      answer -= max;
+      answer = max;
     }
     return answer;
   }
@@ -89881,7 +85288,12 @@ function hex_to_dec(hexStr, length) { //length implies this is a two's complemen
 function pack(data, lengths) {
   packed = "";
   for (var i=0; i<lengths.length; i++) {
-    packed += zero_pad(dec_to_hex(data[i], lengths[i]), lengths[i]/4);
+    if (typeof(data[i])=='string') {
+      if (data[i].substring(0,2)=='0x') data[i] = data[i].substring(2);
+      packed += data[i];
+    } else {
+      packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
+    }
   }
   return packed;
 }
@@ -89890,35 +85302,35 @@ function unpack(str, lengths) {
   var data = [];
   var length = 0;
   for (var i=0; i<lengths.length; i++) {
-    data[i] = parseInt(hex_to_dec(str.substr(length,lengths[i]/4), lengths[i]));
+    data[i] = parseInt(hexToDec(str.substr(length,lengths[i]/4), lengths[i]));
     length += lengths[i]/4;
   }
   return data;
 }
 
-function convert_base(str, fromBase, toBase) {
-  var digits = parse_to_digits_array(str, fromBase);
+function convertBase(str, fromBase, toBase) {
+  var digits = parseToDigitsArray(str, fromBase);
   if (digits === null) return null;
   var outArray = [];
   var power = [1];
   for (var i = 0; i < digits.length; i++) {
     if (digits[i]) {
-      outArray = add(outArray, multiply_by_number(digits[i], power, toBase), toBase);
+      outArray = add(outArray, multiplyByNumber(digits[i], power, toBase), toBase);
     }
-    power = multiply_by_number(fromBase, power, toBase);
+    power = multiplyByNumber(fromBase, power, toBase);
   }
   var out = '';
-  for (var i = outArray.length - 1; i >= 0; i--) {
+  for (var i = outArray.length-1; i >= 0; i--) {
     out += outArray[i].toString(toBase);
   }
   if (out=='') out = 0;
   return out;
 }
 
-function parse_to_digits_array(str, base) {
+function parseToDigitsArray(str, base) {
   var digits = str.split('');
   var ary = [];
-  for (var i = digits.length - 1; i >= 0; i--) {
+  for (var i = digits.length-1; i >= 0; i--) {
     var n = parseInt(digits[i], base);
     if (isNaN(n)) return null;
     ary.push(n);
@@ -89942,10 +85354,9 @@ function add(x, y, base) {
   return z;
 }
 
-function multiply_by_number(num, x, base) {
+function multiplyByNumber(num, x, base) {
   if (num < 0) return null;
   if (num == 0) return [];
-
   var result = [];
   var power = x;
   while (true) {
@@ -89956,18 +85367,11 @@ function multiply_by_number(num, x, base) {
     if (num === 0) break;
     power = add(power, power, base);
   }
-
   return result;
 }
 
-function math_sign(x) {
-  if (x>0) {
-    return 1;
-  } else if (x<0) {
-    return -1;
-  } else if (x==1) {
-    return 0;
-  }
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min)) + min;
 }
 
 if (!Object.prototype.find) {
@@ -90057,22 +85461,11 @@ Array.prototype.equals = function(b) {
   return true;
 }
 
-exports.add = add;
-exports.multiply_by_number = multiply_by_number;
-exports.parse_to_digits_array = parse_to_digits_array;
-exports.convert_base = convert_base;
-exports.zero_pad = zero_pad;
-exports.hex_to_dec = hex_to_dec;
-exports.dec_to_hex = dec_to_hex;
+exports.decToHex = decToHex;
+exports.hexToDec = hexToDec;
+exports.roundToNearest = roundToNearest;
 exports.pack = pack;
 exports.unpack = unpack;
-exports.getRandomInt = getRandomInt;
-exports.random_hex = random_hex;
-exports.rets = rets;
-exports.diffs = diffs;
-exports.std = std;
-exports.std_zero = std_zero;
-exports.mean = mean;
 exports.getBalance = getBalance;
 exports.send = send;
 exports.call = call;
@@ -90084,21 +85477,7645 @@ exports.logs = logs;
 exports.blockNumber = blockNumber;
 exports.sign = sign;
 exports.verify = verify;
-exports.createAddress = createAddress;
+exports.createAccount = createAccount;
 exports.verifyPrivateKey = verifyPrivateKey;
 exports.toChecksumAddress = toChecksumAddress;
 exports.readFile = readFile;
 exports.writeFile = writeFile;
-exports.roundTo = roundTo;
 exports.weiToEth = weiToEth;
 exports.ethToWei = ethToWei;
-exports.roundToNearest = roundToNearest;
-exports.math_sign = math_sign;
+exports.loadContract = loadContract;
+exports.deployContract = deployContract;
+exports.getRandomInt = getRandomInt;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
-},{"./config.js":2,"async":11,"async/dist/async.min.js":10,"bignumber.js":15,"buffer":359,"ethereumjs-tx":102,"ethereumjs-util":105,"fs":312,"keythereum":164,"request":196,"web3":261,"web3/lib/solidity/coder.js":268,"web3/lib/utils/sha3.js":280,"web3/lib/utils/utils.js":281,"web3/lib/web3/event.js":288,"web3/lib/web3/function.js":292}],312:[function(_dereq_,module,exports){
+},{"../config.js":297,"async":10,"async/dist/async.min.js":9,"bignumber.js":14,"buffer":574,"ethereumjs-tx":88,"ethereumjs-util":91,"fs":527,"keythereum":149,"request":181,"web3":246,"web3/lib/solidity/coder.js":253,"web3/lib/utils/sha3.js":265,"web3/lib/utils/utils.js":266,"web3/lib/web3/event.js":273,"web3/lib/web3/function.js":277}],297:[function(_dereq_,module,exports){
+(function (global){
+var config = {};
 
-},{}],313:[function(_dereq_,module,exports){
+config.homeURL = 'https://etheropt.github.io';
+config.homeURL = 'http://localhost:8080';
+config.contractMarket = 'etheropt.sol';
+config.contractContracts = 'etheropt_contracts.sol';
+config.contractAddrs = [];
+config.contractContractsAddr = '0x9eea10abd08519d7a2cc3734ff8bb38e1de35446';
+config.domain = undefined;
+config.port = 8082;
+config.url = undefined;
+config.ethTestnet = false;
+config.ethProvider = 'http://localhost:8545';
+config.ethGasPrice = 20000000000;
+config.ethAddr = '0x0000000000000000000000000000000000000000';
+config.ethAddrPrivateKey = '';
+
+try {
+  global.config = config;
+  module.exports = config;
+} catch (err) {}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],298:[function(_dereq_,module,exports){
+arguments[4][2][0].apply(exports,arguments)
+},{"dup":2}],299:[function(_dereq_,module,exports){
+arguments[4][3][0].apply(exports,arguments)
+},{"./errors":298,"./reader":300,"./types":301,"./writer":302,"dup":3}],300:[function(_dereq_,module,exports){
+arguments[4][4][0].apply(exports,arguments)
+},{"./errors":298,"./types":301,"assert":542,"buffer":574,"dup":4}],301:[function(_dereq_,module,exports){
+arguments[4][5][0].apply(exports,arguments)
+},{"dup":5}],302:[function(_dereq_,module,exports){
+arguments[4][6][0].apply(exports,arguments)
+},{"./errors":298,"./types":301,"assert":542,"buffer":574,"dup":6}],303:[function(_dereq_,module,exports){
+arguments[4][7][0].apply(exports,arguments)
+},{"./ber/index":299,"dup":7}],304:[function(_dereq_,module,exports){
+(function (Buffer,process){
+// Copyright (c) 2012, Mark Cavage. All rights reserved.
+// Copyright 2015 Joyent, Inc.
+
+var assert = _dereq_('assert');
+var Stream = _dereq_('stream').Stream;
+var util = _dereq_('util');
+
+
+///--- Globals
+
+/* JSSTYLED */
+var UUID_REGEXP = /^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/;
+
+
+///--- Internal
+
+function _capitalize(str) {
+    return (str.charAt(0).toUpperCase() + str.slice(1));
+}
+
+function _toss(name, expected, oper, arg, actual) {
+    throw new assert.AssertionError({
+        message: util.format('%s (%s) is required', name, expected),
+        actual: (actual === undefined) ? typeof (arg) : actual(arg),
+        expected: expected,
+        operator: oper || '===',
+        stackStartFunction: _toss.caller
+    });
+}
+
+function _getClass(arg) {
+    return (Object.prototype.toString.call(arg).slice(8, -1));
+}
+
+function noop() {
+    // Why even bother with asserts?
+}
+
+
+///--- Exports
+
+var types = {
+    bool: {
+        check: function (arg) { return typeof (arg) === 'boolean'; }
+    },
+    func: {
+        check: function (arg) { return typeof (arg) === 'function'; }
+    },
+    string: {
+        check: function (arg) { return typeof (arg) === 'string'; }
+    },
+    object: {
+        check: function (arg) {
+            return typeof (arg) === 'object' && arg !== null;
+        }
+    },
+    number: {
+        check: function (arg) {
+            return typeof (arg) === 'number' && !isNaN(arg) && isFinite(arg);
+        }
+    },
+    buffer: {
+        check: function (arg) { return Buffer.isBuffer(arg); },
+        operator: 'Buffer.isBuffer'
+    },
+    array: {
+        check: function (arg) { return Array.isArray(arg); },
+        operator: 'Array.isArray'
+    },
+    stream: {
+        check: function (arg) { return arg instanceof Stream; },
+        operator: 'instanceof',
+        actual: _getClass
+    },
+    date: {
+        check: function (arg) { return arg instanceof Date; },
+        operator: 'instanceof',
+        actual: _getClass
+    },
+    regexp: {
+        check: function (arg) { return arg instanceof RegExp; },
+        operator: 'instanceof',
+        actual: _getClass
+    },
+    uuid: {
+        check: function (arg) {
+            return typeof (arg) === 'string' && UUID_REGEXP.test(arg);
+        },
+        operator: 'isUUID'
+    }
+};
+
+function _setExports(ndebug) {
+    var keys = Object.keys(types);
+    var out;
+
+    /* re-export standard assert */
+    if (process.env.NODE_NDEBUG) {
+        out = noop;
+    } else {
+        out = function (arg, msg) {
+            if (!arg) {
+                _toss(msg, 'true', arg);
+            }
+        };
+    }
+
+    /* standard checks */
+    keys.forEach(function (k) {
+        if (ndebug) {
+            out[k] = noop;
+            return;
+        }
+        var type = types[k];
+        out[k] = function (arg, msg) {
+            if (!type.check(arg)) {
+                _toss(msg, k, type.operator, arg, type.actual);
+            }
+        };
+    });
+
+    /* optional checks */
+    keys.forEach(function (k) {
+        var name = 'optional' + _capitalize(k);
+        if (ndebug) {
+            out[name] = noop;
+            return;
+        }
+        var type = types[k];
+        out[name] = function (arg, msg) {
+            if (arg === undefined || arg === null) {
+                return;
+            }
+            if (!type.check(arg)) {
+                _toss(msg, k, type.operator, arg, type.actual);
+            }
+        };
+    });
+
+    /* arrayOf checks */
+    keys.forEach(function (k) {
+        var name = 'arrayOf' + _capitalize(k);
+        if (ndebug) {
+            out[name] = noop;
+            return;
+        }
+        var type = types[k];
+        var expected = '[' + k + ']';
+        out[name] = function (arg, msg) {
+            if (!Array.isArray(arg)) {
+                _toss(msg, expected, type.operator, arg, type.actual);
+            }
+            var i;
+            for (i = 0; i < arg.length; i++) {
+                if (!type.check(arg[i])) {
+                    _toss(msg, expected, type.operator, arg, type.actual);
+                }
+            }
+        };
+    });
+
+    /* optionalArrayOf checks */
+    keys.forEach(function (k) {
+        var name = 'optionalArrayOf' + _capitalize(k);
+        if (ndebug) {
+            out[name] = noop;
+            return;
+        }
+        var type = types[k];
+        var expected = '[' + k + ']';
+        out[name] = function (arg, msg) {
+            if (arg === undefined || arg === null) {
+                return;
+            }
+            if (!Array.isArray(arg)) {
+                _toss(msg, expected, type.operator, arg, type.actual);
+            }
+            var i;
+            for (i = 0; i < arg.length; i++) {
+                if (!type.check(arg[i])) {
+                    _toss(msg, expected, type.operator, arg, type.actual);
+                }
+            }
+        };
+    });
+
+    /* re-export built-in assertions */
+    Object.keys(assert).forEach(function (k) {
+        if (k === 'AssertionError') {
+            out[k] = assert[k];
+            return;
+        }
+        if (ndebug) {
+            out[k] = noop;
+            return;
+        }
+        out[k] = assert[k];
+    });
+
+    /* export ourselves (for unit tests _only_) */
+    out._setExports = _setExports;
+
+    return out;
+}
+
+module.exports = _setExports(process.env.NODE_NDEBUG);
+
+}).call(this,{"isBuffer":_dereq_("../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")},_dereq_('_process'))
+},{"../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"_process":646,"assert":542,"stream":677,"util":688}],305:[function(_dereq_,module,exports){
+arguments[4][9][0].apply(exports,arguments)
+},{"_process":646,"dup":9}],306:[function(_dereq_,module,exports){
+arguments[4][10][0].apply(exports,arguments)
+},{"_process":646,"dup":10}],307:[function(_dereq_,module,exports){
+arguments[4][11][0].apply(exports,arguments)
+},{"crypto":584,"dup":11,"url":684}],308:[function(_dereq_,module,exports){
+arguments[4][12][0].apply(exports,arguments)
+},{"./lru":309,"_process":646,"buffer":574,"crypto":584,"dup":12,"querystring":656,"url":684}],309:[function(_dereq_,module,exports){
+arguments[4][13][0].apply(exports,arguments)
+},{"dup":13}],310:[function(_dereq_,module,exports){
+arguments[4][16][0].apply(exports,arguments)
+},{"buffer":574,"dup":16,"readable-stream/duplex":312,"util":688}],311:[function(_dereq_,module,exports){
+arguments[4][17][0].apply(exports,arguments)
+},{"dup":17}],312:[function(_dereq_,module,exports){
+arguments[4][18][0].apply(exports,arguments)
+},{"./lib/_stream_duplex.js":313,"dup":18}],313:[function(_dereq_,module,exports){
+arguments[4][19][0].apply(exports,arguments)
+},{"./_stream_readable":314,"./_stream_writable":315,"core-util-is":318,"dup":19,"inherits":401,"process-nextick-args":427}],314:[function(_dereq_,module,exports){
+arguments[4][20][0].apply(exports,arguments)
+},{"./_stream_duplex":313,"_process":646,"buffer":574,"core-util-is":318,"dup":20,"events":612,"inherits":401,"isarray":311,"process-nextick-args":427,"string_decoder/":463,"util":546}],315:[function(_dereq_,module,exports){
+arguments[4][21][0].apply(exports,arguments)
+},{"./_stream_duplex":313,"_process":646,"buffer":574,"core-util-is":318,"dup":21,"events":612,"inherits":401,"process-nextick-args":427,"util-deprecate":475}],316:[function(_dereq_,module,exports){
+arguments[4][25][0].apply(exports,arguments)
+},{"dup":25}],317:[function(_dereq_,module,exports){
+(function (Buffer){
+var util = _dereq_('util');
+var Stream = _dereq_('stream').Stream;
+var DelayedStream = _dereq_('delayed-stream');
+
+module.exports = CombinedStream;
+function CombinedStream() {
+  this.writable = false;
+  this.readable = true;
+  this.dataSize = 0;
+  this.maxDataSize = 2 * 1024 * 1024;
+  this.pauseStreams = true;
+
+  this._released = false;
+  this._streams = [];
+  this._currentStream = null;
+}
+util.inherits(CombinedStream, Stream);
+
+CombinedStream.create = function(options) {
+  var combinedStream = new this();
+
+  options = options || {};
+  for (var option in options) {
+    combinedStream[option] = options[option];
+  }
+
+  return combinedStream;
+};
+
+CombinedStream.isStreamLike = function(stream) {
+  return (typeof stream !== 'function')
+    && (typeof stream !== 'string')
+    && (typeof stream !== 'boolean')
+    && (typeof stream !== 'number')
+    && (!Buffer.isBuffer(stream));
+};
+
+CombinedStream.prototype.append = function(stream) {
+  var isStreamLike = CombinedStream.isStreamLike(stream);
+
+  if (isStreamLike) {
+    if (!(stream instanceof DelayedStream)) {
+      var newStream = DelayedStream.create(stream, {
+        maxDataSize: Infinity,
+        pauseStream: this.pauseStreams,
+      });
+      stream.on('data', this._checkDataSize.bind(this));
+      stream = newStream;
+    }
+
+    this._handleErrors(stream);
+
+    if (this.pauseStreams) {
+      stream.pause();
+    }
+  }
+
+  this._streams.push(stream);
+  return this;
+};
+
+CombinedStream.prototype.pipe = function(dest, options) {
+  Stream.prototype.pipe.call(this, dest, options);
+  this.resume();
+  return dest;
+};
+
+CombinedStream.prototype._getNext = function() {
+  this._currentStream = null;
+  var stream = this._streams.shift();
+
+
+  if (typeof stream == 'undefined') {
+    this.end();
+    return;
+  }
+
+  if (typeof stream !== 'function') {
+    this._pipeNext(stream);
+    return;
+  }
+
+  var getStream = stream;
+  getStream(function(stream) {
+    var isStreamLike = CombinedStream.isStreamLike(stream);
+    if (isStreamLike) {
+      stream.on('data', this._checkDataSize.bind(this));
+      this._handleErrors(stream);
+    }
+
+    this._pipeNext(stream);
+  }.bind(this));
+};
+
+CombinedStream.prototype._pipeNext = function(stream) {
+  this._currentStream = stream;
+
+  var isStreamLike = CombinedStream.isStreamLike(stream);
+  if (isStreamLike) {
+    stream.on('end', this._getNext.bind(this));
+    stream.pipe(this, {end: false});
+    return;
+  }
+
+  var value = stream;
+  this.write(value);
+  this._getNext();
+};
+
+CombinedStream.prototype._handleErrors = function(stream) {
+  var self = this;
+  stream.on('error', function(err) {
+    self._emitError(err);
+  });
+};
+
+CombinedStream.prototype.write = function(data) {
+  this.emit('data', data);
+};
+
+CombinedStream.prototype.pause = function() {
+  if (!this.pauseStreams) {
+    return;
+  }
+
+  if(this.pauseStreams && this._currentStream && typeof(this._currentStream.pause) == 'function') this._currentStream.pause();
+  this.emit('pause');
+};
+
+CombinedStream.prototype.resume = function() {
+  if (!this._released) {
+    this._released = true;
+    this.writable = true;
+    this._getNext();
+  }
+
+  if(this.pauseStreams && this._currentStream && typeof(this._currentStream.resume) == 'function') this._currentStream.resume();
+  this.emit('resume');
+};
+
+CombinedStream.prototype.end = function() {
+  this._reset();
+  this.emit('end');
+};
+
+CombinedStream.prototype.destroy = function() {
+  this._reset();
+  this.emit('close');
+};
+
+CombinedStream.prototype._reset = function() {
+  this.writable = false;
+  this._streams = [];
+  this._currentStream = null;
+};
+
+CombinedStream.prototype._checkDataSize = function() {
+  this._updateDataSize();
+  if (this.dataSize <= this.maxDataSize) {
+    return;
+  }
+
+  var message =
+    'DelayedStream#maxDataSize of ' + this.maxDataSize + ' bytes exceeded.';
+  this._emitError(new Error(message));
+};
+
+CombinedStream.prototype._updateDataSize = function() {
+  this.dataSize = 0;
+
+  var self = this;
+  this._streams.forEach(function(stream) {
+    if (!stream.dataSize) {
+      return;
+    }
+
+    self.dataSize += stream.dataSize;
+  });
+
+  if (this._currentStream && this._currentStream.dataSize) {
+    this.dataSize += this._currentStream.dataSize;
+  }
+};
+
+CombinedStream.prototype._emitError = function(err) {
+  this._reset();
+  this.emit('error', err);
+};
+
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"delayed-stream":366,"stream":677,"util":688}],318:[function(_dereq_,module,exports){
+(function (Buffer){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// NOTE: These type checking functions intentionally don't use `instanceof`
+// because it is fragile and can be easily faked with `Object.create()`.
+
+function isArray(arg) {
+  if (Array.isArray) {
+    return Array.isArray(arg);
+  }
+  return objectToString(arg) === '[object Array]';
+}
+exports.isArray = isArray;
+
+function isBoolean(arg) {
+  return typeof arg === 'boolean';
+}
+exports.isBoolean = isBoolean;
+
+function isNull(arg) {
+  return arg === null;
+}
+exports.isNull = isNull;
+
+function isNullOrUndefined(arg) {
+  return arg == null;
+}
+exports.isNullOrUndefined = isNullOrUndefined;
+
+function isNumber(arg) {
+  return typeof arg === 'number';
+}
+exports.isNumber = isNumber;
+
+function isString(arg) {
+  return typeof arg === 'string';
+}
+exports.isString = isString;
+
+function isSymbol(arg) {
+  return typeof arg === 'symbol';
+}
+exports.isSymbol = isSymbol;
+
+function isUndefined(arg) {
+  return arg === void 0;
+}
+exports.isUndefined = isUndefined;
+
+function isRegExp(re) {
+  return objectToString(re) === '[object RegExp]';
+}
+exports.isRegExp = isRegExp;
+
+function isObject(arg) {
+  return typeof arg === 'object' && arg !== null;
+}
+exports.isObject = isObject;
+
+function isDate(d) {
+  return objectToString(d) === '[object Date]';
+}
+exports.isDate = isDate;
+
+function isError(e) {
+  return (objectToString(e) === '[object Error]' || e instanceof Error);
+}
+exports.isError = isError;
+
+function isFunction(arg) {
+  return typeof arg === 'function';
+}
+exports.isFunction = isFunction;
+
+function isPrimitive(arg) {
+  return arg === null ||
+         typeof arg === 'boolean' ||
+         typeof arg === 'number' ||
+         typeof arg === 'string' ||
+         typeof arg === 'symbol' ||  // ES6 symbol
+         typeof arg === 'undefined';
+}
+exports.isPrimitive = isPrimitive;
+
+exports.isBuffer = Buffer.isBuffer;
+
+function objectToString(o) {
+  return Object.prototype.toString.call(o);
+}
+
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624}],319:[function(_dereq_,module,exports){
+arguments[4][32][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"./enc-base64":322,"./evpkdf":324,"./md5":329,"dup":32}],320:[function(_dereq_,module,exports){
+arguments[4][33][0].apply(exports,arguments)
+},{"./core":321,"dup":33}],321:[function(_dereq_,module,exports){
+arguments[4][34][0].apply(exports,arguments)
+},{"dup":34}],322:[function(_dereq_,module,exports){
+arguments[4][35][0].apply(exports,arguments)
+},{"./core":321,"dup":35}],323:[function(_dereq_,module,exports){
+arguments[4][36][0].apply(exports,arguments)
+},{"./core":321,"dup":36}],324:[function(_dereq_,module,exports){
+arguments[4][37][0].apply(exports,arguments)
+},{"./core":321,"./hmac":326,"./sha1":345,"dup":37}],325:[function(_dereq_,module,exports){
+arguments[4][38][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":38}],326:[function(_dereq_,module,exports){
+arguments[4][39][0].apply(exports,arguments)
+},{"./core":321,"dup":39}],327:[function(_dereq_,module,exports){
+arguments[4][40][0].apply(exports,arguments)
+},{"./aes":319,"./cipher-core":320,"./core":321,"./enc-base64":322,"./enc-utf16":323,"./evpkdf":324,"./format-hex":325,"./hmac":326,"./lib-typedarrays":328,"./md5":329,"./mode-cfb":330,"./mode-ctr":332,"./mode-ctr-gladman":331,"./mode-ecb":333,"./mode-ofb":334,"./pad-ansix923":335,"./pad-iso10126":336,"./pad-iso97971":337,"./pad-nopadding":338,"./pad-zeropadding":339,"./pbkdf2":340,"./rabbit":342,"./rabbit-legacy":341,"./rc4":343,"./ripemd160":344,"./sha1":345,"./sha224":346,"./sha256":347,"./sha3":348,"./sha384":349,"./sha512":350,"./tripledes":351,"./x64-core":352,"dup":40}],328:[function(_dereq_,module,exports){
+arguments[4][41][0].apply(exports,arguments)
+},{"./core":321,"dup":41}],329:[function(_dereq_,module,exports){
+arguments[4][42][0].apply(exports,arguments)
+},{"./core":321,"dup":42}],330:[function(_dereq_,module,exports){
+arguments[4][43][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":43}],331:[function(_dereq_,module,exports){
+arguments[4][44][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":44}],332:[function(_dereq_,module,exports){
+arguments[4][45][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":45}],333:[function(_dereq_,module,exports){
+arguments[4][46][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":46}],334:[function(_dereq_,module,exports){
+arguments[4][47][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":47}],335:[function(_dereq_,module,exports){
+arguments[4][48][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":48}],336:[function(_dereq_,module,exports){
+arguments[4][49][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":49}],337:[function(_dereq_,module,exports){
+arguments[4][50][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":50}],338:[function(_dereq_,module,exports){
+arguments[4][51][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":51}],339:[function(_dereq_,module,exports){
+arguments[4][52][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"dup":52}],340:[function(_dereq_,module,exports){
+arguments[4][53][0].apply(exports,arguments)
+},{"./core":321,"./hmac":326,"./sha1":345,"dup":53}],341:[function(_dereq_,module,exports){
+arguments[4][54][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"./enc-base64":322,"./evpkdf":324,"./md5":329,"dup":54}],342:[function(_dereq_,module,exports){
+arguments[4][55][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"./enc-base64":322,"./evpkdf":324,"./md5":329,"dup":55}],343:[function(_dereq_,module,exports){
+arguments[4][56][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"./enc-base64":322,"./evpkdf":324,"./md5":329,"dup":56}],344:[function(_dereq_,module,exports){
+arguments[4][57][0].apply(exports,arguments)
+},{"./core":321,"dup":57}],345:[function(_dereq_,module,exports){
+arguments[4][58][0].apply(exports,arguments)
+},{"./core":321,"dup":58}],346:[function(_dereq_,module,exports){
+arguments[4][59][0].apply(exports,arguments)
+},{"./core":321,"./sha256":347,"dup":59}],347:[function(_dereq_,module,exports){
+arguments[4][60][0].apply(exports,arguments)
+},{"./core":321,"dup":60}],348:[function(_dereq_,module,exports){
+arguments[4][61][0].apply(exports,arguments)
+},{"./core":321,"./x64-core":352,"dup":61}],349:[function(_dereq_,module,exports){
+arguments[4][62][0].apply(exports,arguments)
+},{"./core":321,"./sha512":350,"./x64-core":352,"dup":62}],350:[function(_dereq_,module,exports){
+arguments[4][63][0].apply(exports,arguments)
+},{"./core":321,"./x64-core":352,"dup":63}],351:[function(_dereq_,module,exports){
+arguments[4][64][0].apply(exports,arguments)
+},{"./cipher-core":320,"./core":321,"./enc-base64":322,"./evpkdf":324,"./md5":329,"dup":64}],352:[function(_dereq_,module,exports){
+arguments[4][65][0].apply(exports,arguments)
+},{"./core":321,"dup":65}],353:[function(_dereq_,module,exports){
+/**
+ * @overview NPM Module index: include all the core modules, I18n files will be loaded on the fly.
+ * @author Gregory Wild-Smith <gregory@wild-smith.com>
+ */
+_dereq_("./src/core/i18n.js");
+_dereq_("./src/core/core.js");
+_dereq_("./src/core/core-prototypes.js");
+_dereq_("./src/core/sugarpak.js");
+_dereq_("./src/core/format_parser.js");
+_dereq_("./src/core/parsing_operators.js");
+_dereq_("./src/core/parsing_translator.js");
+_dereq_("./src/core/parsing_grammar.js");
+_dereq_("./src/core/parser.js");
+_dereq_("./src/core/extras.js");
+_dereq_("./src/core/time_period.js");
+_dereq_("./src/core/time_span.js");
+/*
+ * Notice that there is no model.export or exports. This is not required as it modifies the Date object and it's prototypes.
+ */
+},{"./src/core/core-prototypes.js":354,"./src/core/core.js":355,"./src/core/extras.js":356,"./src/core/format_parser.js":357,"./src/core/i18n.js":358,"./src/core/parser.js":359,"./src/core/parsing_grammar.js":360,"./src/core/parsing_operators.js":361,"./src/core/parsing_translator.js":362,"./src/core/sugarpak.js":363,"./src/core/time_period.js":364,"./src/core/time_span.js":365}],354:[function(_dereq_,module,exports){
+(function () {
+	var $D = Date,
+		$P = $D.prototype,
+		p = function (s, l) {
+			if (!l) {
+				l = 2;
+			}
+			return ("000" + s).slice(l * -1);
+		};
+
+	var validateConfigObject = function (obj) {
+		var result = {}, self = this, prop, testFunc;
+		testFunc = function (prop, func, value) {
+			if (prop === "day") {
+				var month = (obj.month !== undefined) ? obj.month : self.getMonth();
+				var year = (obj.year !== undefined) ? obj.year : self.getFullYear();
+				return $D[func](value, year, month);
+			} else {
+				return $D[func](value);
+			}
+		};
+		for (prop in obj) {
+			if (hasOwnProperty.call(obj, prop)) {
+				var func = "validate" + prop.charAt(0).toUpperCase() + prop.slice(1);
+
+				if ($D[func] && obj[prop] !== null && testFunc(prop, func, obj[prop])) {
+					result[prop] = obj[prop];
+				}
+			}
+		}
+		return result;
+	};
+	/**
+	 * Resets the time of this Date object to 12:00 AM (00:00), which is the start of the day.
+	 * @param {Boolean}  .clone() this date instance before clearing Time
+	 * @return {Date}    this
+	 */
+	$P.clearTime = function () {
+		this.setHours(0);
+		this.setMinutes(0);
+		this.setSeconds(0);
+		this.setMilliseconds(0);
+		return this;
+	};
+
+	/**
+	 * Resets the time of this Date object to the current time ('now').
+	 * @return {Date}    this
+	 */
+	$P.setTimeToNow = function () {
+		var n = new Date();
+		this.setHours(n.getHours());
+		this.setMinutes(n.getMinutes());
+		this.setSeconds(n.getSeconds());
+		this.setMilliseconds(n.getMilliseconds());
+		return this;
+	};
+	/**
+	 * Returns a new Date object that is an exact date and time copy of the original instance.
+	 * @return {Date}    A new Date instance
+	 */
+	$P.clone = function () {
+		return new Date(this.getTime());
+	};
+
+	/**
+	 * Compares this instance to a Date object and returns an number indication of their relative values.  
+	 * @param {Date}     Date object to compare [Required]
+	 * @return {Number}  -1 = this is lessthan date. 0 = values are equal. 1 = this is greaterthan date.
+	 */
+	$P.compareTo = function (date) {
+		return Date.compare(this, date);
+	};
+
+	/**
+	 * Compares this instance to another Date object and returns true if they are equal.  
+	 * @param {Date}     Date object to compare. If no date to compare, new Date() [now] is used.
+	 * @return {Boolean} true if dates are equal. false if they are not equal.
+	 */
+	$P.equals = function (date) {
+		return Date.equals(this, (date !== undefined ? date : new Date()));
+	};
+
+	/**
+	 * Determines if this instance is between a range of two dates or equal to either the start or end dates.
+	 * @param {Date}     Start of range [Required]
+	 * @param {Date}     End of range [Required]
+	 * @return {Boolean} true is this is between or equal to the start and end dates, else false
+	 */
+	$P.between = function (start, end) {
+		return this.getTime() >= start.getTime() && this.getTime() <= end.getTime();
+	};
+
+	/**
+	 * Determines if this date occurs after the date to compare to.
+	 * @param {Date}     Date object to compare. If no date to compare, new Date() ("now") is used.
+	 * @return {Boolean} true if this date instance is greater than the date to compare to (or "now"), otherwise false.
+	 */
+	$P.isAfter = function (date) {
+		return this.compareTo(date || new Date()) === 1;
+	};
+
+	/**
+	 * Determines if this date occurs before the date to compare to.
+	 * @param {Date}     Date object to compare. If no date to compare, new Date() ("now") is used.
+	 * @return {Boolean} true if this date instance is less than the date to compare to (or "now").
+	 */
+	$P.isBefore = function (date) {
+		return (this.compareTo(date || new Date()) === -1);
+	};
+
+	/**
+	 * Determines if the current Date instance occurs today.
+	 * @return {Boolean} true if this date instance is 'today', otherwise false.
+	 */
+	
+	/**
+	 * Determines if the current Date instance occurs on the same Date as the supplied 'date'. 
+	 * If no 'date' to compare to is provided, the current Date instance is compared to 'today'. 
+	 * @param {date}     Date object to compare. If no date to compare, the current Date ("now") is used.
+	 * @return {Boolean} true if this Date instance occurs on the same Day as the supplied 'date'.
+	 */
+	$P.isToday = $P.isSameDay = function (date) {
+		return this.clone().clearTime().equals((date || new Date()).clone().clearTime());
+	};
+	
+	/**
+	 * Adds the specified number of milliseconds to this instance. 
+	 * @param {Number}   The number of milliseconds to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addMilliseconds = function (value) {
+		if (!value) { return this; }
+		this.setTime(this.getTime() + value * 1);
+		return this;
+	};
+
+	/**
+	 * Adds the specified number of seconds to this instance. 
+	 * @param {Number}   The number of seconds to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addSeconds = function (value) {
+		if (!value) { return this; }
+		return this.addMilliseconds(value * 1000);
+	};
+
+	/**
+	 * Adds the specified number of seconds to this instance. 
+	 * @param {Number}   The number of seconds to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addMinutes = function (value) {
+		if (!value) { return this; }
+		return this.addMilliseconds(value * 60000); // 60*1000
+	};
+
+	/**
+	 * Adds the specified number of hours to this instance. 
+	 * @param {Number}   The number of hours to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addHours = function (value) {
+		if (!value) { return this; }
+		return this.addMilliseconds(value * 3600000); // 60*60*1000
+	};
+
+	/**
+	 * Adds the specified number of days to this instance. 
+	 * @param {Number}   The number of days to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addDays = function (value) {
+		if (!value) { return this; }
+		this.setDate(this.getDate() + value * 1);
+		return this;
+	};
+
+	/**
+	 * Adds the specified number of weekdays (ie - not sat or sun) to this instance. 
+	 * @param {Number}   The number of days to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addWeekdays = function (value) {
+		if (!value) { return this; }
+		var day = this.getDay();
+		var weeks = (Math.ceil(Math.abs(value)/7));
+		if (day === 0 || day === 6) {
+			if (value > 0) {
+				this.next().monday();
+				this.addDays(-1);
+				day = this.getDay();
+			}
+		}
+
+		if (value < 0) {
+			while (value < 0) {
+				this.addDays(-1);
+				day = this.getDay();
+				if (day !== 0 && day !== 6) {
+					value++;
+				}
+			}
+			return this;
+		} else if (value > 5 || (6-day) <= value) {
+			value = value + (weeks * 2);
+		}
+
+		return this.addDays(value);
+	};
+
+	/**
+	 * Adds the specified number of weeks to this instance. 
+	 * @param {Number}   The number of weeks to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addWeeks = function (value) {
+		if (!value) { return this; }
+		return this.addDays(value * 7);
+	};
+
+
+	/**
+	 * Adds the specified number of months to this instance. 
+	 * @param {Number}   The number of months to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addMonths = function (value) {
+		if (!value) { return this; }
+		var n = this.getDate();
+		this.setDate(1);
+		this.setMonth(this.getMonth() + value * 1);
+		this.setDate(Math.min(n, $D.getDaysInMonth(this.getFullYear(), this.getMonth())));
+		return this;
+	};
+
+	$P.addQuarters = function (value) {
+		if (!value) { return this; }
+		// note this will take you to the same point in the quarter as you are now.
+		// i.e. - if you are 15 days into the quarter you'll be 15 days into the resulting one.
+		// bonus: this allows adding fractional quarters
+		return this.addMonths(value * 3);
+	};
+
+	/**
+	 * Adds the specified number of years to this instance. 
+	 * @param {Number}   The number of years to add. The number can be positive or negative [Required]
+	 * @return {Date}    this
+	 */
+	$P.addYears = function (value) {
+		if (!value) { return this; }
+		return this.addMonths(value * 12);
+	};
+
+	/**
+	 * Adds (or subtracts) to the value of the years, months, weeks, days, hours, minutes, seconds, milliseconds of the date instance using given configuration object. Positive and Negative values allowed.
+	 * Example
+	<pre><code>
+	Date.today().add( { days: 1, months: 1 } )
+	 
+	new Date().add( { years: -1 } )
+	</code></pre> 
+	 * @param {Object}   Configuration object containing attributes (months, days, etc.)
+	 * @return {Date}    this
+	 */
+	$P.add = function (config) {
+		if (typeof config === "number") {
+			this._orient = config;
+			return this;
+		}
+		
+		var x = config;
+
+		if (x.day) {
+			// If we should be a different date than today (eg: for 'tomorrow -1d', etc).
+			// Should only effect parsing, not direct usage (eg, Finish and FinishExact)
+			if ((x.day - this.getDate()) !== 0) {
+				this.setDate(x.day);
+			}
+		}
+		if (x.milliseconds) {
+			this.addMilliseconds(x.milliseconds);
+		}
+		if (x.seconds) {
+			this.addSeconds(x.seconds);
+		}
+		if (x.minutes) {
+			this.addMinutes(x.minutes);
+		}
+		if (x.hours) {
+			this.addHours(x.hours);
+		}
+		if (x.weeks) {
+			this.addWeeks(x.weeks);
+		}
+		if (x.months) {
+			this.addMonths(x.months);
+		}
+		if (x.years) {
+			this.addYears(x.years);
+		}
+		if (x.days) {
+			this.addDays(x.days);
+		}
+		return this;
+	};
+	
+	/**
+	 * Get the week number. Week one (1) is the week which contains the first Thursday of the year. Monday is considered the first day of the week.
+	 * The .getWeek() function does NOT convert the date to UTC. The local datetime is used. 
+	 * Please use .getISOWeek() to get the week of the UTC converted date.
+	 * @return {Number}  1 to 53
+	 */
+	$P.getWeek = function (utc) {
+		// Create a copy of this date object  
+		var self, target = new Date(this.valueOf());
+		if (utc) {
+			target.addMinutes(target.getTimezoneOffset());
+			self = target.clone();
+		} else {
+			self = this;
+		}
+		// ISO week date weeks start on monday  
+		// so correct the day number  
+		var dayNr = (self.getDay() + 6) % 7;
+		// ISO 8601 states that week 1 is the week  
+		// with the first thursday of that year.  
+		// Set the target date to the thursday in the target week  
+		target.setDate(target.getDate() - dayNr + 3);
+		// Store the millisecond value of the target date  
+		var firstThursday = target.valueOf();
+		// Set the target to the first thursday of the year  
+		// First set the target to january first  
+		target.setMonth(0, 1);
+		// Not a thursday? Correct the date to the next thursday  
+		if (target.getDay() !== 4) {
+			target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+		}
+		// The weeknumber is the number of weeks between the   
+		// first thursday of the year and the thursday in the target week  
+		return 1 + Math.ceil((firstThursday - target) / 604800000); // 604800000 = 7 * 24 * 3600 * 1000  
+	};
+	
+	/**
+	 * Get the ISO 8601 week number. Week one ("01") is the week which contains the first Thursday of the year. Monday is considered the first day of the week.
+	 * The .getISOWeek() function does convert the date to it's UTC value. Please use .getWeek() to get the week of the local date.
+	 * @return {String}  "01" to "53"
+	 */
+	$P.getISOWeek = function () {
+		return p(this.getWeek(true));
+	};
+
+	/**
+	 * Moves the date to Monday of the week set. Week one (1) is the week which contains the first Thursday of the year.
+	 * @param {Number}   A Number (1 to 53) that represents the week of the year.
+	 * @return {Date}    this
+	 */
+	$P.setWeek = function (n) {
+		if ((n - this.getWeek()) === 0) {
+			if (this.getDay() !== 1) {
+				return this.moveToDayOfWeek(1, (this.getDay() > 1 ? -1 : 1));
+			} else {
+				return this;
+			}
+		} else {
+			return this.moveToDayOfWeek(1, (this.getDay() > 1 ? -1 : 1)).addWeeks(n - this.getWeek());
+		}
+	};
+
+	$P.setQuarter = function (qtr) {
+		var month = Math.abs(((qtr-1) * 3) + 1);
+		return this.setMonth(month, 1);
+	};
+
+	$P.getQuarter = function () {
+		return Date.getQuarter(this);
+	};
+
+	$P.getDaysLeftInQuarter = function () {
+		return Date.getDaysLeftInQuarter(this);
+	};
+
+	/**
+	 * Moves the date to the next n'th occurrence of the dayOfWeek starting from the beginning of the month. The number (-1) is a magic number and will return the last occurrence of the dayOfWeek in the month.
+	 * @param {Number}   The dayOfWeek to move to
+	 * @param {Number}   The n'th occurrence to move to. Use (-1) to return the last occurrence in the month
+	 * @return {Date}    this
+	 */
+	$P.moveToNthOccurrence = function (dayOfWeek, occurrence) {
+		if (dayOfWeek === "Weekday") {
+			if (occurrence > 0) {
+				this.moveToFirstDayOfMonth();
+				if (this.is().weekday()) {
+					occurrence -= 1;
+				}
+			} else if (occurrence < 0) {
+				this.moveToLastDayOfMonth();
+				if (this.is().weekday()) {
+					occurrence += 1;
+				}
+			} else {
+				return this;
+			}
+			return this.addWeekdays(occurrence);
+		}
+		var shift = 0;
+		if (occurrence > 0) {
+			shift = occurrence - 1;
+		}
+		else if (occurrence === -1) {
+			this.moveToLastDayOfMonth();
+			if (this.getDay() !== dayOfWeek) {
+				this.moveToDayOfWeek(dayOfWeek, -1);
+			}
+			return this;
+		}
+		return this.moveToFirstDayOfMonth().addDays(-1).moveToDayOfWeek(dayOfWeek, +1).addWeeks(shift);
+	};
+
+
+	var moveToN = function (getFunc, addFunc, nVal) {
+		return function (value, orient) {
+			var diff = (value - this[getFunc]() + nVal * (orient || +1)) % nVal;
+			return this[addFunc]((diff === 0) ? diff += nVal * (orient || +1) : diff);
+		};
+	};
+	/**
+	 * Move to the next or last dayOfWeek based on the orient value.
+	 * @param {Number}   The dayOfWeek to move to
+	 * @param {Number}   Forward (+1) or Back (-1). Defaults to +1. [Optional]
+	 * @return {Date}    this
+	 */
+	$P.moveToDayOfWeek = moveToN("getDay", "addDays", 7);
+	/**
+	 * Move to the next or last month based on the orient value.
+	 * @param {Number}   The month to move to. 0 = January, 11 = December
+	 * @param {Number}   Forward (+1) or Back (-1). Defaults to +1. [Optional]
+	 * @return {Date}    this
+	 */
+	$P.moveToMonth = moveToN("getMonth", "addMonths", 12);
+	/**
+	 * Get the Ordinate of the current day ("th", "st", "rd").
+	 * @return {String} 
+	 */
+	$P.getOrdinate = function () {
+		var num = this.getDate();
+		return ord(num);
+	};
+	/**
+	 * Get the Ordinal day (numeric day number) of the year, adjusted for leap year.
+	 * @return {Number} 1 through 365 (366 in leap years)
+	 */
+	$P.getOrdinalNumber = function () {
+		return Math.ceil((this.clone().clearTime() - new Date(this.getFullYear(), 0, 1)) / 86400000) + 1;
+	};
+
+	/**
+	 * Get the time zone abbreviation of the current date.
+	 * @return {String} The abbreviated time zone name (e.g. "EST")
+	 */
+	$P.getTimezone = function () {
+		return $D.getTimezoneAbbreviation(this.getUTCOffset(), this.isDaylightSavingTime());
+	};
+
+	$P.setTimezoneOffset = function (offset) {
+		var here = this.getTimezoneOffset(), there = Number(offset) * -6 / 10;
+		return (there || there === 0) ? this.addMinutes(there - here) : this;
+	};
+
+	$P.setTimezone = function (offset) {
+		return this.setTimezoneOffset($D.getTimezoneOffset(offset));
+	};
+
+	/**
+	 * Indicates whether Daylight Saving Time is observed in the current time zone.
+	 * @return {Boolean} true|false
+	 */
+	$P.hasDaylightSavingTime = function () {
+		return (Date.today().set({month: 0, day: 1}).getTimezoneOffset() !== Date.today().set({month: 6, day: 1}).getTimezoneOffset());
+	};
+	
+	/**
+	 * Indicates whether this Date instance is within the Daylight Saving Time range for the current time zone.
+	 * @return {Boolean} true|false
+	 */
+	$P.isDaylightSavingTime = function () {
+		return Date.today().set({month: 0, day: 1}).getTimezoneOffset() !== this.getTimezoneOffset();
+	};
+
+	/**
+	 * Get the offset from UTC of the current date.
+	 * @return {String} The 4-character offset string prefixed with + or - (e.g. "-0500")
+	 */
+	$P.getUTCOffset = function (offset) {
+		var n = (offset || this.getTimezoneOffset()) * -10 / 6, r;
+		if (n < 0) {
+			r = (n - 10000).toString();
+			return r.charAt(0) + r.substr(2);
+		} else {
+			r = (n + 10000).toString();
+			return "+" + r.substr(1);
+		}
+	};
+
+	/**
+	 * Returns the number of milliseconds between this date and date.
+	 * @param {Date} Defaults to now
+	 * @return {Number} The diff in milliseconds
+	 */
+	$P.getElapsed = function (date) {
+		return (date || new Date()) - this;
+	};
+
+	/**
+	 * Set the value of year, month, day, hour, minute, second, millisecond of date instance using given configuration object.
+	 * Example
+	<pre><code>
+	Date.today().set( { day: 20, month: 1 } )
+
+	new Date().set( { millisecond: 0 } )
+	</code></pre>
+	 * 
+	 * @param {Object}   Configuration object containing attributes (month, day, etc.)
+	 * @return {Date}    this
+	 */
+	$P.set = function (config) {
+		config = validateConfigObject.call(this, config);
+		var key;
+		for (key in config) {
+			if (hasOwnProperty.call(config, key)) {
+				var name = key.charAt(0).toUpperCase() + key.slice(1);
+				var addFunc, getFunc;
+				if (key !== "week" && key !== "month" && key !== "timezone" && key !== "timezoneOffset") {
+					name += "s";
+				}
+				addFunc = "add" + name;
+				getFunc = "get" + name;
+				if (key === "month") {
+					addFunc = addFunc + "s";
+				} else if (key === "year"){
+					getFunc = "getFullYear";
+				}
+				if (key !== "day" && key !== "timezone" && key !== "timezoneOffset"  && key !== "week" &&  key !== "hour") {
+						this[addFunc](config[key] - this[getFunc]());
+				} else if ( key === "timezone"|| key === "timezoneOffset" || key === "week" || key === "hour") {
+					this["set"+name](config[key]);
+				}
+			}
+		}
+		// day has to go last because you can't validate the day without first knowing the month
+		if (config.day) {
+			this.addDays(config.day - this.getDate());
+		}
+		
+		return this;
+	};
+
+	/**
+	 * Moves the date to the first day of the month.
+	 * @return {Date}    this
+	 */
+	$P.moveToFirstDayOfMonth = function () {
+		return this.set({ day: 1 });
+	};
+
+	/**
+	 * Moves the date to the last day of the month.
+	 * @return {Date}    this
+	 */
+	$P.moveToLastDayOfMonth = function () {
+		return this.set({ day: $D.getDaysInMonth(this.getFullYear(), this.getMonth())});
+	};
+
+
+	/**
+	 * Converts the value of the current Date object to its equivalent string representation.
+	 * Format Specifiers
+	 * CUSTOM DATE AND TIME FORMAT STRINGS
+	 * Format  Description                                                                  Example
+	 * ------  ---------------------------------------------------------------------------  -----------------------
+	 * s      The seconds of the minute between 0-59.                                      "0" to "59"
+	 * ss     The seconds of the minute with leading zero if required.                     "00" to "59"
+	 * 
+	 * m      The minute of the hour between 0-59.                                         "0"  or "59"
+	 * mm     The minute of the hour with leading zero if required.                        "00" or "59"
+	 * 
+	 * h      The hour of the day between 1-12.                                            "1"  to "12"
+	 * hh     The hour of the day with leading zero if required.                           "01" to "12"
+	 * 
+	 * H      The hour of the day between 0-23.                                            "0"  to "23"
+	 * HH     The hour of the day with leading zero if required.                           "00" to "23"
+	 * 
+	 * d      The day of the month between 1 and 31.                                       "1"  to "31"
+	 * dd     The day of the month with leading zero if required.                          "01" to "31"
+	 * ddd    Abbreviated day name. Date.CultureInfo.abbreviatedDayNames.                                "Mon" to "Sun" 
+	 * dddd   The full day name. Date.CultureInfo.dayNames.                                              "Monday" to "Sunday"
+	 * 
+	 * M      The month of the year between 1-12.                                          "1" to "12"
+	 * MM     The month of the year with leading zero if required.                         "01" to "12"
+	 * MMM    Abbreviated month name. Date.CultureInfo.abbreviatedMonthNames.                            "Jan" to "Dec"
+	 * MMMM   The full month name. Date.CultureInfo.monthNames.                                          "January" to "December"
+	 *
+	 * yy     The year as a two-digit number.                                              "99" or "08"
+	 * yyyy   The full four digit year.                                                    "1999" or "2008"
+	 * 
+	 * t      Displays the first character of the A.M./P.M. designator.                    "A" or "P"
+	 *		Date.CultureInfo.amDesignator or Date.CultureInfo.pmDesignator
+	 * tt     Displays the A.M./P.M. designator.                                           "AM" or "PM"
+	 *		Date.CultureInfo.amDesignator or Date.CultureInfo.pmDesignator
+	 * 
+	 * S      The ordinal suffix ("st, "nd", "rd" or "th") of the current day.            "st, "nd", "rd" or "th"
+	 *
+	 * STANDARD DATE AND TIME FORMAT STRINGS
+	 * Format  Description                                                                  Example
+	 *------  ---------------------------------------------------------------------------  -----------------------
+	 * d      The CultureInfo shortDate Format Pattern                                     "M/d/yyyy"
+	 * D      The CultureInfo longDate Format Pattern                                      "dddd, MMMM dd, yyyy"
+	 * F      The CultureInfo fullDateTime Format Pattern                                  "dddd, MMMM dd, yyyy h:mm:ss tt"
+	 * m      The CultureInfo monthDay Format Pattern                                      "MMMM dd"
+	 * r      The CultureInfo rfc1123 Format Pattern                                       "ddd, dd MMM yyyy HH:mm:ss GMT"
+	 * s      The CultureInfo sortableDateTime Format Pattern                              "yyyy-MM-ddTHH:mm:ss"
+	 * t      The CultureInfo shortTime Format Pattern                                     "h:mm tt"
+	 * T      The CultureInfo longTime Format Pattern                                      "h:mm:ss tt"
+	 * u      The CultureInfo universalSortableDateTime Format Pattern                     "yyyy-MM-dd HH:mm:ssZ"
+	 * y      The CultureInfo yearMonth Format Pattern                                     "MMMM, yyyy"
+	 *
+	 * @param {String}   A format string consisting of one or more format spcifiers [Optional].
+	 * @return {String}  A string representation of the current Date object.
+	 */
+	
+	var ord = function (n) {
+		switch (n * 1) {
+		case 1:
+		case 21:
+		case 31:
+			return "st";
+		case 2:
+		case 22:
+			return "nd";
+		case 3:
+		case 23:
+			return "rd";
+		default:
+			return "th";
+		}
+	};
+	var parseStandardFormats = function (format) {
+		var y, c = Date.CultureInfo.formatPatterns;
+		switch (format) {
+			case "d":
+				return this.toString(c.shortDate);
+			case "D":
+				return this.toString(c.longDate);
+			case "F":
+				return this.toString(c.fullDateTime);
+			case "m":
+				return this.toString(c.monthDay);
+			case "r":
+			case "R":
+				y = this.clone().addMinutes(this.getTimezoneOffset());
+				return y.toString(c.rfc1123) + " GMT";
+			case "s":
+				return this.toString(c.sortableDateTime);
+			case "t":
+				return this.toString(c.shortTime);
+			case "T":
+				return this.toString(c.longTime);
+			case "u":
+				y = this.clone().addMinutes(this.getTimezoneOffset());
+				return y.toString(c.universalSortableDateTime);
+			case "y":
+				return this.toString(c.yearMonth);
+			default:
+				return false;
+		}
+	};
+	var parseFormatStringsClosure = function (context) {
+		return function (m) {
+			if (m.charAt(0) === "\\") {
+				return m.replace("\\", "");
+			}
+			switch (m) {
+				case "hh":
+					return p(context.getHours() < 13 ? (context.getHours() === 0 ? 12 : context.getHours()) : (context.getHours() - 12));
+				case "h":
+					return context.getHours() < 13 ? (context.getHours() === 0 ? 12 : context.getHours()) : (context.getHours() - 12);
+				case "HH":
+					return p(context.getHours());
+				case "H":
+					return context.getHours();
+				case "mm":
+					return p(context.getMinutes());
+				case "m":
+					return context.getMinutes();
+				case "ss":
+					return p(context.getSeconds());
+				case "s":
+					return context.getSeconds();
+				case "yyyy":
+					return p(context.getFullYear(), 4);
+				case "yy":
+					return p(context.getFullYear());
+				case "y":
+					return context.getFullYear();
+				case "E":
+				case "dddd":
+					return Date.CultureInfo.dayNames[context.getDay()];
+				case "ddd":
+					return Date.CultureInfo.abbreviatedDayNames[context.getDay()];
+				case "dd":
+					return p(context.getDate());
+				case "d":
+					return context.getDate();
+				case "MMMM":
+					return Date.CultureInfo.monthNames[context.getMonth()];
+				case "MMM":
+					return Date.CultureInfo.abbreviatedMonthNames[context.getMonth()];
+				case "MM":
+					return p((context.getMonth() + 1));
+				case "M":
+					return context.getMonth() + 1;
+				case "t":
+					return context.getHours() < 12 ? Date.CultureInfo.amDesignator.substring(0, 1) : Date.CultureInfo.pmDesignator.substring(0, 1);
+				case "tt":
+					return context.getHours() < 12 ? Date.CultureInfo.amDesignator : Date.CultureInfo.pmDesignator;
+				case "S":
+					return ord(context.getDate());
+				case "W":
+					return context.getWeek();
+				case "WW":
+					return context.getISOWeek();
+				case "Q":
+					return "Q" + context.getQuarter();
+				case "q":
+					return String(context.getQuarter());
+				case "z":
+					return context.getTimezone();
+				case "Z":
+				case "X":
+					return Date.getTimezoneOffset(context.getTimezone());
+				case "ZZ": // Timezone offset in seconds
+					return context.getTimezoneOffset() * -60;
+				case "u":
+					return context.getDay();
+				case "L":
+					return ($D.isLeapYear(context.getFullYear())) ? 1 : 0;
+				case "B":
+					// Swatch Internet Time (.beats)
+					return "@"+((context.getUTCSeconds() + (context.getUTCMinutes()*60) + ((context.getUTCHours()+1)*3600))/86.4);
+				default:
+					return m;
+			}
+		};
+	};
+	$P.toString = function (format, ignoreStandards) {
+		
+		// Standard Date and Time Format Strings. Formats pulled from CultureInfo file and
+		// may vary by culture. 
+		if (!ignoreStandards && format && format.length === 1) {
+			output = parseStandardFormats.call(this, format);
+			if (output) {
+				return output;
+			}
+		}
+		var parseFormatStrings = parseFormatStringsClosure(this);
+		return format ? format.replace(/((\\)?(dd?d?d?|MM?M?M?|yy?y?y?|hh?|HH?|mm?|ss?|tt?|S|q|Q|WW?W?W?)(?![^\[]*\]))/g, parseFormatStrings).replace(/\[|\]/g, "") : this._toString();
+	};
+
+}());
+},{}],355:[function(_dereq_,module,exports){
+(function () {
+	var $D = Date,
+		$P = $D.prototype,
+		p = function (s, l) {
+			if (!l) {
+				l = 2;
+			}
+			return ("000" + s).slice(l * -1);
+		};
+	
+	if (typeof window !== "undefined" && typeof window.console !== "undefined" && typeof window.console.log !== "undefined") {
+		$D.console = console; // used only to raise non-critical errors if available
+	} else {
+		// set mock so we don't give errors.
+		$D.console = {
+			log: function(){},
+			error: function(){}
+		};
+	}
+	$D.Config = $D.Config || {};
+
+	$D.initOverloads = function() {
+		/** 
+		 * Overload of Date.now. Allows an alternate call for Date.now where it returns the 
+		 * current Date as an object rather than just milliseconds since the Unix Epoch.
+		 *
+		 * Also provides an implementation of now() for browsers (IE<9) that don't have it.
+		 * 
+		 * Backwards compatible so with work with either:
+		 *  Date.now() [returns ms]
+		 * or
+		 *  Date.now(true) [returns Date]
+		 */
+		if (!$D.now) {
+			$D._now = function now() {
+				return new Date().getTime();
+			};
+		} else if (!$D._now) {
+			$D._now = $D.now;
+		}
+
+		$D.now = function (returnObj) {
+			if (returnObj) {
+				return $D.present();
+			} else {
+				return $D._now();
+			}
+		};
+
+		if ( !$P.toISOString ) {
+			$P.toISOString = function() {
+				return this.getUTCFullYear() +
+				"-" + p(this.getUTCMonth() + 1) +
+				"-" + p(this.getUTCDate()) +
+				"T" + p(this.getUTCHours()) +
+				":" + p(this.getUTCMinutes()) +
+				":" + p(this.getUTCSeconds()) +
+				"." + String( (this.getUTCMilliseconds()/1000).toFixed(3)).slice(2, 5) +
+				"Z";
+			};
+		}
+		
+		// private
+		if ( $P._toString === undefined ){
+			$P._toString = $P.toString;
+		}
+
+	};
+	$D.initOverloads();
+
+
+	/** 
+	 * Gets a date that is set to the current date. The time is set to the start of the day (00:00 or 12:00 AM).
+	 * @return {Date}    The current date.
+	 */
+	$D.today = function () {
+		return new Date().clearTime();
+	};
+
+	/** 
+	 * Gets a date that is set to the current date and time (same as new Date, but chainable)
+	 * @return {Date}    The current date.
+	 */
+	$D.present = function () {
+		return new Date();
+	};
+
+	/**
+	 * Compares the first date to the second date and returns an number indication of their relative values.  
+	 * @param {Date}     First Date object to compare [Required].
+	 * @param {Date}     Second Date object to compare to [Required].
+	 * @return {Number}  -1 = date1 is lessthan date2. 0 = values are equal. 1 = date1 is greaterthan date2.
+	 */
+	$D.compare = function (date1, date2) {
+		if (isNaN(date1) || isNaN(date2)) {
+			throw new Error(date1 + " - " + date2);
+		} else if (date1 instanceof Date && date2 instanceof Date) {
+			return (date1 < date2) ? -1 : (date1 > date2) ? 1 : 0;
+		} else {
+			throw new TypeError(date1 + " - " + date2);
+		}
+	};
+	
+	/**
+	 * Compares the first Date object to the second Date object and returns true if they are equal.  
+	 * @param {Date}     First Date object to compare [Required]
+	 * @param {Date}     Second Date object to compare to [Required]
+	 * @return {Boolean} true if dates are equal. false if they are not equal.
+	 */
+	$D.equals = function (date1, date2) {
+		return (date1.compareTo(date2) === 0);
+	};
+
+	/**
+	 * Gets the language appropriate day name when given the day number(0-6)
+	 * eg - 0 == Sunday
+	 * @return {String}  The day name
+	 */
+	$D.getDayName = function (n) {
+		return Date.CultureInfo.dayNames[n];
+	};
+
+	/**
+	 * Gets the day number (0-6) if given a CultureInfo specific string which is a valid dayName, abbreviatedDayName or shortestDayName (two char).
+	 * @param {String}   The name of the day (eg. "Monday, "Mon", "tuesday", "tue", "We", "we").
+	 * @return {Number}  The day number
+	 */
+	$D.getDayNumberFromName = function (name) {
+		var n = Date.CultureInfo.dayNames, m = Date.CultureInfo.abbreviatedDayNames, o = Date.CultureInfo.shortestDayNames, s = name.toLowerCase();
+		for (var i = 0; i < n.length; i++) {
+			if (n[i].toLowerCase() === s || m[i].toLowerCase() === s || o[i].toLowerCase() === s) {
+				return i;
+			}
+		}
+		return -1;
+	};
+	
+	/**
+	 * Gets the month number (0-11) if given a Culture Info specific string which is a valid monthName or abbreviatedMonthName.
+	 * @param {String}   The name of the month (eg. "February, "Feb", "october", "oct").
+	 * @return {Number}  The day number
+	 */
+	$D.getMonthNumberFromName = function (name) {
+		var n = Date.CultureInfo.monthNames, m = Date.CultureInfo.abbreviatedMonthNames, s = name.toLowerCase();
+		for (var i = 0; i < n.length; i++) {
+			if (n[i].toLowerCase() === s || m[i].toLowerCase() === s) {
+				return i;
+			}
+		}
+		return -1;
+	};
+
+	/**
+	 * Gets the language appropriate month name when given the month number(0-11)
+	 * eg - 0 == January
+	 * @return {String}  The month name
+	 */
+	$D.getMonthName = function (n) {
+		return Date.CultureInfo.monthNames[n];
+	};
+
+	/**
+	 * Determines if the current date instance is within a LeapYear.
+	 * @param {Number}   The year.
+	 * @return {Boolean} true if date is within a LeapYear, otherwise false.
+	 */
+	$D.isLeapYear = function (year) {
+		return ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0);
+	};
+
+	/**
+	 * Gets the number of days in the month, given a year and month value. Automatically corrects for LeapYear.
+	 * @param {Number}   The year.
+	 * @param {Number}   The month (0-11).
+	 * @return {Number}  The number of days in the month.
+	 */
+	$D.getDaysInMonth = function (year, month) {
+		if (!month && $D.validateMonth(year)) {
+				month = year;
+				year = Date.today().getFullYear();
+		}
+		return [31, ($D.isLeapYear(year) ? 29 : 28), 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month];
+	};
+
+	$P.getDaysInMonth = function () {
+		return $D.getDaysInMonth(this.getFullYear(), this.getMonth());
+	};
+ 
+	$D.getTimezoneAbbreviation = function (offset, dst) {
+		var p, n = (dst || false) ? Date.CultureInfo.abbreviatedTimeZoneDST : Date.CultureInfo.abbreviatedTimeZoneStandard;
+		for (p in n) {
+			if (n.hasOwnProperty(p)) {
+				if (n[p] === offset) {
+					return p;
+				}
+			}
+		}
+		return null;
+	};
+	
+	$D.getTimezoneOffset = function (name, dst) {
+		var i, a =[], z = Date.CultureInfo.timezones;
+		if (!name) { name = (new Date()).getTimezone();}
+		for (i = 0; i < z.length; i++) {
+			if (z[i].name === name.toUpperCase()) {
+				a.push(i);
+			}
+		}
+		if (!z[a[0]]) {
+			return null;
+		}
+		if (a.length === 1 || !dst) {
+			return z[a[0]].offset;
+		} else {
+			for (i=0; i < a.length; i++) {
+				if (z[a[i]].dst) {
+					return z[a[i]].offset;
+				}
+			}
+		}
+	};
+
+	$D.getQuarter = function (d) {
+		d = d || new Date(); // If no date supplied, use today
+		var q = [1,2,3,4];
+		return q[Math.floor(d.getMonth() / 3)]; // ~~~ is a bitwise op. Faster than Math.floor
+	};
+
+	$D.getDaysLeftInQuarter = function (d) {
+		d = d || new Date();
+		var qEnd = new Date(d);
+		qEnd.setMonth(qEnd.getMonth() + 3 - qEnd.getMonth() % 3, 0);
+		return Math.floor((qEnd - d) / 8.64e7);
+	};
+
+	// private
+	var validate = function (n, min, max, name) {
+		name = name ? name : "Object";
+		if (typeof n === "undefined") {
+			return false;
+		} else if (typeof n !== "number") {
+			throw new TypeError(n + " is not a Number.");
+		} else if (n < min || n > max) {
+			// As failing validation is *not* an exceptional circumstance 
+			// lets not throw a RangeError Exception here. 
+			// It's semantically correct but it's not sensible.
+			return false;
+		}
+		return true;
+	};
+
+	/**
+	 * Validates the number is within an acceptable range for milliseconds [0-999].
+	 * @param {Number}   The number to check if within range.
+	 * @return {Boolean} true if within range, otherwise false.
+	 */
+	$D.validateMillisecond = function (value) {
+		return validate(value, 0, 999, "millisecond");
+	};
+
+	/**
+	 * Validates the number is within an acceptable range for seconds [0-59].
+	 * @param {Number}   The number to check if within range.
+	 * @return {Boolean} true if within range, otherwise false.
+	 */
+	$D.validateSecond = function (value) {
+		return validate(value, 0, 59, "second");
+	};
+
+	/**
+	 * Validates the number is within an acceptable range for minutes [0-59].
+	 * @param {Number}   The number to check if within range.
+	 * @return {Boolean} true if within range, otherwise false.
+	 */
+	$D.validateMinute = function (value) {
+		return validate(value, 0, 59, "minute");
+	};
+
+	/**
+	 * Validates the number is within an acceptable range for hours [0-23].
+	 * @param {Number}   The number to check if within range.
+	 * @return {Boolean} true if within range, otherwise false.
+	 */
+	$D.validateHour = function (value) {
+		return validate(value, 0, 23, "hour");
+	};
+
+	/**
+	 * Validates the number is within an acceptable range for the days in a month [0-MaxDaysInMonth].
+	 * @param {Number}   The number to check if within range.
+	 * @return {Boolean} true if within range, otherwise false.
+	 */
+	$D.validateDay = function (value, year, month) {
+		if (year === undefined || year === null || month === undefined || month === null) { return false;}
+		return validate(value, 1, $D.getDaysInMonth(year, month), "day");
+	};
+
+	/**
+	 * Validates the number is within an acceptable range for months [0-11].
+	 * @param {Number}   The number to check if within range.
+	 * @return {Boolean} true if within range, otherwise false.
+	 */
+	$D.validateWeek = function (value) {
+		return validate(value, 0, 53, "week");
+	};
+
+	/**
+	 * Validates the number is within an acceptable range for months [0-11].
+	 * @param {Number}   The number to check if within range.
+	 * @return {Boolean} true if within range, otherwise false.
+	 */
+	$D.validateMonth = function (value) {
+		return validate(value, 0, 11, "month");
+	};
+
+	/**
+	 * Validates the number is within an acceptable range for years.
+	 * @param {Number}   The number to check if within range.
+	 * @return {Boolean} true if within range, otherwise false.
+	 */
+	$D.validateYear = function (value) {
+		/**
+		 * Per ECMAScript spec the range of times supported by Date objects is 
+		 * exactly -100,000,000 days to +100,000,000 days measured relative to 
+		 * midnight at the beginning of 01 January, 1970 UTC. 
+		 * This gives a range of 8,640,000,000,000,000 milliseconds to either 
+		 * side of 01 January, 1970 UTC.
+		 *
+		 * Earliest possible date: Tue, 20 Apr 271,822 B.C. 00:00:00 UTC
+		 * Latest possible date: Sat, 13 Sep 275,760 00:00:00 UTC
+		 */
+		return validate(value, -271822, 275760, "year");
+	};
+	$D.validateTimezone = function(value) {
+		var timezones = {"ACDT":1,"ACST":1,"ACT":1,"ADT":1,"AEDT":1,"AEST":1,"AFT":1,"AKDT":1,"AKST":1,"AMST":1,"AMT":1,"ART":1,"AST":1,"AWDT":1,"AWST":1,"AZOST":1,"AZT":1,"BDT":1,"BIOT":1,"BIT":1,"BOT":1,"BRT":1,"BST":1,"BTT":1,"CAT":1,"CCT":1,"CDT":1,"CEDT":1,"CEST":1,"CET":1,"CHADT":1,"CHAST":1,"CHOT":1,"ChST":1,"CHUT":1,"CIST":1,"CIT":1,"CKT":1,"CLST":1,"CLT":1,"COST":1,"COT":1,"CST":1,"CT":1,"CVT":1,"CWST":1,"CXT":1,"DAVT":1,"DDUT":1,"DFT":1,"EASST":1,"EAST":1,"EAT":1,"ECT":1,"EDT":1,"EEDT":1,"EEST":1,"EET":1,"EGST":1,"EGT":1,"EIT":1,"EST":1,"FET":1,"FJT":1,"FKST":1,"FKT":1,"FNT":1,"GALT":1,"GAMT":1,"GET":1,"GFT":1,"GILT":1,"GIT":1,"GMT":1,"GST":1,"GYT":1,"HADT":1,"HAEC":1,"HAST":1,"HKT":1,"HMT":1,"HOVT":1,"HST":1,"ICT":1,"IDT":1,"IOT":1,"IRDT":1,"IRKT":1,"IRST":1,"IST":1,"JST":1,"KGT":1,"KOST":1,"KRAT":1,"KST":1,"LHST":1,"LINT":1,"MAGT":1,"MART":1,"MAWT":1,"MDT":1,"MET":1,"MEST":1,"MHT":1,"MIST":1,"MIT":1,"MMT":1,"MSK":1,"MST":1,"MUT":1,"MVT":1,"MYT":1,"NCT":1,"NDT":1,"NFT":1,"NPT":1,"NST":1,"NT":1,"NUT":1,"NZDT":1,"NZST":1,"OMST":1,"ORAT":1,"PDT":1,"PET":1,"PETT":1,"PGT":1,"PHOT":1,"PHT":1,"PKT":1,"PMDT":1,"PMST":1,"PONT":1,"PST":1,"PYST":1,"PYT":1,"RET":1,"ROTT":1,"SAKT":1,"SAMT":1,"SAST":1,"SBT":1,"SCT":1,"SGT":1,"SLST":1,"SRT":1,"SST":1,"SYOT":1,"TAHT":1,"THA":1,"TFT":1,"TJT":1,"TKT":1,"TLT":1,"TMT":1,"TOT":1,"TVT":1,"UCT":1,"ULAT":1,"UTC":1,"UYST":1,"UYT":1,"UZT":1,"VET":1,"VLAT":1,"VOLT":1,"VOST":1,"VUT":1,"WAKT":1,"WAST":1,"WAT":1,"WEDT":1,"WEST":1,"WET":1,"WST":1,"YAKT":1,"YEKT":1,"Z":1};
+		return (timezones[value] === 1);
+	};
+	$D.validateTimezoneOffset= function(value) {
+		// timezones go from +14hrs to -12hrs, the +X hours are negative offsets.
+		return (value > -841 && value < 721);
+	};
+
+}());
+
+},{}],356:[function(_dereq_,module,exports){
+(function () {
+	var $D = Date,
+		$P = $D.prototype,
+		// $C = $D.CultureInfo, // not used atm
+		p = function (s, l) {
+			if (!l) {
+				l = 2;
+			}
+			return ("000" + s).slice(l * -1);
+		};
+	/**
+	 * Converts a PHP format string to Java/.NET format string.
+	 * A PHP format string can be used with ._format or .format.
+	 * A Java/.NET format string can be used with .toString().
+	 * The .parseExact function will only accept a Java/.NET format string
+	 *
+	 * Example
+	 * var f1 = "%m/%d/%y"
+	 * var f2 = Date.normalizeFormat(f1);	// "MM/dd/yy"
+	 *
+	 * new Date().format(f1);	// "04/13/08"
+	 * new Date()._format(f1);	// "04/13/08"
+	 * new Date().toString(f2);	// "04/13/08"
+	 *
+	 * var date = Date.parseExact("04/13/08", f2); // Sun Apr 13 2008
+	 *
+	 * @param {String}   A PHP format string consisting of one or more format spcifiers.
+	 * @return {String}  The PHP format converted to a Java/.NET format string.
+	 */
+	 var normalizerSubstitutions = {
+		"d" : "dd",
+		"%d": "dd",
+		"D" : "ddd",
+		"%a": "ddd",
+		"j" : "dddd",
+		"l" : "dddd",
+		"%A": "dddd",
+		"S" : "S",
+		"F" : "MMMM",
+		"%B": "MMMM",
+		"m" : "MM",
+		"%m": "MM",
+		"M" : "MMM",
+		"%b": "MMM",
+		"%h": "MMM",
+		"n" : "M",
+		"Y" : "yyyy",
+		"%Y": "yyyy",
+		"y" : "yy",
+		"%y": "yy",
+		"g" : "h",
+		"%I": "h",
+		"G" : "H",
+		"h" : "hh",
+		"H" : "HH",
+		"%H": "HH",
+		"i" : "mm",
+		"%M": "mm",
+		"s" : "ss",
+		"%S": "ss",
+		"%r": "hh:mm tt",
+		"%R": "H:mm",
+		"%T": "H:mm:ss",
+		"%X": "t",
+		"%x": "d",
+		"%e": "d",
+		"%D": "MM/dd/yy",
+		"%n": "\\n",
+		"%t": "\\t",
+		"e" : "z",
+		"T" : "z",
+		"%z": "z",
+		"%Z": "z",
+		"Z" : "ZZ",
+		"N" : "u",
+		"w" : "u",
+		"%w": "u",
+		"W" : "W",
+		"%V": "W"
+	};
+	var normalizer = {
+		substitutes: function (m) {
+			return normalizerSubstitutions[m];
+		},
+		interpreted: function (m, x) {
+			var y;
+			switch (m) {
+				case "%u":
+					return x.getDay() + 1;
+				case "z":
+					return x.getOrdinalNumber();
+				case "%j":
+					return p(x.getOrdinalNumber(), 3);
+				case "%U":
+					var d1 = x.clone().set({month: 0, day: 1}).addDays(-1).moveToDayOfWeek(0),
+						d2 = x.clone().addDays(1).moveToDayOfWeek(0, -1);
+					return (d2 < d1) ? "00" : p((d2.getOrdinalNumber() - d1.getOrdinalNumber()) / 7 + 1);
+
+				case "%W":
+					return p(x.getWeek());
+				case "t":
+					return $D.getDaysInMonth(x.getFullYear(), x.getMonth());
+				case "o":
+				case "%G":
+					return x.setWeek(x.getISOWeek()).toString("yyyy");
+				case "%g":
+					return x._format("%G").slice(-2);
+				case "a":
+				case "%p":
+					return t("tt").toLowerCase();
+				case "A":
+					return t("tt").toUpperCase();
+				case "u":
+					return p(x.getMilliseconds(), 3);
+				case "I":
+					return (x.isDaylightSavingTime()) ? 1 : 0;
+				case "O":
+					return x.getUTCOffset();
+				case "P":
+					y = x.getUTCOffset();
+					return y.substring(0, y.length - 2) + ":" + y.substring(y.length - 2);
+				case "B":
+					var now = new Date();
+					return Math.floor(((now.getHours() * 3600) + (now.getMinutes() * 60) + now.getSeconds() + (now.getTimezoneOffset() + 60) * 60) / 86.4);
+				case "c":
+					return x.toISOString().replace(/\"/g, "");
+				case "U":
+					return $D.strtotime("now");
+				case "%c":
+					return t("d") + " " + t("t");
+				case "%C":
+					return Math.floor(x.getFullYear() / 100 + 1);
+			}
+		},
+		shouldOverrideDefaults: function (m) {
+			switch (m) {
+				case "%e":
+					return true;
+				default:
+					return false;
+			}
+		},
+		parse: function (m, context) {
+			var formatString, c = context || new Date();
+			formatString = normalizer.substitutes(m);
+			if (formatString) {
+				return formatString;
+			}
+			formatString = normalizer.interpreted(m, c);
+
+			if (formatString) {
+				return formatString;
+			} else {
+				return m;
+			}
+		}
+	};
+
+	$D.normalizeFormat = function (format, context) {
+		return format.replace(/(%|\\)?.|%%/g, function(t){
+				return normalizer.parse(t, context);
+		});
+	};
+	/**
+	 * Format a local Unix timestamp according to locale settings
+	 *
+	 * Example:
+	 * Date.strftime("%m/%d/%y", new Date());		// "04/13/08"
+	 * Date.strftime("c", "2008-04-13T17:52:03Z");	// "04/13/08"
+	 *
+	 * @param {String}   A format string consisting of one or more format spcifiers [Optional].
+	 * @param {Number|String}   The number representing the number of seconds that have elapsed since January 1, 1970 (local time).
+	 * @return {String}  A string representation of the current Date object.
+	 */
+	$D.strftime = function (format, time) {
+		var d = Date.parse(time);
+		return d._format(format);
+	};
+	/**
+	 * Parse any textual datetime description into a Unix timestamp.
+	 * A Unix timestamp is the number of seconds that have elapsed since January 1, 1970 (midnight UTC/GMT).
+	 *
+	 * Example:
+	 * Date.strtotime("04/13/08");				// 1208044800
+	 * Date.strtotime("1970-01-01T00:00:00Z");	// 0
+	 *
+	 * @param {String}   A format string consisting of one or more format spcifiers [Optional].
+	 * @param {Object}   A string or date object.
+	 * @return {String}  A string representation of the current Date object.
+	 */
+	$D.strtotime = function (time) {
+		var d = $D.parse(time);
+		return Math.round($D.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()) / 1000);
+	};
+	/**
+	 * Converts the value of the current Date object to its equivalent string representation using a PHP/Unix style of date format specifiers.
+	 * Format Specifiers
+	 * Format  Description																	Example
+	 * ------  ---------------------------------------------------------------------------	-----------------------
+	 * %a		abbreviated weekday name according to the current localed					"Mon" through "Sun"
+	 * %A		full weekday name according to the current localed							"Sunday" through "Saturday"
+	 * %b		abbreviated month name according to the current localed						"Jan" through "Dec"
+	 * %B		full month name according to the current locale								"January" through "December"
+	 * %c		preferred date and time representation for the current locale				"4/13/2008 12:33 PM"
+	 * %C		century number (the year divided by 100 and truncated to an integer)		"00" to "99"
+	 * %d		day of the month as a decimal number										"01" to "31"
+	 * %D		same as %m/%d/%y															"04/13/08"
+	 * %e		day of the month as a decimal number, a single digit is preceded by a space	"1" to "31"
+	 * %g		like %G, but without the century											"08"
+	 * %G		The 4-digit year corresponding to the ISO week number (see %V).				"2008"
+	 *		This has the same format and value as %Y, except that if the ISO week number
+	 *		belongs to the previous or next year, that year is used instead.
+	 * %h		same as %b																	"Jan" through "Dec"
+	 * %H		hour as a decimal number using a 24-hour clock.								"00" to "23"
+	 * %I		hour as a decimal number using a 12-hour clock.								"01" to "12"
+	 * %j		day of the year as a decimal number.										"001" to "366"
+	 * %m		month as a decimal number.													"01" to "12"
+	 * %M		minute as a decimal number.													"00" to "59"
+	 * %n		newline character		"\n"
+	 * %p		either "am" or "pm" according to the given time value, or the				"am" or "pm"
+	 *		corresponding strings for the current locale.
+	 * %r		time in a.m. and p.m. notation												"8:44 PM"
+	 * %R		time in 24 hour notation													"20:44"
+	 * %S		second as a decimal number													"00" to "59"
+	 * %t		tab character																"\t"
+	 * %T		current time, equal to %H:%M:%S												"12:49:11"
+	 * %u		weekday as a decimal number ["1", "7"], with "1" representing Monday		"1" to "7"
+	 * %U		week number of the current year as a decimal number, starting with the		"0" to ("52" or "53")
+	 *		first Sunday as the first day of the first week
+	 * %V		The ISO 8601:1988 week number of the current year as a decimal number,		"00" to ("52" or "53")
+	 *		range 01 to 53, where week 1 is the first week that has at least 4 days
+	 *		in the current year, and with Monday as the first day of the week.
+	 *		(Use %G or %g for the year component that corresponds to the week number
+	 *		for the specified timestamp.)
+	 * %W		week number of the current year as a decimal number, starting with the		"00" to ("52" or "53")
+	 *		first Monday as the first day of the first week
+	 * %w		day of the week as a decimal, Sunday being "0"								"0" to "6"
+	 * %x		preferred date representation for the current locale without the time		"4/13/2008"
+	 * %X		preferred time representation for the current locale without the date		"12:53:05"
+	 * %y		year as a decimal number without a century									"00" "99"
+	 * %Y		year as a decimal number including the century								"2008"
+	 * %Z		time zone or name or abbreviation											"UTC", "EST", "PST"
+	 * %z		same as %Z
+	 * %%		a literal "%" characters													"%"
+	 * d		Day of the month, 2 digits with leading zeros								"01" to "31"
+	 * D		A textual representation of a day, three letters							"Mon" through "Sun"
+	 * j		Day of the month without leading zeros										"1" to "31"
+	 * l		A full textual representation of the day of the week (lowercase "L")		"Sunday" through "Saturday"
+	 * N		ISO-8601 numeric representation of the day of the week (added in PHP 5.1.0)	"1" (for Monday) through "7" (for Sunday)
+	 * S		English ordinal suffix for the day of the month, 2 characters				"st", "nd", "rd" or "th". Works well with j
+	 * w		Numeric representation of the day of the week								"0" (for Sunday) through "6" (for Saturday)
+	 * z		The day of the year (starting from "0")										"0" through "365"
+	 * W		ISO-8601 week number of year, weeks starting on Monday						"00" to ("52" or "53")
+	 * F		A full textual representation of a month, such as January or March			"January" through "December"
+	 * m		Numeric representation of a month, with leading zeros						"01" through "12"
+	 * M		A short textual representation of a month, three letters					"Jan" through "Dec"
+	 * n		Numeric representation of a month, without leading zeros					"1" through "12"
+	 * t		Number of days in the given month											"28" through "31"
+	 * L		Whether it's a leap year													"1" if it is a leap year, "0" otherwise
+	 * o		ISO-8601 year number. This has the same value as Y, except that if the		"2008"
+	 *		ISO week number (W) belongs to the previous or next year, that year
+	 *		is used instead.
+	 * Y		A full numeric representation of a year, 4 digits							"2008"
+	 * y		A two digit representation of a year										"08"
+	 * a		Lowercase Ante meridiem and Post meridiem									"am" or "pm"
+	 * A		Uppercase Ante meridiem and Post meridiem									"AM" or "PM"
+	 * B		Swatch Internet time														"000" through "999"
+	 * g		12-hour format of an hour without leading zeros								"1" through "12"
+	 * G		24-hour format of an hour without leading zeros								"0" through "23"
+	 * h		12-hour format of an hour with leading zeros								"01" through "12"
+	 * H		24-hour format of an hour with leading zeros								"00" through "23"
+	 * i		Minutes with leading zeros													"00" to "59"
+	 * s		Seconds, with leading zeros													"00" through "59"
+	 * u		Milliseconds																"54321"
+	 * e		Timezone identifier															"UTC", "EST", "PST"
+	 * I		Whether or not the date is in daylight saving time (uppercase i)			"1" if Daylight Saving Time, "0" otherwise
+	 * O		Difference to Greenwich time (GMT) in hours									"+0200", "-0600"
+	 * P		Difference to Greenwich time (GMT) with colon between hours and minutes		"+02:00", "-06:00"
+	 * T		Timezone abbreviation														"UTC", "EST", "PST"
+	 * Z		Timezone offset in seconds. The offset for timezones west of UTC is			"-43200" through "50400"
+	 *			always negative, and for those east of UTC is always positive.
+	 * c		ISO 8601 date																"2004-02-12T15:19:21+00:00"
+	 * r		RFC 2822 formatted date														"Thu, 21 Dec 2000 16:01:07 +0200"
+	 * U		Seconds since the Unix Epoch (January 1 1970 00:00:00 GMT)					"0"
+	 * @param {String}   A format string consisting of one or more format spcifiers [Optional].
+	 * @return {String}  A string representation of the current Date object.
+	 */
+	var formatReplace = function (context) {
+		return function (m) {
+			var formatString, override = false;
+			if (m.charAt(0) === "\\" || m.substring(0, 2) === "%%") {
+				return m.replace("\\", "").replace("%%", "%");
+			}
+
+			override = normalizer.shouldOverrideDefaults(m);
+			formatString = $D.normalizeFormat(m, context);
+			if (formatString) {
+				return context.toString(formatString, override);
+			}
+		};
+	};
+	$P._format = function (format) {
+		var formatter = formatReplace(this);
+		if (!format) {
+			return this._toString();
+		} else {
+			return format.replace(/(%|\\)?.|%%/g, formatter);
+		}
+	};
+
+	if (!$P.format) {
+		$P.format = $P._format;
+	}
+}());
+},{}],357:[function(_dereq_,module,exports){
+(function () {
+	"use strict";
+	Date.Parsing = {
+		Exception: function (s) {
+			this.message = "Parse error at '" + s.substring(0, 10) + " ...'";
+		}
+	};
+	var $P = Date.Parsing;
+	var dayOffsets = {
+		standard: [0,31,59,90,120,151,181,212,243,273,304,334],
+		leap: [0,31,60,91,121,152,182,213,244,274,305,335]
+	};
+
+	$P.isLeapYear = function(year) {
+		return ((year % 4 === 0) && (year % 100 !== 0)) || (year % 400 === 0);
+	};
+
+	var utils = {
+		multiReplace : function (str, hash ) {
+			var key;
+			for (key in hash) {
+				if (Object.prototype.hasOwnProperty.call(hash, key)) {
+					var regex;
+					if (typeof hash[key] === "function") {
+
+					} else {
+						regex = (hash[key] instanceof RegExp) ? hash[key] : new RegExp(hash[key], "g");
+					}
+					str = str.replace(regex, key);
+				}
+			}
+			return str;
+		},
+		getDayOfYearFromWeek : function (obj) {
+			var d, jan4, offset;
+			obj.weekDay = (!obj.weekDay && obj.weekDay !== 0) ? 1 : obj.weekDay;
+			d = new Date(obj.year, 0, 4);
+			jan4 = d.getDay() === 0 ? 7 : d.getDay(); // JS is 0 indexed on Sunday.
+			offset = jan4+3;
+			obj.dayOfYear = ((obj.week * 7) + (obj.weekDay === 0 ? 7 : obj.weekDay))-offset;
+			return obj;
+		},
+		getDayOfYear : function (obj, dayOffset) {
+			if (!obj.dayOfYear) {
+				obj = utils.getDayOfYearFromWeek(obj);
+			}
+			for (var i=0;i <= dayOffset.length;i++) {
+				if (obj.dayOfYear < dayOffset[i] || i === dayOffset.length) {
+					obj.day = obj.day ? obj.day : (obj.dayOfYear - dayOffset[i-1]);
+					break;
+				} else {
+					obj.month = i;
+				}
+			}
+			return obj;
+		},
+		adjustForTimeZone : function (obj, date) {
+			var offset;
+			if (obj.zone.toUpperCase() === "Z" || (obj.zone_hours === 0 && obj.zone_minutes === 0)) {
+				// it's UTC/GML so work out the current timeszone offset
+				offset = -date.getTimezoneOffset();
+			} else {
+				offset = (obj.zone_hours*60) + (obj.zone_minutes || 0);
+				if (obj.zone_sign === "+") {
+					offset *= -1;
+				}
+				offset -= date.getTimezoneOffset();
+			}
+			date.setMinutes(date.getMinutes()+offset);
+			return date;
+		},
+		setDefaults : function (obj) {
+			obj.year = obj.year || Date.today().getFullYear();
+			obj.hours = obj.hours || 0;
+			obj.minutes = obj.minutes || 0;
+			obj.seconds = obj.seconds || 0;
+			obj.milliseconds = obj.milliseconds || 0;
+			if (!(!obj.month && (obj.week || obj.dayOfYear))) {
+				// if we have a month, or if we don't but don't have the day calculation data
+				obj.month = obj.month || 0;
+				obj.day = obj.day || 1;
+			}
+			return obj;
+		},
+		dataNum: function (data, mod, explict, postProcess) {
+			var dataNum = data*1;
+			if (mod) {
+				if (postProcess) {
+					return data ? mod(data)*1 : data;
+				} else {
+					return data ? mod(dataNum) : data;
+				}
+			} else if (!explict){
+				return data ? dataNum : data;
+			} else {
+				return (data && typeof data !== "undefined") ? dataNum : data;
+			}
+		},
+		timeDataProcess: function (obj) {
+			var timeObj = {};
+			for (var x in obj.data) {
+				if (obj.data.hasOwnProperty(x)) {
+					timeObj[x] = obj.ignore[x] ? obj.data[x] : utils.dataNum(obj.data[x], obj.mods[x], obj.explict[x], obj.postProcess[x]);
+				}
+			}
+			if (obj.data.secmins) {
+				obj.data.secmins = obj.data.secmins.replace(",", ".") * 60;
+				if (!timeObj.minutes) {
+					timeObj.minutes = obj.data.secmins;
+				} else if (!timeObj.seconds) {
+					timeObj.seconds = obj.data.secmins;
+				}
+				delete obj.secmins;
+			}
+			return timeObj;
+		},
+		buildTimeObjectFromData: function (data) {
+			var time = utils.timeDataProcess({
+				data: {
+					year : data[1],
+					month : data[5],
+					day : data[7],
+					week : data[8],
+					dayOfYear : data[10],
+					hours : data[15],
+					zone_hours : data[23],
+					zone_minutes : data[24],
+					zone : data[21],
+					zone_sign : data[22],
+					weekDay : data[9],
+					minutes: data[16],
+					seconds: data[19],
+					milliseconds: data[20],
+					secmins: data[18]
+				},
+				mods: {
+					month: function(data) {
+						return data-1;
+					},
+					weekDay: function (data) {
+						data = Math.abs(data);
+						return (data === 7 ? 0 : data);
+					},
+					minutes: function (data) {
+						return data.replace(":","");
+					},
+					seconds: function (data) {
+						return Math.floor( (data.replace(":","").replace(",","."))*1 );
+					},
+					milliseconds: function (data) {
+						return (data.replace(",",".")*1000);
+					}
+				},
+				postProcess: {
+					minutes: true,
+					seconds: true,
+					milliseconds: true
+				},
+				explict: {
+					zone_hours: true,
+					zone_minutes: true
+				},
+				ignore: {
+					zone: true,
+					zone_sign: true,
+					secmins: true
+				}
+			});
+			return time;
+		},
+		addToHash: function (hash, keys, data) {
+			keys = keys;
+			data = data;
+			var len = keys.length;
+			for (var i = 0; i < len; i++) {
+			  hash[keys[i]] = data[i];
+			}
+			return hash;
+		},
+		combineRegex: function (r1, r2) {
+			return new RegExp("(("+r1.source+")\\s("+r2.source+"))");
+		},
+		getDateNthString: function(add, last, inc){
+			if (add) {
+				return Date.today().addDays(inc).toString("d");
+			} else if (last) {
+				return Date.today().last()[inc]().toString("d");
+			}
+
+		},
+		buildRegexData: function (array) {
+			var arr = [];
+			var len = array.length;
+			for (var i=0; i < len; i++) {
+				if (Object.prototype.toString.call(array[i]) === '[object Array]') { // oldIE compat version of Array.isArray
+					arr.push(this.combineRegex(array[i][0], array[i][1]));
+				} else {
+					arr.push(array[i]);
+				}
+			}
+			return arr;
+		}
+	};
+
+	$P.processTimeObject = function (obj) {
+		var date, dayOffset;
+
+		utils.setDefaults(obj);
+		dayOffset = ($P.isLeapYear(obj.year)) ? dayOffsets.leap : dayOffsets.standard;
+
+		if (!obj.month && (obj.week || obj.dayOfYear)) {
+			utils.getDayOfYear(obj, dayOffset);
+		} else {
+			obj.dayOfYear = dayOffset[obj.month] + obj.day;
+		}
+
+		date = new Date(obj.year, obj.month, obj.day, obj.hours, obj.minutes, obj.seconds, obj.milliseconds);
+
+		if (obj.zone) {
+			utils.adjustForTimeZone(obj, date); // adjust (and calculate) for timezone
+		}
+		return date;
+	};
+
+	$P.ISO = {
+		regex : /^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-3])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-4])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?\s?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/,
+		parse : function (s) {
+			var time, data = s.match(this.regex);
+			if (!data || !data.length) {
+				return null;
+			}
+
+			time = utils.buildTimeObjectFromData(data);
+
+			if (!time.year || (!time.year && (!time.month && !time.day) && (!time.week && !time.dayOfYear)) ) {
+				return null;
+			}
+			return $P.processTimeObject(time);
+		}
+	};
+
+	$P.Numeric = {
+		isNumeric: function (e){return!isNaN(parseFloat(e))&&isFinite(e);},
+		regex: /\b([0-1]?[0-9])([0-3]?[0-9])([0-2]?[0-9]?[0-9][0-9])\b/i,
+		parse: function (s) {
+			var data, i,
+				time = {},
+				order = Date.CultureInfo.dateElementOrder.split("");
+			if (!(this.isNumeric(s)) || // if it's non-numeric OR
+				(s[0] === "+" && s[0] === "-")) {			// It's an arithmatic string (eg +/-1000)
+				return null;
+			}
+			if (s.length < 5 && s.indexOf(".") < 0 && s.indexOf("/") < 0) { // assume it's just a year.
+				time.year = s;
+				return $P.processTimeObject(time);
+			}
+			data = s.match(this.regex);
+			if (!data || !data.length) {
+				return null;
+			}
+			for (i=0; i < order.length; i++) {
+				switch(order[i]) {
+					case "d":
+						time.day = data[i+1];
+						break;
+					case "m":
+						time.month = (data[i+1]-1);
+						break;
+					case "y":
+						time.year = data[i+1];
+						break;
+				}
+			}
+			return $P.processTimeObject(time);
+		}
+	};
+
+	$P.Normalizer = {
+		regexData: function () {
+			var $R = Date.CultureInfo.regexPatterns;
+			return utils.buildRegexData([
+				$R.tomorrow,
+				$R.yesterday,
+				[$R.past, $R.mon],
+				[$R.past, $R.tue],
+				[$R.past, $R.wed],
+				[$R.past, $R.thu],
+				[$R.past, $R.fri],
+				[$R.past, $R.sat],
+				[$R.past, $R.sun]
+			]);
+		},
+		basicReplaceHash : function() {
+			var $R = Date.CultureInfo.regexPatterns;
+			return {
+				"January": $R.jan.source,
+				"February": $R.feb,
+				"March": $R.mar,
+				"April": $R.apr,
+				"May": $R.may,
+				"June": $R.jun,
+				"July": $R.jul,
+				"August": $R.aug,
+				"September": $R.sep,
+				"October": $R.oct,
+				"November": $R.nov,
+				"December": $R.dec,
+				"": /\bat\b/gi,
+				" ": /\s{2,}/,
+				"am": $R.inTheMorning,
+				"9am": $R.thisMorning,
+				"pm": $R.inTheEvening,
+				"7pm":$R.thisEvening
+			};
+		},
+		keys : function(){
+			return [
+				utils.getDateNthString(true, false, 1),				// tomorrow
+				utils.getDateNthString(true, false, -1),			// yesterday
+				utils.getDateNthString(false, true, "monday"),		//last mon
+				utils.getDateNthString(false, true, "tuesday"),		//last tues
+				utils.getDateNthString(false, true, "wednesday"),	//last wed
+				utils.getDateNthString(false, true, "thursday"),	//last thurs
+				utils.getDateNthString(false, true, "friday"),		//last fri
+				utils.getDateNthString(false, true, "saturday"),	//last sat
+				utils.getDateNthString(false, true, "sunday")		//last sun
+			];
+		},
+		buildRegexFunctions: function () {
+			var $R = Date.CultureInfo.regexPatterns;
+			var __ = Date.i18n.__;
+			var tomorrowRE = new RegExp("(\\b\\d\\d?("+__("AM")+"|"+__("PM")+")? )("+$R.tomorrow.source.slice(1)+")", "i"); // adapted tomorrow regex for AM PM relative dates
+			var todayRE = new RegExp($R.today.source + "(?!\\s*([+-]))\\b"); // today, but excludes the math operators (eg "today + 2h")
+
+			this.replaceFuncs = [
+				[todayRE, function (full) {
+					return (full.length > 1) ? Date.today().toString("d") : full;
+				}],
+				[tomorrowRE,
+				function(full, m1) {
+					var t = Date.today().addDays(1).toString("d");
+					return (t + " " + m1);
+				}],
+				[$R.amThisMorning, function(str, am){return am;}],
+				[$R.pmThisEvening, function(str, pm){return pm;}]
+			];
+
+		},
+		buildReplaceData: function () {
+			this.buildRegexFunctions();
+			this.replaceHash = utils.addToHash(this.basicReplaceHash(), this.keys(), this.regexData());
+		},
+		stringReplaceFuncs: function (s) {
+			for (var i=0; i < this.replaceFuncs.length; i++) {
+				s = s.replace(this.replaceFuncs[i][0], this.replaceFuncs[i][1]);
+			}
+			return s;
+		},
+		parse: function (s) {
+			s = this.stringReplaceFuncs(s);
+			s = utils.multiReplace(s, this.replaceHash);
+
+			try {
+				var n = s.split(/([\s\-\.\,\/\x27]+)/);
+				if (n.length === 3 &&
+					$P.Numeric.isNumeric(n[0]) &&
+					$P.Numeric.isNumeric(n[2]) &&
+					(n[2].length >= 4)) {
+						// ok, so we're dealing with x/year. But that's not a full date.
+						// This fixes wonky dateElementOrder parsing when set to dmy order.
+						if (Date.CultureInfo.dateElementOrder[0] === "d") {
+							s = "1/" + n[0] + "/" + n[2]; // set to 1st of month and normalize the seperator
+						}
+				}
+			} catch (e) {}
+
+			return s;
+		}
+	};
+	$P.Normalizer.buildReplaceData();
+}());
+},{}],358:[function(_dereq_,module,exports){
+(function () {
+	var $D = Date;
+	var lang = Date.CultureStrings ? Date.CultureStrings.lang : null;
+	var loggedKeys = {}; // for debug purposes.
+	var getText = {
+		getFromKey: function (key, countryCode) {
+			var output;
+			if (Date.CultureStrings && Date.CultureStrings[countryCode] && Date.CultureStrings[countryCode][key]) {
+				output = Date.CultureStrings[countryCode][key];
+			} else {
+				output = getText.buildFromDefault(key);
+			}
+			if (key.charAt(0) === "/") { // Assume it's a regex
+				output = getText.buildFromRegex(key, countryCode);
+			}
+			return output;
+		},
+		getFromObjectValues: function (obj, countryCode) {
+			var key, output = {};
+			for(key in obj) {
+				if (obj.hasOwnProperty(key)) {
+					output[key] = getText.getFromKey(obj[key], countryCode);
+				}
+			}
+			return output;
+		},
+		getFromObjectKeys: function (obj, countryCode) {
+			var key, output = {};
+			for(key in obj) {
+				if (obj.hasOwnProperty(key)) {
+					output[getText.getFromKey(key, countryCode)] = obj[key];
+				}
+			}
+			return output;
+		},
+		getFromArray: function (arr, countryCode) {
+			var output = [];
+			for (var i=0; i < arr.length; i++){
+				if (i in arr) {
+					output[i] = getText.getFromKey(arr[i], countryCode);
+				}
+			}
+			return output;
+		},
+		buildFromDefault: function (key) {
+			var output, length, split, last;
+			switch(key) {
+				case "name":
+					output = "en-US";
+					break;
+				case "englishName":
+					output = "English (United States)";
+					break;
+				case "nativeName":
+					output = "English (United States)";
+					break;
+				case "twoDigitYearMax":
+					output = 2049;
+					break;
+				case "firstDayOfWeek":
+					output = 0;
+					break;
+				default:
+					output = key;
+					split = key.split("_");
+					length = split.length;
+					if (length > 1 && key.charAt(0) !== "/") {
+						// if the key isn't a regex and it has a split.
+						last = split[(length - 1)].toLowerCase();
+						if (last === "initial" || last === "abbr") {
+							output = split[0];
+						}
+					}
+					break;
+			}
+			return output;
+		},
+		buildFromRegex: function (key, countryCode) {
+			var output;
+			if (Date.CultureStrings && Date.CultureStrings[countryCode] && Date.CultureStrings[countryCode][key]) {
+				output = new RegExp(Date.CultureStrings[countryCode][key], "i");
+			} else {
+				output = new RegExp(key.replace(new RegExp("/", "g"),""), "i");
+			}
+			return output;
+		}
+	};
+
+	var shallowMerge = function (obj1, obj2) {
+		for (var attrname in obj2) {
+			if (obj2.hasOwnProperty(attrname)) {
+				obj1[attrname] = obj2[attrname];
+			}
+		}
+	};
+
+	var __ = function (key, language) {
+		var countryCode = (language) ? language : lang;
+		loggedKeys[key] = key;
+		if (typeof key === "object") {
+			if (key instanceof Array) {
+				return getText.getFromArray(key, countryCode);
+			} else {
+				return getText.getFromObjectKeys(key, countryCode);
+			}
+		} else {
+			return getText.getFromKey(key, countryCode);
+		}
+	};
+	
+	var loadI18nScript = function (code) {
+		// paatterned after jQuery's getScript.
+		var url = Date.Config.i18n + code + ".js";
+		var head = document.getElementsByTagName("head")[0] || document.documentElement;
+		var script = document.createElement("script");
+		script.src = url;
+
+		var completed = false;
+		var events = {
+			done: function (){} // placeholder function
+		};
+		// Attach handlers for all browsers
+		script.onload = script.onreadystatechange = function() {
+			if ( !completed && (!this.readyState || this.readyState === "loaded" || this.readyState === "complete") ) {
+				events.done();
+				head.removeChild(script);
+			}
+		};
+
+		setTimeout(function() {
+			head.insertBefore(script, head.firstChild);
+		}, 0); // allows return to execute first
+		
+		return {
+			done: function (cb) {
+				events.done = function() {
+					if (cb) {
+						setTimeout(cb,0);
+					}
+				};
+			}
+		};
+	};
+
+	var buildInfo = {
+		buildFromMethodHash: function (obj) {
+			var key;
+			for(key in obj) {
+				if (obj.hasOwnProperty(key)) {
+					obj[key] = buildInfo[obj[key]]();
+				}
+			}
+			return obj;
+		},
+		timeZoneDST: function () {
+			var DST = {
+				"CHADT": "+1345",
+				"NZDT": "+1300",
+				"AEDT": "+1100",
+				"ACDT": "+1030",
+				"AZST": "+0500",
+				"IRDT": "+0430",
+				"EEST": "+0300",
+				"CEST": "+0200",
+				"BST": "+0100",
+				"PMDT": "-0200",
+				"ADT": "-0300",
+				"NDT": "-0230",
+				"EDT": "-0400",
+				"CDT": "-0500",
+				"MDT": "-0600",
+				"PDT": "-0700",
+				"AKDT": "-0800",
+				"HADT": "-0900"
+			};
+			return __(DST);
+		},
+		timeZoneStandard: function () {
+			var standard = {
+				"LINT": "+1400",
+				"TOT": "+1300",
+				"CHAST": "+1245",
+				"NZST": "+1200",
+				"NFT": "+1130",
+				"SBT": "+1100",
+				"AEST": "+1000",
+				"ACST": "+0930",
+				"JST": "+0900",
+				"CWST": "+0845",
+				"CT": "+0800",
+				"ICT": "+0700",
+				"MMT": "+0630",
+				"BST": "+0600",
+				"NPT": "+0545",
+				"IST": "+0530",
+				"PKT": "+0500",
+				"AFT": "+0430",
+				"MSK": "+0400",
+				"IRST": "+0330",
+				"FET": "+0300",
+				"EET": "+0200",
+				"CET": "+0100",
+				"GMT": "+0000",
+				"UTC": "+0000",
+				"CVT": "-0100",
+				"GST": "-0200",
+				"BRT": "-0300",
+				"NST": "-0330",
+				"AST": "-0400",
+				"EST": "-0500",
+				"CST": "-0600",
+				"MST": "-0700",
+				"PST": "-0800",
+				"AKST": "-0900",
+				"MIT": "-0930",
+				"HST": "-1000",
+				"SST": "-1100",
+				"BIT": "-1200"
+			};
+			return __(standard);
+		},
+		timeZones: function (data) {
+			var zone;
+			data.timezones = [];
+			for (zone in data.abbreviatedTimeZoneStandard) {
+				if (data.abbreviatedTimeZoneStandard.hasOwnProperty(zone)) {
+					data.timezones.push({ name: zone, offset: data.abbreviatedTimeZoneStandard[zone]});
+				}
+			}
+			for (zone in data.abbreviatedTimeZoneDST) {
+				if (data.abbreviatedTimeZoneDST.hasOwnProperty(zone)) {
+					data.timezones.push({ name: zone, offset: data.abbreviatedTimeZoneDST[zone], dst: true});
+				}
+			}
+			return data.timezones;
+		},
+		days: function () {
+			return __(["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]);
+		},
+		dayAbbr: function () {
+			return __(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+		},
+		dayShortNames: function () {
+			return __(["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]);
+		},
+		dayFirstLetters: function () {
+			return __(["S_Sun_Initial", "M_Mon_Initial", "T_Tues_Initial", "W_Wed_Initial", "T_Thu_Initial", "F_Fri_Initial", "S_Sat_Initial"]);
+		},
+		months: function () {
+			return __(["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]);
+		},
+		monthAbbr: function () {
+			return __(["Jan_Abbr", "Feb_Abbr", "Mar_Abbr", "Apr_Abbr", "May_Abbr", "Jun_Abbr", "Jul_Abbr", "Aug_Abbr", "Sep_Abbr", "Oct_Abbr", "Nov_Abbr", "Dec_Abbr"]);
+		},
+		formatPatterns: function () {
+			return getText.getFromObjectValues({
+				shortDate: "M/d/yyyy",
+				longDate: "dddd, MMMM dd, yyyy",
+				shortTime: "h:mm tt",
+				longTime: "h:mm:ss tt",
+				fullDateTime: "dddd, MMMM dd, yyyy h:mm:ss tt",
+				sortableDateTime: "yyyy-MM-ddTHH:mm:ss",
+				universalSortableDateTime: "yyyy-MM-dd HH:mm:ssZ",
+				rfc1123: "ddd, dd MMM yyyy HH:mm:ss",
+				monthDay: "MMMM dd",
+				yearMonth: "MMMM, yyyy"
+			}, Date.i18n.currentLanguage());
+		},
+		regex: function () {
+			return getText.getFromObjectValues({
+				inTheMorning: "/( in the )(morn(ing)?)\\b/",
+				thisMorning: "/(this )(morn(ing)?)\\b/",
+				amThisMorning: "/(\b\\d(am)? )(this )(morn(ing)?)/",
+				inTheEvening: "/( in the )(even(ing)?)\\b/",
+				thisEvening: "/(this )(even(ing)?)\\b/",
+				pmThisEvening: "/(\b\\d(pm)? )(this )(even(ing)?)/",
+				jan: "/jan(uary)?/",
+				feb: "/feb(ruary)?/",
+				mar: "/mar(ch)?/",
+				apr: "/apr(il)?/",
+				may: "/may/",
+				jun: "/jun(e)?/",
+				jul: "/jul(y)?/",
+				aug: "/aug(ust)?/",
+				sep: "/sep(t(ember)?)?/",
+				oct: "/oct(ober)?/",
+				nov: "/nov(ember)?/",
+				dec: "/dec(ember)?/",
+				sun: "/^su(n(day)?)?/",
+				mon: "/^mo(n(day)?)?/",
+				tue: "/^tu(e(s(day)?)?)?/",
+				wed: "/^we(d(nesday)?)?/",
+				thu: "/^th(u(r(s(day)?)?)?)?/",
+				fri: "/fr(i(day)?)?/",
+				sat: "/^sa(t(urday)?)?/",
+				future: "/^next/",
+				past: "/^last|past|prev(ious)?/",
+				add: "/^(\\+|aft(er)?|from|hence)/",
+				subtract: "/^(\\-|bef(ore)?|ago)/",
+				yesterday: "/^yes(terday)?/",
+				today: "/^t(od(ay)?)?/",
+				tomorrow: "/^tom(orrow)?/",
+				now: "/^n(ow)?/",
+				millisecond: "/^ms|milli(second)?s?/",
+				second: "/^sec(ond)?s?/",
+				minute: "/^mn|min(ute)?s?/",
+				hour: "/^h(our)?s?/",
+				week: "/^w(eek)?s?/",
+				month: "/^m(onth)?s?/",
+				day: "/^d(ay)?s?/",
+				year: "/^y(ear)?s?/",
+				shortMeridian: "/^(a|p)/",
+				longMeridian: "/^(a\\.?m?\\.?|p\\.?m?\\.?)/",
+				timezone: "/^((e(s|d)t|c(s|d)t|m(s|d)t|p(s|d)t)|((gmt)?\\s*(\\+|\\-)\\s*\\d\\d\\d\\d?)|gmt|utc)/",
+				ordinalSuffix: "/^\\s*(st|nd|rd|th)/",
+				timeContext: "/^\\s*(\\:|a(?!u|p)|p)/"
+			}, Date.i18n.currentLanguage());
+		}
+	};
+
+	var CultureInfo = function () {
+		var info = getText.getFromObjectValues({
+			name: "name",
+			englishName: "englishName",
+			nativeName: "nativeName",
+			amDesignator: "AM",
+			pmDesignator: "PM",
+			firstDayOfWeek: "firstDayOfWeek",
+			twoDigitYearMax: "twoDigitYearMax",
+			dateElementOrder: "mdy"
+		}, Date.i18n.currentLanguage());
+
+		var constructedInfo = buildInfo.buildFromMethodHash({
+			dayNames: "days",
+			abbreviatedDayNames: "dayAbbr",
+			shortestDayNames: "dayShortNames",
+			firstLetterDayNames: "dayFirstLetters",
+			monthNames: "months",
+			abbreviatedMonthNames: "monthAbbr",
+			formatPatterns: "formatPatterns",
+			regexPatterns: "regex",
+			abbreviatedTimeZoneDST: "timeZoneDST",
+			abbreviatedTimeZoneStandard: "timeZoneStandard"
+		});
+
+		shallowMerge(info, constructedInfo);
+		buildInfo.timeZones(info);
+		return info;
+	};
+
+	$D.i18n = {
+		__: function (key, lang) {
+			return __(key, lang);
+		},
+		currentLanguage: function () {
+			return lang || "en-US";
+		},
+		setLanguage: function (code, force, cb) {
+			var async = false;
+			if (force || code === "en-US" || (!!Date.CultureStrings && !!Date.CultureStrings[code])) {
+				lang = code;
+				Date.CultureStrings = Date.CultureStrings || {};
+				Date.CultureStrings.lang = code;
+				Date.CultureInfo = new CultureInfo();
+			} else {
+				if (!(!!Date.CultureStrings && !!Date.CultureStrings[code])) {
+					if (typeof exports !== "undefined" && this.exports !== exports) {
+						// we're in a Node enviroment, load it using require
+						try {
+							_dereq_("../i18n/" + code + ".js");
+							lang = code;
+							Date.CultureStrings.lang = code;
+							Date.CultureInfo = new CultureInfo();
+						} catch (e) {
+							// var str = "The language for '" + code + "' could not be loaded by Node. It likely does not exist.";
+							throw new Error("The DateJS IETF language tag '" + code + "' could not be loaded by Node. It likely does not exist.");
+						}
+					} else if (Date.Config && Date.Config.i18n) {
+						// we know the location of the files, so lets load them					
+						async = true;
+						loadI18nScript(code).done(function(){
+							lang = code;
+							Date.CultureStrings = Date.CultureStrings || {};
+							Date.CultureStrings.lang = code;
+							Date.CultureInfo = new CultureInfo();
+							$D.Parsing.Normalizer.buildReplaceData(); // because this is async
+							if ($D.Grammar) {
+								$D.Grammar.buildGrammarFormats(); // so we can parse those strings...
+							}
+							if (cb) {
+								setTimeout(cb,0);
+							}
+						});
+					} else {
+						Date.console.error("The DateJS IETF language tag '" + code + "' is not available and has not been loaded.");
+						return false;
+					}
+				}
+			}
+			$D.Parsing.Normalizer.buildReplaceData(); // rebuild normalizer strings
+			if ($D.Grammar) {
+				$D.Grammar.buildGrammarFormats(); // so we can parse those strings...
+			}
+			if (!async && cb) {
+				setTimeout(cb,0);
+			}
+		},
+		getLoggedKeys: function () {
+			return loggedKeys;
+		},
+		updateCultureInfo: function () {
+			Date.CultureInfo = new CultureInfo();
+		}
+	};
+	$D.i18n.updateCultureInfo(); // run automatically
+}());
+},{}],359:[function(_dereq_,module,exports){
+(function () {
+	var $D = Date;
+
+	/**
+	 * @desc Converts the specified string value into its JavaScript Date equivalent using CultureInfo specific format information.
+	 * 
+	 * Example
+	<pre><code>
+	///////////
+	// Dates //
+	///////////
+
+	// 15-Oct-2004
+	var d1 = Date.parse("10/15/2004");
+
+	// 15-Oct-2004
+	var d1 = Date.parse("15-Oct-2004");
+
+	// 15-Oct-2004
+	var d1 = Date.parse("2004.10.15");
+
+	//Fri Oct 15, 2004
+	var d1 = Date.parse("Fri Oct 15, 2004");
+
+	///////////
+	// Times //
+	///////////
+
+	// Today at 10 PM.
+	var d1 = Date.parse("10 PM");
+
+	// Today at 10:30 PM.
+	var d1 = Date.parse("10:30 P.M.");
+
+	// Today at 6 AM.
+	var d1 = Date.parse("06am");
+
+	/////////////////////
+	// Dates and Times //
+	/////////////////////
+
+	// 8-July-2004 @ 10:30 PM
+	var d1 = Date.parse("July 8th, 2004, 10:30 PM");
+
+	// 1-July-2004 @ 10:30 PM
+	var d1 = Date.parse("2004-07-01T22:30:00");
+
+	////////////////////
+	// Relative Dates //
+	////////////////////
+
+	// Returns today's date. The string "today" is culture specific.
+	var d1 = Date.parse("today");
+
+	// Returns yesterday's date. The string "yesterday" is culture specific.
+	var d1 = Date.parse("yesterday");
+
+	// Returns the date of the next thursday.
+	var d1 = Date.parse("Next thursday");
+
+	// Returns the date of the most previous monday.
+	var d1 = Date.parse("last monday");
+
+	// Returns today's day + one year.
+	var d1 = Date.parse("next year");
+
+	///////////////
+	// Date Math //
+	///////////////
+
+	// Today + 2 days
+	var d1 = Date.parse("t+2");
+
+	// Today + 2 days
+	var d1 = Date.parse("today + 2 days");
+
+	// Today + 3 months
+	var d1 = Date.parse("t+3m");
+
+	// Today - 1 year
+	var d1 = Date.parse("today - 1 year");
+
+	// Today - 1 year
+	var d1 = Date.parse("t-1y"); 
+
+
+	/////////////////////////////
+	// Partial Dates and Times //
+	/////////////////////////////
+
+	// July 15th of this year.
+	var d1 = Date.parse("July 15");
+
+	// 15th day of current day and year.
+	var d1 = Date.parse("15");
+
+	// July 1st of current year at 10pm.
+	var d1 = Date.parse("7/1 10pm");
+	</code></pre>
+	 *
+	 * @param {String}   The string value to convert into a Date object [Required]
+	 * @return {Date}    A Date object or null if the string cannot be converted into a Date.
+	 */
+	var parseUtils = {
+		removeOrds: function (s) {
+			ords = s.match(/\b(\d+)(?:st|nd|rd|th)\b/); // find ordinal matches
+			s = ((ords && ords.length === 2) ? s.replace(ords[0], ords[1]) : s);
+			return s;
+		},
+		grammarParser: function (s) {
+			var r = null;
+			try {
+				r = $D.Grammar.start.call({}, s.replace(/^\s*(\S*(\s+\S+)*)\s*$/, "$1"));
+			} catch (e) {
+				return null;
+			}
+			
+			return ((r[1].length === 0) ? r[0] : null);
+		},
+		nativeFallback: function(s) {
+			var t;
+			try {
+				// ok we haven't parsed it, last ditch attempt with the built-in parser.
+				t = Date._parse(s);
+				return (t || t === 0) ? new Date(t) : null;
+			} catch (e) {
+				return null;
+			}
+		}
+	};
+	function parse (s) {
+		var d;
+		if (!s) {
+			return null;
+		}
+		if (s instanceof Date) {
+			return s.clone();
+		}
+		if (s.length >= 4 && s.charAt(0) !== "0" && s.charAt(0) !== "+"&& s.charAt(0) !== "-") { // ie: 2004 will pass, 0800 won't.
+			//  Start with specific formats
+			d = $D.Parsing.ISO.parse(s) || $D.Parsing.Numeric.parse(s);
+		}
+		if (d instanceof Date && !isNaN(d.getTime())) {
+			return d;
+		} else {
+			// find ordinal dates (1st, 3rd, 8th, etc and remove them as they cause parsing issues)
+			s = $D.Parsing.Normalizer.parse(parseUtils.removeOrds(s));
+			d = parseUtils.grammarParser(s);
+			if (d !== null) {
+				return d;
+			} else {
+				return parseUtils.nativeFallback(s);
+			}
+		}
+	}
+
+	if (!$D._parse) {
+		$D._parse = $D.parse;
+	}
+	$D.parse = parse;
+
+	Date.getParseFunction = function (fx) {
+		var fns = Date.Grammar.allformats(fx);
+		return function (s) {
+			var r = null;
+			for (var i = 0; i < fns.length; i++) {
+				try {
+					r = fns[i].call({}, s);
+				} catch (e) {
+					continue;
+				}
+				if (r[1].length === 0) {
+					return r[0];
+				}
+			}
+			return null;
+		};
+	};
+	
+	/**
+	 * Converts the specified string value into its JavaScript Date equivalent using the specified format {String} or formats {Array} and the CultureInfo specific format information.
+	 * The format of the string value must match one of the supplied formats exactly.
+	 * 
+	 * Example
+	<pre><code>
+	// 15-Oct-2004
+	var d1 = Date.parseExact("10/15/2004", "M/d/yyyy");
+
+	// 15-Oct-2004
+	var d1 = Date.parse("15-Oct-2004", "M-ddd-yyyy");
+
+	// 15-Oct-2004
+	var d1 = Date.parse("2004.10.15", "yyyy.MM.dd");
+
+	// Multiple formats
+	var d1 = Date.parseExact("10/15/2004", ["M/d/yyyy", "MMMM d, yyyy"]);
+	</code></pre>
+	 *
+	 * @param {String}   The string value to convert into a Date object [Required].
+	 * @param {Object}   The expected format {String} or an array of expected formats {Array} of the date string [Required].
+	 * @return {Date}    A Date object or null if the string cannot be converted into a Date.
+	 */
+	$D.parseExact = function (s, fx) {
+		return $D.getParseFunction(fx)(s);
+	};
+}());
+
+},{}],360:[function(_dereq_,module,exports){
+(function () {
+	var $D = Date;
+	$D.Grammar = {};
+	var _ = $D.Parsing.Operators, g = $D.Grammar, t = $D.Translator, _fn;
+	// Allow rolling up into general purpose rules
+	_fn = function () {
+		return _.each(_.any.apply(null, arguments), _.not(g.ctoken2("timeContext")));
+	};
+	
+	g.datePartDelimiter = _.rtoken(/^([\s\-\.\,\/\x27]+)/);
+	g.timePartDelimiter = _.stoken(":");
+	g.whiteSpace = _.rtoken(/^\s*/);
+	g.generalDelimiter = _.rtoken(/^(([\s\,]|at|@|on)+)/);
+  
+	var _C = {};
+	g.ctoken = function (keys) {
+		var fn = _C[keys];
+		if (! fn) {
+			var c = Date.CultureInfo.regexPatterns;
+			var kx = keys.split(/\s+/), px = [];
+			for (var i = 0; i < kx.length ; i++) {
+				px.push(_.replace(_.rtoken(c[kx[i]]), kx[i]));
+			}
+			fn = _C[keys] = _.any.apply(null, px);
+		}
+		return fn;
+	};
+	g.ctoken2 = function (key) {
+		return _.rtoken(Date.CultureInfo.regexPatterns[key]);
+	};
+	var cacheProcessRtoken = function (key, token, type, eachToken) {
+		if (eachToken) {
+			g[key] = _.cache(_.process(_.each(_.rtoken(token),_.optional(g.ctoken2(eachToken))), type));
+		} else {
+			g[key] = _.cache(_.process(_.rtoken(token), type));
+		}
+	};
+	var cacheProcessCtoken = function (token, type) {
+		return _.cache(_.process(g.ctoken2(token), type));
+	};
+	var _F = {}; //function cache
+
+	var _get = function (f) {
+		_F[f] = (_F[f] || g.format(f)[0]);
+		return _F[f];
+	};
+
+	g.allformats = function (fx) {
+		var rx = [];
+		if (fx instanceof Array) {
+			for (var i = 0; i < fx.length; i++) {
+				rx.push(_get(fx[i]));
+			}
+		} else {
+			rx.push(_get(fx));
+		}
+		return rx;
+	};
+  
+	g.formats = function (fx) {
+		if (fx instanceof Array) {
+			var rx = [];
+			for (var i = 0 ; i < fx.length ; i++) {
+				rx.push(_get(fx[i]));
+			}
+			return _.any.apply(null, rx);
+		} else {
+			return _get(fx);
+		}
+	};
+
+	var grammarFormats = {
+		 timeFormats: function(){
+			var i,
+			RTokenKeys = [
+				"h",
+				"hh",
+				"H",
+				"HH",
+				"m",
+				"mm",
+				"s",
+				"ss",
+				"ss.s",
+				"z",
+				"zz"
+			],
+			RToken = [
+				/^(0[0-9]|1[0-2]|[1-9])/,
+				/^(0[0-9]|1[0-2])/,
+				/^([0-1][0-9]|2[0-3]|[0-9])/,
+				/^([0-1][0-9]|2[0-3])/,
+				/^([0-5][0-9]|[0-9])/,
+				/^[0-5][0-9]/,
+				/^([0-5][0-9]|[0-9])/,
+				/^[0-5][0-9]/,
+				/^[0-5][0-9]\.[0-9]{1,3}/,
+				/^((\+|\-)\s*\d\d\d\d)|((\+|\-)\d\d\:?\d\d)/,
+				/^((\+|\-)\s*\d\d\d\d)|((\+|\-)\d\d\:?\d\d)/
+			],
+			tokens = [
+				t.hour,
+				t.hour,
+				t.hour,
+				t.minute,
+				t.minute,
+				t.second,
+				t.second,
+				t.secondAndMillisecond,
+				t.timezone,
+				t.timezone,
+				t.timezone
+			];
+
+			for (i=0; i < RTokenKeys.length; i++) {
+				cacheProcessRtoken(RTokenKeys[i], RToken[i], tokens[i]);
+			}
+
+			g.hms = _.cache(_.sequence([g.H, g.m, g.s], g.timePartDelimiter));
+
+			g.t = cacheProcessCtoken("shortMeridian", t.meridian);
+			g.tt = cacheProcessCtoken("longMeridian", t.meridian);
+			g.zzz = cacheProcessCtoken("timezone", t.timezone);
+
+			g.timeSuffix = _.each(_.ignore(g.whiteSpace), _.set([ g.tt, g.zzz ]));
+			g.time = _.each(_.optional(_.ignore(_.stoken("T"))), g.hms, g.timeSuffix);
+		 },
+		 dateFormats: function () {
+			// pre-loaded rules for different date part order preferences
+			var _setfn = function () {
+				return  _.set(arguments, g.datePartDelimiter);
+			};
+			var i,
+			RTokenKeys = [
+				"d",
+				"dd",
+				"M",
+				"MM",
+				"y",
+				"yy",
+				"yyy",
+				"yyyy"
+			],
+			RToken = [
+				/^([0-2]\d|3[0-1]|\d)/,
+				/^([0-2]\d|3[0-1])/,
+				/^(1[0-2]|0\d|\d)/,
+				/^(1[0-2]|0\d)/,
+				/^(\d+)/,
+				/^(\d\d)/,
+				/^(\d\d?\d?\d?)/,
+				/^(\d\d\d\d)/
+			],
+			tokens = [
+				t.day,
+				t.day,
+				t.month,
+				t.month,
+				t.year,
+				t.year,
+				t.year,
+				t.year
+			],
+			eachToken = [
+				"ordinalSuffix",
+				"ordinalSuffix"
+			];
+			for (i=0; i < RTokenKeys.length; i++) {
+				cacheProcessRtoken(RTokenKeys[i], RToken[i], tokens[i], eachToken[i]);
+			}
+
+			g.MMM = g.MMMM = _.cache(_.process(g.ctoken("jan feb mar apr may jun jul aug sep oct nov dec"), t.month));
+			g.ddd = g.dddd = _.cache(_.process(g.ctoken("sun mon tue wed thu fri sat"),
+				function (s) {
+					return function () {
+						this.weekday = s;
+					};
+				}
+			));
+
+			g.day = _fn(g.d, g.dd);
+			g.month = _fn(g.M, g.MMM);
+			g.year = _fn(g.yyyy, g.yy);
+
+			g.mdy = _setfn(g.ddd, g.month, g.day, g.year);
+			g.ymd = _setfn(g.ddd, g.year, g.month, g.day);
+			g.dmy = _setfn(g.ddd, g.day, g.month, g.year);
+						
+			g.date = function (s) {
+				return ((g[Date.CultureInfo.dateElementOrder] || g.mdy).call(this, s));
+			};
+		 },
+		 relative: function () {
+			// relative date / time expressions
+			g.orientation = _.process(g.ctoken("past future"),
+				function (s) {
+					return function () {
+						this.orient = s;
+					};
+				}
+			);
+
+			g.operator = _.process(g.ctoken("add subtract"),
+				function (s) {
+					return function () {
+						this.operator = s;
+					};
+				}
+			);
+			g.rday = _.process(g.ctoken("yesterday tomorrow today now"), t.rday);
+			g.unit = _.process(g.ctoken("second minute hour day week month year"),
+				function (s) {
+					return function () {
+						this.unit = s;
+					};
+				}
+			);
+		 }
+	};
+
+	g.buildGrammarFormats = function () {
+		// these need to be rebuilt every time the language changes.
+		_C = {};
+
+		grammarFormats.timeFormats();
+		grammarFormats.dateFormats();
+		grammarFormats.relative();
+
+		
+		g.value = _.process(_.rtoken(/^([-+]?\d+)?(st|nd|rd|th)?/),
+			function (s) {
+				return function () {
+					this.value = s.replace(/\D/g, "");
+				};
+			}
+		);
+		g.expression = _.set([g.rday, g.operator, g.value, g.unit, g.orientation, g.ddd, g.MMM ]);
+
+		g.format = _.process(_.many(
+			_.any(
+				// translate format specifiers into grammar rules
+				_.process(
+					_.rtoken(/^(dd?d?d?(?!e)|MM?M?M?|yy?y?y?|hh?|HH?|mm?|ss?|tt?|zz?z?)/),
+						function (fmt) {
+							if (g[fmt]) {
+								return g[fmt];
+							} else {
+								throw $D.Parsing.Exception(fmt);
+							}
+						}
+					),
+					// translate separator tokens into token rules
+					_.process(_.rtoken(/^[^dMyhHmstz]+/), // all legal separators 
+						function (s) {
+							return _.ignore(_.stoken(s));
+						}
+					)
+				)
+			),
+			// construct the parser ...
+			function (rules) {
+				return _.process(_.each.apply(null, rules), t.finishExact);
+			}
+		);
+
+		// starting rule for general purpose grammar
+		g._start = _.process(_.set([ g.date, g.time, g.expression ],
+		g.generalDelimiter, g.whiteSpace), t.finish);
+	};
+
+	g.buildGrammarFormats();
+	// parsing date format specifiers - ex: "h:m:s tt" 
+	// this little guy will generate a custom parser based
+	// on the format string, ex: g.format("h:m:s tt")
+	// check for these formats first
+	g._formats = g.formats([
+		"\"yyyy-MM-ddTHH:mm:ssZ\"",
+		"yyyy-MM-ddTHH:mm:ss.sz",
+		"yyyy-MM-ddTHH:mm:ssZ",
+		"yyyy-MM-ddTHH:mm:ssz",
+		"yyyy-MM-ddTHH:mm:ss",
+		"yyyy-MM-ddTHH:mmZ",
+		"yyyy-MM-ddTHH:mmz",
+		"yyyy-MM-ddTHH:mm",
+		"ddd, MMM dd, yyyy H:mm:ss tt",
+		"ddd MMM d yyyy HH:mm:ss zzz",
+		"MMddyyyy",
+		"ddMMyyyy",
+		"Mddyyyy",
+		"ddMyyyy",
+		"Mdyyyy",
+		"dMyyyy",
+		"yyyy",
+		"Mdyy",
+		"dMyy",
+		"d"
+	]);
+	
+	// real starting rule: tries selected formats first, 
+	// then general purpose rule
+	g.start = function (s) {
+		try {
+			var r = g._formats.call({}, s);
+			if (r[1].length === 0) {
+				return r;
+			}
+		} catch (e) {}
+		return g._start.call({}, s);
+	};
+}());
+},{}],361:[function(_dereq_,module,exports){
+(function () {
+	var $P = Date.Parsing;
+	var _ = $P.Operators = {
+		//
+		// Tokenizers
+		//
+		rtoken: function (r) { // regex token
+			return function (s) {
+				var mx = s.match(r);
+				if (mx) {
+					return ([ mx[0], s.substring(mx[0].length) ]);
+				} else {
+					throw new $P.Exception(s);
+				}
+			};
+		},
+		token: function () { // whitespace-eating token
+			return function (s) {
+				return _.rtoken(new RegExp("^\\s*" + s + "\\s*"))(s);
+			};
+		},
+		stoken: function (s) { // string token
+			return _.rtoken(new RegExp("^" + s));
+		},
+
+		// Atomic Operators
+
+		until: function (p) {
+			return function (s) {
+				var qx = [], rx = null;
+				while (s.length) {
+					try {
+						rx = p.call(this, s);
+					} catch (e) {
+						qx.push(rx[0]);
+						s = rx[1];
+						continue;
+					}
+					break;
+				}
+				return [ qx, s ];
+			};
+		},
+		many: function (p) {
+			return function (s) {
+				var rx = [], r = null;
+				while (s.length) {
+					try {
+						r = p.call(this, s);
+					} catch (e) {
+						return [ rx, s ];
+					}
+					rx.push(r[0]);
+					s = r[1];
+				}
+				return [ rx, s ];
+			};
+		},
+
+		// generator operators -- see below
+		optional: function (p) {
+			return function (s) {
+				var r = null;
+				try {
+					r = p.call(this, s);
+				} catch (e) {
+					return [ null, s ];
+				}
+				return [ r[0], r[1] ];
+			};
+		},
+		not: function (p) {
+			return function (s) {
+				try {
+					p.call(this, s);
+				} catch (e) {
+					return [null, s];
+				}
+				throw new $P.Exception(s);
+			};
+		},
+		ignore: function (p) {
+			return p ?
+			function (s) {
+				var r = null;
+				r = p.call(this, s);
+				return [null, r[1]];
+			} : null;
+		},
+		product: function () {
+			var px = arguments[0],
+			qx = Array.prototype.slice.call(arguments, 1), rx = [];
+			for (var i = 0 ; i < px.length ; i++) {
+				rx.push(_.each(px[i], qx));
+			}
+			return rx;
+		},
+		cache: function (rule) {
+			var cache = {}, cache_length = 0, cache_keys = [], CACHE_MAX = Date.Config.CACHE_MAX || 100000, r = null;
+			var cacheCheck = function () {
+				if (cache_length === CACHE_MAX) {
+					// kill several keys, don't want to have to do this all the time...
+					for (var i=0; i < 10; i++) {
+						var key = cache_keys.shift();
+						if (key) {
+							delete cache[key];
+							cache_length--;
+						}
+					}
+				}
+			};
+			return function (s) {
+				cacheCheck();
+				try {
+					r = cache[s] = (cache[s] || rule.call(this, s));
+				} catch (e) {
+					r = cache[s] = e;
+				}
+				cache_length++;
+				cache_keys.push(s);
+				if (r instanceof $P.Exception) {
+					throw r;
+				} else {
+					return r;
+				}
+			};
+		},
+
+		// vector operators -- see below
+		any: function () {
+			var px = arguments;
+			return function (s) {
+				var r = null;
+				for (var i = 0; i < px.length; i++) {
+					if (px[i] == null) {
+						continue;
+					}
+					try {
+						r = (px[i].call(this, s));
+					} catch (e) {
+						r = null;
+					}
+					if (r) {
+						return r;
+					}
+				}
+				throw new $P.Exception(s);
+			};
+		},
+		each: function () {
+			var px = arguments;
+			return function (s) {
+				var rx = [], r = null;
+				for (var i = 0; i < px.length ; i++) {
+					if (px[i] == null) {
+						continue;
+					}
+					try {
+						r = (px[i].call(this, s));
+					} catch (e) {
+						throw new $P.Exception(s);
+					}
+					rx.push(r[0]);
+					s = r[1];
+				}
+				return [ rx, s];
+			};
+		},
+		all: function () {
+			var px = arguments, _ = _;
+			return _.each(_.optional(px));
+		},
+
+		// delimited operators
+		sequence: function (px, d, c) {
+			d = d || _.rtoken(/^\s*/);
+			c = c || null;
+			
+			if (px.length === 1) {
+				return px[0];
+			}
+			return function (s) {
+				var r = null, q = null;
+				var rx = [];
+				for (var i = 0; i < px.length ; i++) {
+					try {
+						r = px[i].call(this, s);
+					} catch (e) {
+						break;
+					}
+					rx.push(r[0]);
+					try {
+						q = d.call(this, r[1]);
+					} catch (ex) {
+						q = null;
+						break;
+					}
+					s = q[1];
+				}
+				if (!r) {
+					throw new $P.Exception(s);
+				}
+				if (q) {
+					throw new $P.Exception(q[1]);
+				}
+				if (c) {
+					try {
+						r = c.call(this, r[1]);
+					} catch (ey) {
+						throw new $P.Exception(r[1]);
+					}
+				}
+				return [ rx, (r?r[1]:s) ];
+			};
+		},
+
+		//
+		// Composite Operators
+		//
+
+		between: function (d1, p, d2) {
+			d2 = d2 || d1;
+			var _fn = _.each(_.ignore(d1), p, _.ignore(d2));
+			return function (s) {
+				var rx = _fn.call(this, s);
+				return [[rx[0][0], r[0][2]], rx[1]];
+			};
+		},
+		list: function (p, d, c) {
+			d = d || _.rtoken(/^\s*/);
+			c = c || null;
+			return (p instanceof Array ?
+				_.each(_.product(p.slice(0, -1), _.ignore(d)), p.slice(-1), _.ignore(c)) :
+				_.each(_.many(_.each(p, _.ignore(d))), px, _.ignore(c)));
+		},
+		set: function (px, d, c) {
+			d = d || _.rtoken(/^\s*/);
+			c = c || null;
+			return function (s) {
+				// r is the current match, best the current 'best' match
+				// which means it parsed the most amount of input
+				var r = null, p = null, q = null, rx = null, best = [[], s], last = false;
+				// go through the rules in the given set
+				for (var i = 0; i < px.length ; i++) {
+
+					// last is a flag indicating whether this must be the last element
+					// if there is only 1 element, then it MUST be the last one
+					q = null;
+					p = null;
+					r = null;
+					last = (px.length === 1);
+					// first, we try simply to match the current pattern
+					// if not, try the next pattern
+					try {
+						r = px[i].call(this, s);
+					} catch (e) {
+						continue;
+					}
+					// since we are matching against a set of elements, the first
+					// thing to do is to add r[0] to matched elements
+					rx = [[r[0]], r[1]];
+					// if we matched and there is still input to parse and 
+					// we don't already know this is the last element,
+					// we're going to next check for the delimiter ...
+					// if there's none, or if there's no input left to parse
+					// than this must be the last element after all ...
+					if (r[1].length > 0 && ! last) {
+						try {
+							q = d.call(this, r[1]);
+						} catch (ex) {
+							last = true;
+						}
+					} else {
+						last = true;
+					}
+
+					// if we parsed the delimiter and now there's no more input,
+					// that means we shouldn't have parsed the delimiter at all
+					// so don't update r and mark this as the last element ...
+					if (!last && q[1].length === 0) {
+						last = true;
+					}
+
+
+					// so, if this isn't the last element, we're going to see if
+					// we can get any more matches from the remaining (unmatched)
+					// elements ...
+					if (!last) {
+						// build a list of the remaining rules we can match against,
+						// i.e., all but the one we just matched against
+						var qx = [];
+						for (var j = 0; j < px.length ; j++) {
+							if (i !== j) {
+								qx.push(px[j]);
+							}
+						}
+
+						// now invoke recursively set with the remaining input
+						// note that we don't include the closing delimiter ...
+						// we'll check for that ourselves at the end
+						p = _.set(qx, d).call(this, q[1]);
+
+						// if we got a non-empty set as a result ...
+						// (otw rx already contains everything we want to match)
+						if (p[0].length > 0) {
+							// update current result, which is stored in rx ...
+							// basically, pick up the remaining text from p[1]
+							// and concat the result from p[0] so that we don't
+							// get endless nesting ...
+							rx[0] = rx[0].concat(p[0]);
+							rx[1] = p[1];
+						}
+					}
+
+					// at this point, rx either contains the last matched element
+					// or the entire matched set that starts with this element.
+
+					// now we just check to see if this variation is better than
+					// our best so far, in terms of how much of the input is parsed
+					if (rx[1].length < best[1].length) {
+						best = rx;
+					}
+
+					// if we've parsed all the input, then we're finished
+					if (best[1].length === 0) {
+						break;
+					}
+				}
+
+				// so now we've either gone through all the patterns trying them
+				// as the initial match; or we found one that parsed the entire
+				// input string ...
+
+				// if best has no matches, just return empty set ...
+				if (best[0].length === 0) {
+					return best;
+				}
+
+				// if a closing delimiter is provided, then we have to check it also
+				if (c) {
+					// we try this even if there is no remaining input because the pattern
+					// may well be optional or match empty input ...
+					try {
+						q = c.call(this, best[1]);
+					} catch (ey) {
+						throw new $P.Exception(best[1]);
+					}
+
+					// it parsed ... be sure to update the best match remaining input
+					best[1] = q[1];
+				}
+				// if we're here, either there was no closing delimiter or we parsed it
+				// so now we have the best match; just return it!
+				return best;
+			};
+		},
+		forward: function (gr, fname) {
+			return function (s) {
+				return gr[fname].call(this, s);
+			};
+		},
+
+		//
+		// Translation Operators
+		//
+		replace: function (rule, repl) {
+			return function (s) {
+				var r = rule.call(this, s);
+				return [repl, r[1]];
+			};
+		},
+		process: function (rule, fn) {
+			return function (s) {
+				var r = rule.call(this, s);
+				return [fn.call(this, r[0]), r[1]];
+			};
+		},
+		min: function (min, rule) {
+			return function (s) {
+				var rx = rule.call(this, s);
+				if (rx[0].length < min) {
+					throw new $P.Exception(s);
+				}
+				return rx;
+			};
+		}
+	};
+	
+
+	// Generator Operators And Vector Operators
+
+	// Generators are operators that have a signature of F(R) => R,
+	// taking a given rule and returning another rule, such as 
+	// ignore, which parses a given rule and throws away the result.
+
+	// Vector operators are those that have a signature of F(R1,R2,...) => R,
+	// take a list of rules and returning a new rule, such as each.
+
+	// Generator operators are converted (via the following _generator
+	// function) into functions that can also take a list or array of rules
+	// and return an array of new rules as though the function had been
+	// called on each rule in turn (which is what actually happens).
+
+	// This allows generators to be used with vector operators more easily.
+	// Example:
+	// each(ignore(foo, bar)) instead of each(ignore(foo), ignore(bar))
+
+	// This also turns generators into vector operators, which allows
+	// constructs like:
+	// not(cache(foo, bar))
+	
+	var _generator = function (op) {
+		function gen() {
+			var args = null, rx = [], px, i;
+			if (arguments.length > 1) {
+				args = Array.prototype.slice.call(arguments);
+			} else if (arguments[0] instanceof Array) {
+				args = arguments[0];
+			}
+			if (args) {
+				px = args.shift();
+				if (px.length > 0) {
+					args.unshift(px[i]);
+					rx.push(op.apply(null, args));
+					args.shift();
+					return rx;
+				}
+			} else {
+				return op.apply(null, arguments);
+			}
+		}
+
+		return gen;
+	};
+	
+	var gx = "optional not ignore cache".split(/\s/);
+	
+	for (var i = 0 ; i < gx.length ; i++) {
+		_[gx[i]] = _generator(_[gx[i]]);
+	}
+
+	var _vector = function (op) {
+		return function () {
+			if (arguments[0] instanceof Array) {
+				return op.apply(null, arguments[0]);
+			} else {
+				return op.apply(null, arguments);
+			}
+		};
+	};
+	
+	var vx = "each any all".split(/\s/);
+	
+	for (var j = 0 ; j < vx.length ; j++) {
+		_[vx[j]] = _vector(_[vx[j]]);
+	}
+	
+}());
+},{}],362:[function(_dereq_,module,exports){
+(function () {
+	var $D = Date;
+
+	var flattenAndCompact = function (ax) {
+		var rx = [];
+		for (var i = 0; i < ax.length; i++) {
+			if (ax[i] instanceof Array) {
+				rx = rx.concat(flattenAndCompact(ax[i]));
+			} else {
+				if (ax[i]) {
+					rx.push(ax[i]);
+				}
+			}
+		}
+		return rx;
+	};
+
+	var parseMeridian = function () {
+		if (this.meridian && (this.hour || this.hour === 0)) {
+			if (this.meridian === "a" && this.hour > 11 && Date.Config.strict24hr){
+				throw "Invalid hour and meridian combination";
+			} else if (this.meridian === "p" && this.hour < 12 && Date.Config.strict24hr){
+				throw "Invalid hour and meridian combination";
+			} else if (this.meridian === "p" && this.hour < 12) {
+				this.hour = this.hour + 12;
+			} else if (this.meridian === "a" && this.hour === 12) {
+				this.hour = 0;
+			}
+		}
+	};
+
+	var setDefaults = function () {
+		var now = new Date();
+		if ((this.hour || this.minute) && (!this.month && !this.year && !this.day)) {
+			this.day = now.getDate();
+		}
+
+		if (!this.year) {
+			this.year = now.getFullYear();
+		}
+		
+		if (!this.month && this.month !== 0) {
+			this.month = now.getMonth();
+		}
+		
+		if (!this.day) {
+			this.day = 1;
+		}
+		
+		if (!this.hour) {
+			this.hour = 0;
+		}
+		
+		if (!this.minute) {
+			this.minute = 0;
+		}
+
+		if (!this.second) {
+			this.second = 0;
+		}
+		if (!this.millisecond) {
+			this.millisecond = 0;
+		}
+	};
+
+	var finishUtils = {
+		getToday: function () {
+			 if (this.now || "hour minute second".indexOf(this.unit) !== -1) {
+				return new Date();
+			} else {
+				return $D.today();
+			}
+		},
+		setDaysFromWeekday: function (today, orient){
+			var gap;
+			orient = orient || 1;
+			this.unit = "day";
+			gap = ($D.getDayNumberFromName(this.weekday) - today.getDay());
+			this.days = gap ? ((gap + (orient * 7)) % 7) : (orient * 7);
+			return this;
+		},
+		setMonthsFromMonth: function (today, orient) {
+			var gap;
+			orient = orient || 1;
+			this.unit = "month";
+			gap = (this.month - today.getMonth());
+			this.months = gap ? ((gap + (orient * 12)) % 12) : (orient * 12);
+			this.month = null;
+			return this;
+		},
+		setDMYFromWeekday: function () {
+			var d = Date[this.weekday]();
+			this.day = d.getDate();
+			if (!this.month) {
+				this.month = d.getMonth();
+			}
+			this.year = d.getFullYear();
+			return this;
+		},
+		setUnitValue: function (orient) {
+			if (!this.value && this.operator && this.operator !== null && this[this.unit + "s"] && this[this.unit + "s"] !== null) {
+				this[this.unit + "s"] = this[this.unit + "s"] + ((this.operator === "add") ? 1 : -1) + (this.value||0) * orient;
+			} else if (this[this.unit + "s"] == null || this.operator != null) {
+				if (!this.value) {
+					this.value = 1;
+				}
+				this[this.unit + "s"] = this.value * orient;
+			}
+		},
+		generateDateFromWeeks: function () {
+			var weekday = (this.weekday !== undefined) ? this.weekday : "today";
+			var d = Date[weekday]().addWeeks(this.weeks);
+			if (this.now) {
+				d.setTimeToNow();
+			}
+			return d;
+		}
+	};
+
+	$D.Translator = {
+		hour: function (s) {
+			return function () {
+				this.hour = Number(s);
+			};
+		},
+		minute: function (s) {
+			return function () {
+				this.minute = Number(s);
+			};
+		},
+		second: function (s) {
+			return function () {
+				this.second = Number(s);
+			};
+		},
+		/* for ss.s format */
+		secondAndMillisecond: function (s) {
+			return function () {
+				var mx = s.match(/^([0-5][0-9])\.([0-9]{1,3})/);
+				this.second = Number(mx[1]);
+				this.millisecond = Number(mx[2]);
+			};
+		},
+		meridian: function (s) {
+			return function () {
+				this.meridian = s.slice(0, 1).toLowerCase();
+			};
+		},
+		timezone: function (s) {
+			return function () {
+				var n = s.replace(/[^\d\+\-]/g, "");
+				if (n.length) {
+					this.timezoneOffset = Number(n);
+				} else {
+					this.timezone = s.toLowerCase();
+				}
+			};
+		},
+		day: function (x) {
+			var s = x[0];
+			return function () {
+				this.day = Number(s.match(/\d+/)[0]);
+				if (this.day < 1) {
+					throw "invalid day";
+				}
+			};
+		},
+		month: function (s) {
+			return function () {
+				this.month = (s.length === 3) ? "jan feb mar apr may jun jul aug sep oct nov dec".indexOf(s)/4 : Number(s) - 1;
+				if (this.month < 0) {
+					throw "invalid month";
+				}
+			};
+		},
+		year: function (s) {
+			return function () {
+				var n = Number(s);
+				this.year = ((s.length > 2) ? n :
+					(n + (((n + 2000) < Date.CultureInfo.twoDigitYearMax) ? 2000 : 1900)));
+			};
+		},
+		rday: function (s) {
+			return function () {
+				switch (s) {
+					case "yesterday":
+						this.days = -1;
+						break;
+					case "tomorrow":
+						this.days = 1;
+						break;
+					case "today":
+						this.days = 0;
+						break;
+					case "now":
+						this.days = 0;
+						this.now = true;
+						break;
+				}
+			};
+		},
+		finishExact: function (x) {
+			var d;
+			x = (x instanceof Array) ? x : [x];
+
+			for (var i = 0 ; i < x.length ; i++) {
+				if (x[i]) {
+					x[i].call(this);
+				}
+			}
+			
+			setDefaults.call(this);
+			parseMeridian.call(this);
+
+			if (this.day > $D.getDaysInMonth(this.year, this.month)) {
+				throw new RangeError(this.day + " is not a valid value for days.");
+			}
+
+			d = new Date(this.year, this.month, this.day, this.hour, this.minute, this.second, this.millisecond);
+			if (this.year < 100) {
+				d.setFullYear(this.year); // means years less that 100 are process correctly. JS will parse it otherwise as 1900-1999.
+			}
+			if (this.timezone) {
+				d.set({ timezone: this.timezone });
+			} else if (this.timezoneOffset) {
+				d.set({ timezoneOffset: this.timezoneOffset });
+			}
+			
+			return d;
+		},
+		finish: function (x) {
+			var today, expression, orient, temp;
+
+			x = (x instanceof Array) ? flattenAndCompact(x) : [ x ];
+
+			if (x.length === 0) {
+				return null;
+			}
+
+			for (var i = 0 ; i < x.length ; i++) {
+				if (typeof x[i] === "function") {
+					x[i].call(this);
+				}
+			}
+			if (this.now && !this.unit && !this.operator) {
+				return new Date();
+			} else {
+				today = finishUtils.getToday.call(this);
+			}
+			
+			expression = !!(this.days && this.days !== null || this.orient || this.operator);
+			orient = ((this.orient === "past" || this.operator === "subtract") ? -1 : 1);
+
+			if (this.month && this.unit === "week") {
+				this.value = this.month + 1;
+				delete this.month;
+				delete this.day;
+			}
+
+			if ((this.month || this.month === 0) && "year day hour minute second".indexOf(this.unit) !== -1) {
+				if (!this.value) {
+					this.value = this.month + 1;
+				}
+				this.month = null;
+				expression = true;
+			}
+
+			if (!expression && this.weekday && !this.day && !this.days) {
+				finishUtils.setDMYFromWeekday.call(this);
+			}
+
+			if (expression && this.weekday && this.unit !== "month" && this.unit !== "week") {
+				finishUtils.setDaysFromWeekday.call(this, today, orient);
+			}
+
+			if (this.weekday && this.unit !== "week" && !this.day && !this.days) {
+				temp = Date[this.weekday]();
+				this.day = temp.getDate();
+				if (temp.getMonth() !== today.getMonth()) {
+					this.month = temp.getMonth();
+				}
+			}
+
+			if (this.month && this.unit === "day" && this.operator) {
+				if (!this.value) {
+					this.value = (this.month + 1);
+				}
+				this.month = null;
+			}
+
+			if (this.value != null && this.month != null && this.year != null) {
+				this.day = this.value * 1;
+			}
+
+			if (this.month && !this.day && this.value) {
+				today.set({ day: this.value * 1 });
+				if (!expression) {
+					this.day = this.value * 1;
+				}
+			}
+
+			if (!this.month && this.value && this.unit === "month" && !this.now) {
+				this.month = this.value;
+				expression = true;
+			}
+
+			if (expression && (this.month || this.month === 0) && this.unit !== "year") {
+				finishUtils.setMonthsFromMonth.call(this, today, orient);
+			}
+
+			if (!this.unit) {
+				this.unit = "day";
+			}
+
+			finishUtils.setUnitValue.call(this, orient);
+			parseMeridian.call(this);
+			
+			if ((this.month || this.month === 0) && !this.day) {
+				this.day = 1;
+			}
+
+			if (!this.orient && !this.operator && this.unit === "week" && this.value && !this.day && !this.month) {
+				return Date.today().setWeek(this.value);
+			}
+
+			if (this.unit === "week" && this.weeks && !this.day && !this.month) {
+				return finishUtils.generateDateFromWeeks.call(this);
+			}
+
+			if (expression && this.timezone && this.day && this.days) {
+				this.day = this.days;
+			}
+
+			if (expression){
+				today.add(this);
+			} else {
+				today.set(this);
+			}
+			
+			if (this.timezone) {
+				this.timezone = this.timezone.toUpperCase();
+				var offset = $D.getTimezoneOffset(this.timezone);
+				var timezone;
+				if (today.hasDaylightSavingTime()) {
+					// lets check that we're being sane with timezone setting
+					timezone = $D.getTimezoneAbbreviation(offset, today.isDaylightSavingTime());
+					if (timezone !== this.timezone) {
+						// bugger, we're in a place where things like EST vs EDT matters.
+						if (today.isDaylightSavingTime()) {
+							today.addHours(-1);
+						} else {
+							today.addHours(1);
+						}
+					}
+				}
+				today.setTimezoneOffset(offset);
+			}
+
+			return today;
+		}
+	};
+}());
+},{}],363:[function(_dereq_,module,exports){
+/*************************************************************
+ * SugarPak - Domain Specific Language -  Syntactical Sugar  *
+ *************************************************************/
+ 
+(function () {
+	var $D = Date, $P = $D.prototype, $N = Number.prototype;
+
+	// private
+	$P._orient = +1;
+
+	// private
+	$P._nth = null;
+
+	// private
+	$P._is = false;
+
+	// private
+	$P._same = false;
+	
+	// private
+	$P._isSecond = false;
+
+	// private
+	$N._dateElement = "days";
+
+	/** 
+	 * Moves the date to the next instance of a date as specified by the subsequent date element function (eg. .day(), .month()), month name function (eg. .january(), .jan()) or day name function (eg. .friday(), fri()).
+	 * Example
+	<pre><code>
+	Date.today().next().friday();
+	Date.today().next().fri();
+	Date.today().next().march();
+	Date.today().next().mar();
+	Date.today().next().week();
+	</code></pre>
+	 * 
+	 * @return {Date}    date
+	 */
+	$P.next = function () {
+		this._move = true;
+		this._orient = +1;
+		return this;
+	};
+
+	/** 
+	 * Creates a new Date (Date.today()) and moves the date to the next instance of the date as specified by the subsequent date element function (eg. .day(), .month()), month name function (eg. .january(), .jan()) or day name function (eg. .friday(), fri()).
+	 * Example
+	<pre><code>
+	Date.next().friday();
+	Date.next().fri();
+	Date.next().march();
+	Date.next().mar();
+	Date.next().week();
+	</code></pre>
+	 * 
+	 * @return {Date}    date
+	 */
+	$D.next = function () {
+		return $D.today().next();
+	};
+
+	/** 
+	 * Moves the date to the previous instance of a date as specified by the subsequent date element function (eg. .day(), .month()), month name function (eg. .january(), .jan()) or day name function (eg. .friday(), fri()).
+	 * Example
+	<pre><code>
+	Date.today().last().friday();
+	Date.today().last().fri();
+	Date.today().last().march();
+	Date.today().last().mar();
+	Date.today().last().week();
+	</code></pre>
+	 *  
+	 * @return {Date}    date
+	 */
+	$P.last = $P.prev = $P.previous = function () {
+		this._move = true;
+		this._orient = -1;
+		return this;
+	};
+
+	/** 
+	 * Creates a new Date (Date.today()) and moves the date to the previous instance of the date as specified by the subsequent date element function (eg. .day(), .month()), month name function (eg. .january(), .jan()) or day name function (eg. .friday(), fri()).
+	 * Example
+	<pre><code>
+	Date.last().friday();
+	Date.last().fri();
+	Date.previous().march();
+	Date.prev().mar();
+	Date.last().week();
+	</code></pre>
+	 *  
+	 * @return {Date}    date
+	 */
+	$D.last = $D.prev = $D.previous = function () {
+		return $D.today().last();
+	};
+
+	/** 
+	 * Performs a equality check when followed by either a month name, day name or .weekday() function.
+	 * Example
+	<pre><code>
+	Date.today().is().friday(); // true|false
+	Date.today().is().fri();
+	Date.today().is().march();
+	Date.today().is().mar();
+	</code></pre>
+	 *  
+	 * @return {Boolean}    true|false
+	 */
+	$P.is = function () {
+		this._is = true;
+		return this;
+	};
+
+	/** 
+	 * Determines if two date objects occur on/in exactly the same instance of the subsequent date part function.
+	 * The function .same() must be followed by a date part function (example: .day(), .month(), .year(), etc).
+	 *
+	 * An optional Date can be passed in the date part function. If now date is passed as a parameter, 'Now' is used. 
+	 *
+	 * The following example demonstrates how to determine if two dates fall on the exact same day.
+	 *
+	 * Example
+	<pre><code>
+	var d1 = Date.today(); // today at 00:00
+	var d2 = new Date();   // exactly now.
+
+	// Do they occur on the same day?
+	d1.same().day(d2); // true
+	
+	// Do they occur on the same hour?
+	d1.same().hour(d2); // false, unless d2 hour is '00' (midnight).
+	
+	// What if it's the same day, but one year apart?
+	var nextYear = Date.today().add(1).year();
+
+	d1.same().day(nextYear); // false, because the dates must occur on the exact same day. 
+	</code></pre>
+	 *
+	 * Scenario: Determine if a given date occurs during some week period 2 months from now. 
+	 *
+	 * Example
+	<pre><code>
+	var future = Date.today().add(2).months();
+	return someDate.same().week(future); // true|false;
+	</code></pre>
+	 *  
+	 * @return {Boolean}    true|false
+	 */
+	$P.same = function () {
+		this._same = true;
+		this._isSecond = false;
+		return this;
+	};
+
+	/** 
+	 * Determines if the current date/time occurs during Today. Must be preceded by the .is() function.
+	 * Example
+	<pre><code>
+	someDate.is().today();    // true|false
+	new Date().is().today();  // true
+	Date.today().is().today();// true
+	Date.today().add(-1).day().is().today(); // false
+	</code></pre>
+	 *  
+	 * @return {Boolean}    true|false
+	 */
+	$P.today = function () {
+		return this.same().day();
+	};
+
+	/** 
+	 * Determines if the current date is a weekday. This function must be preceded by the .is() function.
+	 * Example
+	<pre><code>
+	Date.today().is().weekday(); // true|false
+	</code></pre>
+	 *  
+	 * @return {Boolean}    true|false
+	 */
+	$P.weekday = function () {
+		if (this._nth) {
+			return df("Weekday").call(this);
+		}
+		if (this._move) {
+			return this.addWeekdays(this._orient);
+		}
+		if (this._is) {
+			this._is = false;
+			return (!this.is().sat() && !this.is().sun());
+		}
+		return false;
+	};
+	/** 
+	 * Determines if the current date is on the weekend. This function must be preceded by the .is() function.
+	 * Example
+	<pre><code>
+	Date.today().is().weekend(); // true|false
+	</code></pre>
+	 *  
+	 * @return {Boolean}    true|false
+	 */
+	$P.weekend = function () {
+		if (this._is) {
+			this._is = false;
+			return (this.is().sat() || this.is().sun());
+		}
+		return false;
+	};
+
+	/** 
+	 * Sets the Time of the current Date instance. A string "6:15 pm" or config object {hour:18, minute:15} are accepted.
+	 * Example
+	<pre><code>
+	// Set time to 6:15pm with a String
+	Date.today().at("6:15pm");
+
+	// Set time to 6:15pm with a config object
+	Date.today().at({hour:18, minute:15});
+	</code></pre>
+	 *  
+	 * @return {Date}    date
+	 */
+	$P.at = function (time) {
+		return (typeof time === "string") ? $D.parse(this.toString("d") + " " + time) : this.set(time);
+	};
+		
+	/** 
+	 * Creates a new Date() and adds this (Number) to the date based on the preceding date element function (eg. second|minute|hour|day|month|year).
+	 * Example
+	<pre><code>
+	// Undeclared Numbers must be wrapped with parentheses. Requirment of JavaScript.
+	(3).days().fromNow();
+	(6).months().fromNow();
+
+	// Declared Number variables do not require parentheses. 
+	var n = 6;
+	n.months().fromNow();
+	</code></pre>
+	 *  
+	 * @return {Date}    A new Date instance
+	 */
+	$N.fromNow = $N.after = function (date) {
+		var c = {};
+		c[this._dateElement] = this;
+		return ((!date) ? new Date() : date.clone()).add(c);
+	};
+
+	/** 
+	 * Creates a new Date() and subtract this (Number) from the date based on the preceding date element function (eg. second|minute|hour|day|month|year).
+	 * Example
+	<pre><code>
+	// Undeclared Numbers must be wrapped with parentheses. Requirment of JavaScript.
+	(3).days().ago();
+	(6).months().ago();
+
+	// Declared Number variables do not require parentheses. 
+	var n = 6;
+	n.months().ago();
+	</code></pre>
+	 *  
+	 * @return {Date}    A new Date instance
+	 */
+	$N.ago = $N.before = function (date) {
+		var c = {},
+		s = (this._dateElement[this._dateElement.length-1] !== "s") ? this._dateElement + "s" : this._dateElement;
+		c[s] = this * -1;
+		return ((!date) ? new Date() : date.clone()).add(c);
+	};
+
+	// Do NOT modify the following string tokens. These tokens are used to build dynamic functions.
+	// All culture-specific strings can be found in the CultureInfo files.
+	var dx = ("sunday monday tuesday wednesday thursday friday saturday").split(/\s/),
+		mx = ("january february march april may june july august september october november december").split(/\s/),
+		px = ("Millisecond Second Minute Hour Day Week Month Year Quarter Weekday").split(/\s/),
+		pxf = ("Milliseconds Seconds Minutes Hours Date Week Month FullYear Quarter").split(/\s/),
+		nth = ("final first second third fourth fifth").split(/\s/),
+		de;
+
+   /** 
+	 * Returns an object literal of all the date parts.
+	 * Example
+	<pre><code>
+	var o = new Date().toObject();
+	
+	// { year: 2008, month: 4, week: 20, day: 13, hour: 18, minute: 9, second: 32, millisecond: 812 }
+	
+	// The object properties can be referenced directly from the object.
+	
+	alert(o.day);  // alerts "13"
+	alert(o.year); // alerts "2008"
+	</code></pre>
+	 *  
+	 * @return {Date}    An object literal representing the original date object.
+	 */
+	$P.toObject = function () {
+		var o = {};
+		for (var i = 0; i < px.length; i++) {
+			if (this["get" + pxf[i]]) {
+				o[px[i].toLowerCase()] = this["get" + pxf[i]]();
+			}
+		}
+		return o;
+	};
+   
+   /** 
+	 * Returns a date created from an object literal. Ignores the .week property if set in the config. 
+	 * Example
+	<pre><code>
+	var o = new Date().toObject();
+	
+	return Date.fromObject(o); // will return the same date. 
+
+	var o2 = {month: 1, day: 20, hour: 18}; // birthday party!
+	Date.fromObject(o2);
+	</code></pre>
+	 *  
+	 * @return {Date}    An object literal representing the original date object.
+	 */
+	$D.fromObject = function(config) {
+		config.week = null;
+		return Date.today().set(config);
+	};
+		
+	// Create day name functions and abbreviated day name functions (eg. monday(), friday(), fri()).
+	
+	var df = function (n) {
+		return function () {
+			if (this._is) {
+				this._is = false;
+				return this.getDay() === n;
+			}
+			if (this._move) { this._move = null; }
+			if (this._nth !== null) {
+				// If the .second() function was called earlier, remove the _orient 
+				// from the date, and then continue.
+				// This is required because 'second' can be used in two different context.
+				// 
+				// Example
+				//
+				//   Date.today().add(1).second();
+				//   Date.march().second().monday();
+				// 
+				// Things get crazy with the following...
+				//   Date.march().add(1).second().second().monday(); // but it works!!
+				//  
+				if (this._isSecond) {
+					this.addSeconds(this._orient * -1);
+				}
+				// make sure we reset _isSecond
+				this._isSecond = false;
+
+				var ntemp = this._nth;
+				this._nth = null;
+				var temp = this.clone().moveToLastDayOfMonth();
+				this.moveToNthOccurrence(n, ntemp);
+				if (this > temp) {
+					throw new RangeError($D.getDayName(n) + " does not occur " + ntemp + " times in the month of " + $D.getMonthName(temp.getMonth()) + " " + temp.getFullYear() + ".");
+				}
+				return this;
+			}
+			return this.moveToDayOfWeek(n, this._orient);
+		};
+	};
+	
+	var sdf = function (n) {
+		return function () {
+			var t = $D.today(), shift = n - t.getDay();
+			if (n === 0 && Date.CultureInfo.firstDayOfWeek === 1 && t.getDay() !== 0) {
+				shift = shift + 7;
+			}
+			return t.addDays(shift);
+		};
+	};
+	
+
+	
+	// Create month name functions and abbreviated month name functions (eg. january(), march(), mar()).
+	var month_instance_functions = function (n) {
+		return function () {
+			if (this._is) {
+				this._is = false;
+				return this.getMonth() === n;
+			}
+			return this.moveToMonth(n, this._orient);
+		};
+	};
+	
+	var month_static_functions = function (n) {
+		return function () {
+			return $D.today().set({ month: n, day: 1 });
+		};
+	};
+	
+	var processTerms = function (names, staticFunc, instanceFunc) {
+		for (var i = 0; i < names.length; i++) {
+			// Create constant static Name variables.
+			$D[names[i].toUpperCase()] = $D[names[i].toUpperCase().substring(0, 3)] = i;
+			// Create Name functions.
+			$D[names[i]] = $D[names[i].substring(0, 3)] = staticFunc(i);
+			// Create Name instance functions.
+			$P[names[i]] = $P[names[i].substring(0, 3)] = instanceFunc(i);
+		}
+
+	};
+
+	processTerms(dx, sdf, df);
+	processTerms(mx, month_static_functions, month_instance_functions);
+	
+	// Create date element functions and plural date element functions used with Date (eg. day(), days(), months()).
+	var ef = function (j) {
+		return function () {
+			// if the .second() function was called earlier, the _orient 
+			// has alread been added. Just return this and reset _isSecond.
+			if (this._isSecond) {
+				this._isSecond = false;
+				return this;
+			}
+
+			if (this._same) {
+				this._same = this._is = false;
+				var o1 = this.toObject(),
+					o2 = (arguments[0] || new Date()).toObject(),
+					v = "",
+					k = j.toLowerCase();
+
+				// the substr trick with -1 doesn't work in IE8 or less
+				k = (k[k.length-1] === "s") ? k.substring(0,k.length-1) : k;
+					
+				for (var m = (px.length - 1); m > -1; m--) {
+					v = px[m].toLowerCase();
+					if (o1[v] !== o2[v]) {
+						return false;
+					}
+					if (k === v) {
+						break;
+					}
+				}
+				return true;
+			}
+			
+			if (j.substring(j.length - 1) !== "s") {
+				j += "s";
+			}
+			if (this._move) { this._move = null; }
+			return this["add" + j](this._orient);
+		};
+	};
+	
+	
+	var nf = function (n) {
+		return function () {
+			this._dateElement = n;
+			return this;
+		};
+	};
+   
+	for (var k = 0; k < px.length; k++) {
+		de = px[k].toLowerCase();
+		if(de !== "weekday") {
+			// Create date element functions and plural date element functions used with Date (eg. day(), days(), months()).
+			$P[de] = $P[de + "s"] = ef(px[k]);
+			
+			// Create date element functions and plural date element functions used with Number (eg. day(), days(), months()).
+			$N[de] = $N[de + "s"] = nf(de + "s");
+		}
+	}
+	
+	$P._ss = ef("Second");
+	
+	var nthfn = function (n) {
+		return function (dayOfWeek) {
+			if (this._same) {
+				return this._ss(arguments[0]);
+			}
+			if (dayOfWeek || dayOfWeek === 0) {
+				return this.moveToNthOccurrence(dayOfWeek, n);
+			}
+			this._nth = n;
+
+			// if the operator is 'second' add the _orient, then deal with it later...
+			if (n === 2 && (dayOfWeek === undefined || dayOfWeek === null)) {
+				this._isSecond = true;
+				return this.addSeconds(this._orient);
+			}
+			return this;
+		};
+	};
+
+	for (var l = 0; l < nth.length; l++) {
+		$P[nth[l]] = (l === 0) ? nthfn(-1) : nthfn(l);
+	}
+}());
+
+},{}],364:[function(_dereq_,module,exports){
+(function () {
+	"use strict";
+	var attrs = ["years", "months", "days", "hours", "minutes", "seconds", "milliseconds"];
+	var gFn = function (attr) {
+		return function () {
+			return this[attr];
+		};
+	};
+	
+	var sFn = function (attr) {
+		return function (val) {
+			this[attr] = val;
+			return this;
+		};
+	};
+	var addSetFuncs = function (context, attrs) {
+		for (var i = 0; i < attrs.length ; i++) {
+			var $a = attrs[i], $b = $a.slice(0, 1).toUpperCase() + $a.slice(1);
+			context.prototype[$a] = 0;
+			context.prototype["get" + $b] = gFn($a);
+			context.prototype["set" + $b] = sFn($a);
+		}
+	};
+
+	var setMonthsAndYears = function (orient, d1, d2, context) {
+		function inc() {
+			d1.addMonths(-orient);
+			context.months++;
+			if (context.months === 12) {
+				context.years++;
+				context.months = 0;
+			}
+		}
+		if (orient === +1) {
+			while (d1 > d2) {
+				inc();
+			}
+		} else {
+			while (d1 < d2) {
+				inc();
+			}
+		}
+		context.months--;
+		context.months *= orient;
+		context.years *= orient;
+	};
+
+	var adjustForDST = function(orient, startDate, endDate) {
+		var hasDSTMismatch = (false === (startDate.isDaylightSavingTime() === endDate.isDaylightSavingTime()));
+		if (hasDSTMismatch && orient === 1) {
+			startDate.addHours(-1);
+		} else if (hasDSTMismatch) {
+			startDate.addHours(1);
+		}
+	};
+	/**
+	 * TimePeriod(startDate, endDate);
+	 * TimePeriod(years, months, days, hours, minutes, seconds, milliseconds);
+	 */
+	var TimePeriod = function (years, months, days, hours, minutes, seconds, milliseconds) {
+		if (arguments.length === 7) {
+			this.set(years, months, days, hours, minutes, seconds, milliseconds);
+		} else if (arguments.length === 2 && arguments[0] instanceof Date && arguments[1] instanceof Date) {
+			var startDate = arguments[0].clone();
+			var endDate = arguments[1].clone();
+			var orient = (startDate > endDate) ? +1 : -1;
+			this.dates = {
+				start: arguments[0].clone(),
+				end: arguments[1].clone()
+			};
+
+			setMonthsAndYears(orient, startDate, endDate, this);
+			adjustForDST(orient, startDate, endDate);
+			// // TODO - adjust for DST
+			var diff = endDate - startDate;
+			if (diff !== 0) {
+				var ts = new TimeSpan(diff);
+				this.set(this.years, this.months, ts.getDays(), ts.getHours(), ts.getMinutes(), ts.getSeconds(), ts.getMilliseconds());
+			}
+		}
+		return this;
+	};
+	// create all the set functions.
+	addSetFuncs(TimePeriod, attrs);
+	TimePeriod.prototype.set = function (years, months, days, hours, minutes, seconds, milliseconds){
+		this.setYears(years || this.getYears());
+		this.setMonths(months || this.getMonths());
+		this.setDays(days || this.getDays());
+		this.setHours(hours || this.getHours());
+		this.setMinutes(minutes || this.getMinutes());
+		this.setSeconds(seconds || this.getSeconds());
+		this.setMilliseconds(milliseconds || this.getMilliseconds());
+	};
+
+	Date.TimePeriod = TimePeriod;
+
+	if (typeof window !== "undefined") {
+		// keeping API compatible for v1.x 
+		window.TimePeriod = TimePeriod;
+	}
+}());
+},{}],365:[function(_dereq_,module,exports){
+(function () {
+	"use strict";
+	var gFn = function (attr) {
+		return function () {
+			return this[attr];
+		};
+	};
+	
+	var sFn = function (attr) {
+		return function (val) {
+			this[attr] = val;
+			return this;
+		};
+	};
+	var attrs = ["years", "months", "days", "hours", "minutes", "seconds", "milliseconds"];
+	var addSetFuncs = function (context, attrs) {
+		for (var i = 0; i < attrs.length ; i++) {
+			var $a = attrs[i], $b = $a.slice(0, 1).toUpperCase() + $a.slice(1);
+			context.prototype[$a] = 0;
+			context.prototype["get" + $b] = gFn($a);
+			context.prototype["set" + $b] = sFn($a);
+		}
+	};
+	/**
+	 * new TimeSpan(milliseconds);
+	 * new TimeSpan(days, hours, minutes, seconds);
+	 * new TimeSpan(days, hours, minutes, seconds, milliseconds);
+	 */
+	var TimeSpan = function (days, hours, minutes, seconds, milliseconds) {
+		if (arguments.length === 1 && typeof days === "number") {
+			var orient = (days < 0) ? -1 : +1;
+			var millsLeft = Math.abs(days);
+			this.setDays(Math.floor(millsLeft / 86400000) * orient);
+			millsLeft = millsLeft % 86400000;
+			this.setHours(Math.floor(millsLeft / 3600000) * orient);
+			millsLeft = millsLeft % 3600000;
+			this.setMinutes(Math.floor(millsLeft / 60000) * orient);
+			millsLeft = millsLeft % 60000;
+			this.setSeconds(Math.floor(millsLeft / 1000) * orient);
+			millsLeft = millsLeft % 1000;
+			this.setMilliseconds(millsLeft * orient);
+		} else {
+			this.set(days, hours, minutes, seconds, milliseconds);
+		}
+
+		this.getTotalMilliseconds = function () {
+			return	(this.getDays() * 86400000) +
+					(this.getHours() * 3600000) +
+					(this.getMinutes() * 60000) +
+					(this.getSeconds() * 1000);
+		};
+		
+		this.compareTo = function (time) {
+			var t1 = new Date(1970, 1, 1, this.getHours(), this.getMinutes(), this.getSeconds()), t2;
+			if (time === null) {
+				t2 = new Date(1970, 1, 1, 0, 0, 0);
+			}
+			else {
+				t2 = new Date(1970, 1, 1, time.getHours(), time.getMinutes(), time.getSeconds());
+			}
+			return (t1 < t2) ? -1 : (t1 > t2) ? 1 : 0;
+		};
+
+		this.equals = function (time) {
+			return (this.compareTo(time) === 0);
+		};
+
+		this.add = function (time) {
+			return (time === null) ? this : this.addSeconds(time.getTotalMilliseconds() / 1000);
+		};
+
+		this.subtract = function (time) {
+			return (time === null) ? this : this.addSeconds(-time.getTotalMilliseconds() / 1000);
+		};
+
+		this.addDays = function (n) {
+			return new TimeSpan(this.getTotalMilliseconds() + (n * 86400000));
+		};
+
+		this.addHours = function (n) {
+			return new TimeSpan(this.getTotalMilliseconds() + (n * 3600000));
+		};
+
+		this.addMinutes = function (n) {
+			return new TimeSpan(this.getTotalMilliseconds() + (n * 60000));
+		};
+
+		this.addSeconds = function (n) {
+			return new TimeSpan(this.getTotalMilliseconds() + (n * 1000));
+		};
+
+		this.addMilliseconds = function (n) {
+			return new TimeSpan(this.getTotalMilliseconds() + n);
+		};
+
+		this.get12HourHour = function () {
+			return (this.getHours() > 12) ? this.getHours() - 12 : (this.getHours() === 0) ? 12 : this.getHours();
+		};
+
+		this.getDesignator = function () {
+			return (this.getHours() < 12) ? Date.CultureInfo.amDesignator : Date.CultureInfo.pmDesignator;
+		};
+
+		this.toString = function (format) {
+			this._toString = function () {
+				if (this.getDays() !== null && this.getDays() > 0) {
+					return this.getDays() + "." + this.getHours() + ":" + this.p(this.getMinutes()) + ":" + this.p(this.getSeconds());
+				} else {
+					return this.getHours() + ":" + this.p(this.getMinutes()) + ":" + this.p(this.getSeconds());
+				}
+			};
+			
+			this.p = function (s) {
+				return (s.toString().length < 2) ? "0" + s : s;
+			};
+			
+			var me = this;
+			
+			return format ? format.replace(/dd?|HH?|hh?|mm?|ss?|tt?/g,
+			function (format) {
+				switch (format) {
+				case "d":
+					return me.getDays();
+				case "dd":
+					return me.p(me.getDays());
+				case "H":
+					return me.getHours();
+				case "HH":
+					return me.p(me.getHours());
+				case "h":
+					return me.get12HourHour();
+				case "hh":
+					return me.p(me.get12HourHour());
+				case "m":
+					return me.getMinutes();
+				case "mm":
+					return me.p(me.getMinutes());
+				case "s":
+					return me.getSeconds();
+				case "ss":
+					return me.p(me.getSeconds());
+				case "t":
+					return ((me.getHours() < 12) ? Date.CultureInfo.amDesignator : Date.CultureInfo.pmDesignator).substring(0, 1);
+				case "tt":
+					return (me.getHours() < 12) ? Date.CultureInfo.amDesignator : Date.CultureInfo.pmDesignator;
+				}
+			}
+			) : this._toString();
+		};
+		return this;
+	};
+	addSetFuncs(TimeSpan, attrs.slice(2));
+	TimeSpan.prototype.set = function (days, hours, minutes, seconds, milliseconds){
+		this.setDays(days || this.getDays());
+		this.setHours(hours || this.getHours());
+		this.setMinutes(minutes || this.getMinutes());
+		this.setSeconds(seconds || this.getSeconds());
+		this.setMilliseconds(milliseconds || this.getMilliseconds());
+	};
+
+
+	/**
+	 * Gets the time of day for this date instances. 
+	 * @return {TimeSpan} TimeSpan
+	 */
+	Date.prototype.getTimeOfDay = function () {
+		return new TimeSpan(0, this.getHours(), this.getMinutes(), this.getSeconds(), this.getMilliseconds());
+	};
+
+	Date.TimeSpan = TimeSpan;
+
+	if (typeof window !== "undefined" ) {
+		// keeping API compatible for v1.x 
+		window.TimeSpan = TimeSpan;
+	}
+}());
+},{}],366:[function(_dereq_,module,exports){
+arguments[4][66][0].apply(exports,arguments)
+},{"dup":66,"stream":677,"util":688}],367:[function(_dereq_,module,exports){
+arguments[4][68][0].apply(exports,arguments)
+},{"./lib/ec.js":368,"./lib/sec.js":369,"buffer":574,"crypto":584,"dup":68,"jsbn":415}],368:[function(_dereq_,module,exports){
+arguments[4][69][0].apply(exports,arguments)
+},{"dup":69,"jsbn":415}],369:[function(_dereq_,module,exports){
+arguments[4][70][0].apply(exports,arguments)
+},{"./ec.js":368,"dup":70,"jsbn":415}],370:[function(_dereq_,module,exports){
+arguments[4][92][0].apply(exports,arguments)
+},{"dup":92}],371:[function(_dereq_,module,exports){
+arguments[4][93][0].apply(exports,arguments)
+},{"assert":542,"dup":93,"util":688}],372:[function(_dereq_,module,exports){
+arguments[4][94][0].apply(exports,arguments)
+},{"dup":94,"http":678,"https":620,"net":527,"tls":527,"util":688}],373:[function(_dereq_,module,exports){
+arguments[4][95][0].apply(exports,arguments)
+},{"dup":95}],374:[function(_dereq_,module,exports){
+arguments[4][96][0].apply(exports,arguments)
+},{"dup":96,"util":688}],375:[function(_dereq_,module,exports){
+arguments[4][97][0].apply(exports,arguments)
+},{"dup":97,"is-property":405}],376:[function(_dereq_,module,exports){
+arguments[4][98][0].apply(exports,arguments)
+},{"dup":98}],377:[function(_dereq_,module,exports){
+arguments[4][99][0].apply(exports,arguments)
+},{"./runner":378,"./schemas":386,"dup":99,"pinkie-promise":425}],378:[function(_dereq_,module,exports){
+arguments[4][100][0].apply(exports,arguments)
+},{"./error":376,"./schemas":386,"dup":100,"is-my-json-valid":403}],379:[function(_dereq_,module,exports){
+arguments[4][101][0].apply(exports,arguments)
+},{"dup":101}],380:[function(_dereq_,module,exports){
+arguments[4][102][0].apply(exports,arguments)
+},{"dup":102}],381:[function(_dereq_,module,exports){
+arguments[4][103][0].apply(exports,arguments)
+},{"dup":103}],382:[function(_dereq_,module,exports){
+arguments[4][104][0].apply(exports,arguments)
+},{"dup":104}],383:[function(_dereq_,module,exports){
+arguments[4][105][0].apply(exports,arguments)
+},{"dup":105}],384:[function(_dereq_,module,exports){
+arguments[4][106][0].apply(exports,arguments)
+},{"dup":106}],385:[function(_dereq_,module,exports){
+arguments[4][107][0].apply(exports,arguments)
+},{"dup":107}],386:[function(_dereq_,module,exports){
+arguments[4][108][0].apply(exports,arguments)
+},{"./cache.json":379,"./cacheEntry.json":380,"./content.json":381,"./cookie.json":382,"./creator.json":383,"./entry.json":384,"./har.json":385,"./log.json":387,"./page.json":388,"./pageTimings.json":389,"./postData.json":390,"./record.json":391,"./request.json":392,"./response.json":393,"./timings.json":394,"dup":108}],387:[function(_dereq_,module,exports){
+arguments[4][109][0].apply(exports,arguments)
+},{"dup":109}],388:[function(_dereq_,module,exports){
+arguments[4][110][0].apply(exports,arguments)
+},{"dup":110}],389:[function(_dereq_,module,exports){
+arguments[4][111][0].apply(exports,arguments)
+},{"dup":111}],390:[function(_dereq_,module,exports){
+arguments[4][112][0].apply(exports,arguments)
+},{"dup":112}],391:[function(_dereq_,module,exports){
+arguments[4][113][0].apply(exports,arguments)
+},{"dup":113}],392:[function(_dereq_,module,exports){
+arguments[4][114][0].apply(exports,arguments)
+},{"dup":114}],393:[function(_dereq_,module,exports){
+arguments[4][115][0].apply(exports,arguments)
+},{"dup":115}],394:[function(_dereq_,module,exports){
+arguments[4][116][0].apply(exports,arguments)
+},{"dup":116}],395:[function(_dereq_,module,exports){
+arguments[4][123][0].apply(exports,arguments)
+},{"dup":123}],396:[function(_dereq_,module,exports){
+arguments[4][124][0].apply(exports,arguments)
+},{"./parser":397,"./signer":398,"./utils":399,"./verify":400,"dup":124}],397:[function(_dereq_,module,exports){
+arguments[4][125][0].apply(exports,arguments)
+},{"./utils":399,"assert-plus":304,"dup":125,"util":688}],398:[function(_dereq_,module,exports){
+(function (Buffer){
+// Copyright 2012 Joyent, Inc.  All rights reserved.
+
+var assert = _dereq_('assert-plus');
+var crypto = _dereq_('crypto');
+var http = _dereq_('http');
+var util = _dereq_('util');
+var sshpk = _dereq_('sshpk');
+var jsprim = _dereq_('jsprim');
+var utils = _dereq_('./utils');
+
+var sprintf = _dereq_('util').format;
+
+var HASH_ALGOS = utils.HASH_ALGOS;
+var PK_ALGOS = utils.PK_ALGOS;
+var InvalidAlgorithmError = utils.InvalidAlgorithmError;
+var HttpSignatureError = utils.HttpSignatureError;
+var validateAlgorithm = utils.validateAlgorithm;
+
+///--- Globals
+
+var AUTHZ_FMT =
+  'Signature keyId="%s",algorithm="%s",headers="%s",signature="%s"';
+
+///--- Specific Errors
+
+function MissingHeaderError(message) {
+  HttpSignatureError.call(this, message, MissingHeaderError);
+}
+util.inherits(MissingHeaderError, HttpSignatureError);
+
+function StrictParsingError(message) {
+  HttpSignatureError.call(this, message, StrictParsingError);
+}
+util.inherits(StrictParsingError, HttpSignatureError);
+
+/* See createSigner() */
+function RequestSigner(options) {
+  assert.object(options, 'options');
+
+  var alg = [];
+  if (options.algorithm !== undefined) {
+    assert.string(options.algorithm, 'options.algorithm');
+    alg = validateAlgorithm(options.algorithm);
+  }
+  this.rs_alg = alg;
+
+  /*
+   * RequestSigners come in two varieties: ones with an rs_signFunc, and ones
+   * with an rs_signer.
+   *
+   * rs_signFunc-based RequestSigners have to build up their entire signing
+   * string within the rs_lines array and give it to rs_signFunc as a single
+   * concat'd blob. rs_signer-based RequestSigners can add a line at a time to
+   * their signing state by using rs_signer.update(), thus only needing to
+   * buffer the hash function state and one line at a time.
+   */
+  if (options.sign !== undefined) {
+    assert.func(options.sign, 'options.sign');
+    this.rs_signFunc = options.sign;
+
+  } else if (alg[0] === 'hmac' && options.key !== undefined) {
+    assert.string(options.keyId, 'options.keyId');
+    this.rs_keyId = options.keyId;
+
+    if (typeof (options.key) !== 'string' && !Buffer.isBuffer(options.key))
+      throw (new TypeError('options.key for HMAC must be a string or Buffer'));
+
+    /*
+     * Make an rs_signer for HMACs, not a rs_signFunc -- HMACs digest their
+     * data in chunks rather than requiring it all to be given in one go
+     * at the end, so they are more similar to signers than signFuncs.
+     */
+    this.rs_signer = crypto.createHmac(alg[1].toUpperCase(), options.key);
+    this.rs_signer.sign = function () {
+      var digest = this.digest('base64');
+      return ({
+        hashAlgorithm: alg[1],
+        toString: function () { return (digest); }
+      });
+    };
+
+  } else if (options.key !== undefined) {
+    var key = options.key;
+    if (typeof (key) === 'string' || Buffer.isBuffer(key))
+      key = sshpk.parsePrivateKey(key);
+
+    assert.ok(sshpk.PrivateKey.isPrivateKey(key, [1, 2]),
+      'options.key must be a sshpk.PrivateKey');
+    this.rs_key = key;
+
+    assert.string(options.keyId, 'options.keyId');
+    this.rs_keyId = options.keyId;
+
+    if (!PK_ALGOS[key.type]) {
+      throw (new InvalidAlgorithmError(key.type.toUpperCase() + ' type ' +
+        'keys are not supported'));
+    }
+
+    if (alg[0] !== undefined && key.type !== alg[0]) {
+      throw (new InvalidAlgorithmError('options.key must be a ' +
+        alg[0].toUpperCase() + ' key, was given a ' +
+        key.type.toUpperCase() + ' key instead'));
+    }
+
+    this.rs_signer = key.createSign(alg[1]);
+
+  } else {
+    throw (new TypeError('options.sign (func) or options.key is required'));
+  }
+
+  this.rs_headers = [];
+  this.rs_lines = [];
+}
+
+/**
+ * Adds a header to be signed, with its value, into this signer.
+ *
+ * @param {String} header
+ * @param {String} value
+ * @return {String} value written
+ */
+RequestSigner.prototype.writeHeader = function (header, value) {
+  assert.string(header, 'header');
+  header = header.toLowerCase();
+  assert.string(value, 'value');
+
+  this.rs_headers.push(header);
+
+  if (this.rs_signFunc) {
+    this.rs_lines.push(header + ': ' + value);
+
+  } else {
+    var line = header + ': ' + value;
+    if (this.rs_headers.length > 0)
+      line = '\n' + line;
+    this.rs_signer.update(line);
+  }
+
+  return (value);
+};
+
+/**
+ * Adds a default Date header, returning its value.
+ *
+ * @return {String}
+ */
+RequestSigner.prototype.writeDateHeader = function () {
+  return (this.writeHeader('date', jsprim.rfc1123(new Date())));
+};
+
+/**
+ * Adds the request target line to be signed.
+ *
+ * @param {String} method, HTTP method (e.g. 'get', 'post', 'put')
+ * @param {String} path
+ */
+RequestSigner.prototype.writeTarget = function (method, path) {
+  assert.string(method, 'method');
+  assert.string(path, 'path');
+  method = method.toLowerCase();
+  this.writeHeader('(request-target)', method + ' ' + path);
+};
+
+/**
+ * Calculate the value for the Authorization header on this request
+ * asynchronously.
+ *
+ * @param {Func} callback (err, authz)
+ */
+RequestSigner.prototype.sign = function (cb) {
+  assert.func(cb, 'callback');
+
+  if (this.rs_headers.length < 1)
+    throw (new Error('At least one header must be signed'));
+
+  var alg, authz;
+  if (this.rs_signFunc) {
+    var data = this.rs_lines.join('\n');
+    var self = this;
+    this.rs_signFunc(data, function (err, sig) {
+      if (err) {
+        cb(err);
+        return;
+      }
+      try {
+        assert.object(sig, 'signature');
+        assert.string(sig.keyId, 'signature.keyId');
+        assert.string(sig.algorithm, 'signature.algorithm');
+        assert.string(sig.signature, 'signature.signature');
+        alg = validateAlgorithm(sig.algorithm);
+
+        authz = sprintf(AUTHZ_FMT,
+          sig.keyId,
+          sig.algorithm,
+          self.rs_headers.join(' '),
+          sig.signature);
+      } catch (e) {
+        cb(e);
+        return;
+      }
+      cb(null, authz);
+    });
+
+  } else {
+    try {
+      var sigObj = this.rs_signer.sign();
+    } catch (e) {
+      cb(e);
+      return;
+    }
+    alg = (this.rs_alg[0] || this.rs_key.type) + '-' + sigObj.hashAlgorithm;
+    var signature = sigObj.toString();
+    authz = sprintf(AUTHZ_FMT,
+      this.rs_keyId,
+      alg,
+      this.rs_headers.join(' '),
+      signature);
+    cb(null, authz);
+  }
+};
+
+///--- Exported API
+
+module.exports = {
+  /**
+   * Identifies whether a given object is a request signer or not.
+   *
+   * @param {Object} object, the object to identify
+   * @returns {Boolean}
+   */
+  isSigner: function (obj) {
+    if (typeof (obj) === 'object' && obj instanceof RequestSigner)
+      return (true);
+    return (false);
+  },
+
+  /**
+   * Creates a request signer, used to asynchronously build a signature
+   * for a request (does not have to be an http.ClientRequest).
+   *
+   * @param {Object} options, either:
+   *                   - {String} keyId
+   *                   - {String|Buffer} key
+   *                   - {String} algorithm (optional, required for HMAC)
+   *                 or:
+   *                   - {Func} sign (data, cb)
+   * @return {RequestSigner}
+   */
+  createSigner: function createSigner(options) {
+    return (new RequestSigner(options));
+  },
+
+  /**
+   * Adds an 'Authorization' header to an http.ClientRequest object.
+   *
+   * Note that this API will add a Date header if it's not already set. Any
+   * other headers in the options.headers array MUST be present, or this
+   * will throw.
+   *
+   * You shouldn't need to check the return type; it's just there if you want
+   * to be pedantic.
+   *
+   * The optional flag indicates whether parsing should use strict enforcement
+   * of the version draft-cavage-http-signatures-04 of the spec or beyond.
+   * The default is to be loose and support
+   * older versions for compatibility.
+   *
+   * @param {Object} request an instance of http.ClientRequest.
+   * @param {Object} options signing parameters object:
+   *                   - {String} keyId required.
+   *                   - {String} key required (either a PEM or HMAC key).
+   *                   - {Array} headers optional; defaults to ['date'].
+   *                   - {String} algorithm optional (unless key is HMAC);
+   *                              default is the same as the sshpk default
+   *                              signing algorithm for the type of key given
+   *                   - {String} httpVersion optional; defaults to '1.1'.
+   *                   - {Boolean} strict optional; defaults to 'false'.
+   * @return {Boolean} true if Authorization (and optionally Date) were added.
+   * @throws {TypeError} on bad parameter types (input).
+   * @throws {InvalidAlgorithmError} if algorithm was bad or incompatible with
+   *                                 the given key.
+   * @throws {sshpk.KeyParseError} if key was bad.
+   * @throws {MissingHeaderError} if a header to be signed was specified but
+   *                              was not present.
+   */
+  signRequest: function signRequest(request, options) {
+    assert.object(request, 'request');
+    assert.object(options, 'options');
+    assert.optionalString(options.algorithm, 'options.algorithm');
+    assert.string(options.keyId, 'options.keyId');
+    assert.optionalArrayOfString(options.headers, 'options.headers');
+    assert.optionalString(options.httpVersion, 'options.httpVersion');
+
+    if (!request.getHeader('Date'))
+      request.setHeader('Date', jsprim.rfc1123(new Date()));
+    if (!options.headers)
+      options.headers = ['date'];
+    if (!options.httpVersion)
+      options.httpVersion = '1.1';
+
+    var alg = [];
+    if (options.algorithm) {
+      options.algorithm = options.algorithm.toLowerCase();
+      alg = validateAlgorithm(options.algorithm);
+    }
+
+    var i;
+    var stringToSign = '';
+    for (i = 0; i < options.headers.length; i++) {
+      if (typeof (options.headers[i]) !== 'string')
+        throw new TypeError('options.headers must be an array of Strings');
+
+      var h = options.headers[i].toLowerCase();
+
+      if (h === 'request-line') {
+        if (!options.strict) {
+          /**
+           * We allow headers from the older spec drafts if strict parsing isn't
+           * specified in options.
+           */
+          stringToSign +=
+            request.method + ' ' + request.path + ' HTTP/' +
+            options.httpVersion;
+        } else {
+          /* Strict parsing doesn't allow older draft headers. */
+          throw (new StrictParsingError('request-line is not a valid header ' +
+            'with strict parsing enabled.'));
+        }
+      } else if (h === '(request-target)') {
+        stringToSign +=
+          '(request-target): ' + request.method.toLowerCase() + ' ' +
+          request.path;
+      } else {
+        var value = request.getHeader(h);
+        if (value === undefined || value === '') {
+          throw new MissingHeaderError(h + ' was not in the request');
+        }
+        stringToSign += h + ': ' + value;
+      }
+
+      if ((i + 1) < options.headers.length)
+        stringToSign += '\n';
+    }
+
+    /* This is just for unit tests. */
+    if (request.hasOwnProperty('_stringToSign')) {
+      request._stringToSign = stringToSign;
+    }
+
+    var signature;
+    if (alg[0] === 'hmac') {
+      if (typeof (options.key) !== 'string' && !Buffer.isBuffer(options.key))
+        throw (new TypeError('options.key must be a string or Buffer'));
+
+      var hmac = crypto.createHmac(alg[1].toUpperCase(), options.key);
+      hmac.update(stringToSign);
+      signature = hmac.digest('base64');
+
+    } else {
+      var key = options.key;
+      if (typeof (key) === 'string' || Buffer.isBuffer(key))
+        key = sshpk.parsePrivateKey(options.key);
+
+      assert.ok(sshpk.PrivateKey.isPrivateKey(key, [1, 2]),
+        'options.key must be a sshpk.PrivateKey');
+
+      if (!PK_ALGOS[key.type]) {
+        throw (new InvalidAlgorithmError(key.type.toUpperCase() + ' type ' +
+          'keys are not supported'));
+      }
+
+      if (alg[0] !== undefined && key.type !== alg[0]) {
+        throw (new InvalidAlgorithmError('options.key must be a ' +
+          alg[0].toUpperCase() + ' key, was given a ' +
+          key.type.toUpperCase() + ' key instead'));
+      }
+
+      var signer = key.createSign(alg[1]);
+      signer.update(stringToSign);
+      var sigObj = signer.sign();
+      if (!HASH_ALGOS[sigObj.hashAlgorithm]) {
+        throw (new InvalidAlgorithmError(sigObj.hashAlgorithm.toUpperCase() +
+          ' is not a supported hash algorithm'));
+      }
+      options.algorithm = key.type + '-' + sigObj.hashAlgorithm;
+      signature = sigObj.toString();
+      assert.notStrictEqual(signature, '', 'empty signature produced');
+    }
+
+    request.setHeader('Authorization', sprintf(AUTHZ_FMT,
+                                               options.keyId,
+                                               options.algorithm,
+                                               options.headers.join(' '),
+                                               signature));
+
+    return true;
+  }
+
+};
+
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"./utils":399,"assert-plus":304,"crypto":584,"http":678,"jsprim":419,"sshpk":456,"util":688}],399:[function(_dereq_,module,exports){
+arguments[4][127][0].apply(exports,arguments)
+},{"assert-plus":304,"dup":127,"sshpk":456,"util":688}],400:[function(_dereq_,module,exports){
+arguments[4][128][0].apply(exports,arguments)
+},{"./utils":399,"assert-plus":304,"buffer":574,"crypto":584,"dup":128,"sshpk":456}],401:[function(_dereq_,module,exports){
+arguments[4][129][0].apply(exports,arguments)
+},{"dup":129}],402:[function(_dereq_,module,exports){
+arguments[4][130][0].apply(exports,arguments)
+},{"dup":130}],403:[function(_dereq_,module,exports){
+arguments[4][131][0].apply(exports,arguments)
+},{"./formats":402,"dup":131,"generate-function":374,"generate-object-property":375,"jsonpointer":418,"xtend":404}],404:[function(_dereq_,module,exports){
+arguments[4][132][0].apply(exports,arguments)
+},{"dup":132}],405:[function(_dereq_,module,exports){
+arguments[4][133][0].apply(exports,arguments)
+},{"dup":133}],406:[function(_dereq_,module,exports){
+arguments[4][134][0].apply(exports,arguments)
+},{"dup":134}],407:[function(_dereq_,module,exports){
+arguments[4][135][0].apply(exports,arguments)
+},{"dup":135,"stream":677}],408:[function(_dereq_,module,exports){
+arguments[4][136][0].apply(exports,arguments)
+},{"./lib/curve255":410,"./lib/dh":411,"./lib/eddsa":412,"./lib/utils":413,"dup":136}],409:[function(_dereq_,module,exports){
+arguments[4][137][0].apply(exports,arguments)
+},{"crypto":584,"dup":137}],410:[function(_dereq_,module,exports){
+arguments[4][138][0].apply(exports,arguments)
+},{"./core":409,"./utils":413,"dup":138}],411:[function(_dereq_,module,exports){
+arguments[4][139][0].apply(exports,arguments)
+},{"./core":409,"./curve255":410,"./utils":413,"buffer":574,"dup":139}],412:[function(_dereq_,module,exports){
+(function (Buffer){
+"use strict";
+/**
+ * @fileOverview
+ * Digital signature scheme based on Curve25519 (Ed25519 or EdDSA).
+ */
+
+/*
+ * Copyright (c) 2011, 2012, 2014 Ron Garret
+ * Copyright (c) 2014 Mega Limited
+ * under the MIT License.
+ *
+ * Authors: Guy K. Kloss, Ron Garret
+ *
+ * You should have received a copy of the license along with this program.
+ */
+
+var core = _dereq_('./core');
+var curve255 = _dereq_('./curve255');
+var utils = _dereq_('./utils');
+var BigInteger = _dereq_('jsbn').BigInteger;
+var crypto = _dereq_('crypto');
+
+    /**
+     * @exports jodid25519/eddsa
+     * Digital signature scheme based on Curve25519 (Ed25519 or EdDSA).
+     *
+     * @description
+     * Digital signature scheme based on Curve25519 (Ed25519 or EdDSA).
+     *
+     * <p>
+     * This code is adapted from fast-djbec.js, a faster but more complicated
+     * version of the Ed25519 encryption scheme (as compared to djbec.js).
+     * It uses two different representations for big integers: The jsbn
+     * BigInteger class, which can represent arbitrary-length numbers, and a
+     * special fixed-length representation optimised for 256-bit integers.
+     * The reason both are needed is that the Ed25519 algorithm requires some
+     * 512-bit numbers.</p>
+    */
+    var ns = {};
+
+    function _bi255(value) {
+        if (!(this instanceof _bi255)) {
+            return new _bi255(value);
+        }
+        if (typeof value === 'undefined') {
+            return _ZERO;
+        }
+        var c = value.constructor;
+        if ((c === Array || c === Uint16Array || c === Uint32Array) && (value.length === 16)) {
+            this.n = value;
+        } else if ((c === Array) && (value.length === 32)) {
+            this.n = _bytes2bi255(value).n;
+        } else if (c === String) {
+            this.n = utils.hexDecode(value);
+        } else if (c === Number) {
+            this.n = [value & 0xffff,
+                      value >> 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        } else if (value instanceof _bi255) {
+            this.n = value.n.slice(0); // Copy constructor
+        } else {
+            throw "Bad argument for bignum: " + value;
+        }
+    }
+
+   _bi255.prototype = {
+        'toString' : function() {
+            return utils.hexEncode(this.n);
+        },
+        'toSource' : function() {
+            return '_' + utils.hexEncode(this.n);
+        },
+        'plus' : function(n1) {
+            return _bi255(core.bigintadd(this.n, n1.n));
+        },
+        'minus' : function(n1) {
+            return _bi255(core.bigintsub(this.n, n1.n)).modq();
+        },
+        'times' : function(n1) {
+            return _bi255(core.mulmodp(this.n, n1.n));
+        },
+        'divide' : function(n1) {
+            return this.times(n1.inv());
+        },
+        'sqr' : function() {
+            return _bi255(core.sqrmodp(this.n));
+        },
+        'cmp' : function(n1) {
+            return core.bigintcmp(this.n, n1.n);
+        },
+        'equals' : function(n1) {
+            return this.cmp(n1) === 0;
+        },
+        'isOdd' : function() {
+            return (this.n[0] & 1) === 1;
+        },
+        'shiftLeft' : function(cnt) {
+            _shiftL(this.n, cnt);
+            return this;
+        },
+        'shiftRight' : function(cnt) {
+            _shiftR(this.n, cnt);
+            return this;
+        },
+        'inv' : function() {
+            return _bi255(core.invmodp(this.n));
+        },
+        'pow' : function(e) {
+            return _bi255(_pow(this.n, e.n));
+        },
+        'modq' : function() {
+            return _modq(this);
+        },
+        'bytes' : function() {
+            return _bi255_bytes(this);
+        }
+    };
+
+    function _shiftL(n, cnt) {
+        var lastcarry = 0;
+        for (var i = 0; i < 16; i++) {
+            var carry = n[i] >> (16 - cnt);
+            n[i] = (n[i] << cnt) & 0xffff | lastcarry;
+            lastcarry = carry;
+        }
+        return n;
+    }
+
+    function _shiftR(n, cnt) {
+        var lastcarry = 0;
+        for (var i = 15; i >= 0; i--) {
+            var carry = n[i] << (16 - cnt) & 0xffff;
+            n[i] = (n[i] >> cnt) | lastcarry;
+            lastcarry = carry;
+        }
+        return n;
+    }
+
+    function _bi255_bytes(n) {
+        n = _bi255(n); // Make a copy because shiftRight is destructive
+        var a = new Array(32);
+        for (var i = 31; i >= 0; i--) {
+            a[i] = n.n[0] & 0xff;
+            n.shiftRight(8);
+        }
+        return a;
+    }
+
+    function _bytes2bi255(a) {
+        var n = _ZERO;
+        for (var i = 0; i < 32; i++) {
+            n.shiftLeft(8);
+            n = n.plus(_bi255(a[i]));
+        }
+        return n;
+    }
+
+    function _pow(n, e) {
+        var result = core.ONE();
+        for (var i = 0; i < 256; i++) {
+            if (core.getbit(e, i) === 1) {
+                result = core.mulmodp(result, n);
+            }
+            n = core.sqrmodp(n);
+        }
+        return result;
+    }
+
+    var _ZERO = _bi255(0);
+    var _ONE = _bi255(1);
+    var _TWO = _bi255(2);
+    // This is the core prime.
+    var _Q = _bi255([0xffff - 18, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                     0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                     0xffff, 0xffff, 0x7fff]);
+
+    function _modq(n) {
+        core.reduce(n.n);
+        if (n.cmp(_Q) >= 0) {
+            return _modq(n.minus(_Q));
+        }
+        if (n.cmp(_ZERO) === -1) {
+            return _modq(n.plus(_Q));
+        } else {
+            return n;
+        }
+    }
+
+    // _RECOVERY_EXPONENT = _Q.plus(_bi255(3)).divide(_bi255(8));
+    var _RECOVERY_EXPONENT = _bi255('0ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe');
+    // _D = _Q.minus(_bi255(121665)).divide(_bi255(121666));
+    var _D = _bi255('52036cee2b6ffe738cc740797779e89800700a4d4141d8ab75eb4dca135978a3');
+    // _I = _TWO.pow(_Q.minus(_ONE).divide(_bi255(4)));
+    var _I = _bi255('2b8324804fc1df0b2b4d00993dfbd7a72f431806ad2fe478c4ee1b274a0ea0b0');
+    // _L = _TWO.pow(_bi255(252)).plus(_bi255('14def9dea2f79cd65812631a5cf5d3ed'));
+    var _L = _bi255('1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed');
+    var _L_BI = _bi('1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed', 16);
+
+
+    // ////////////////////////////////////////////////////////////
+
+    function _isoncurve(p) {
+        var x = p[0];
+        var y = p[1];
+        var xsqr = x.sqr();
+        var ysqr = y.sqr();
+        var v = _D.times(xsqr).times(ysqr);
+        return ysqr.minus(xsqr).minus(_ONE).minus(v).modq().equals(_ZERO);
+    }
+
+    function _xrecover(y) {
+        var ysquared = y.sqr();
+        var xx = ysquared.minus(_ONE).divide(_ONE.plus(_D.times(ysquared)));
+        var x = xx.pow(_RECOVERY_EXPONENT);
+        if (!(x.times(x).minus(xx).equals(_ZERO))) {
+            x = x.times(_I);
+        }
+        if (x.isOdd()) {
+            x = _Q.minus(x);
+        }
+        return x;
+    }
+
+    function _x_pt_add(pt1, pt2) {
+        var x1 = pt1[0];
+        var y1 = pt1[1];
+        var z1 = pt1[2];
+        var t1 = pt1[3];
+        var x2 = pt2[0];
+        var y2 = pt2[1];
+        var z2 = pt2[2];
+        var t2 = pt2[3];
+        var A = y1.minus(x1).times(y2.plus(x2));
+        var B = y1.plus(x1).times(y2.minus(x2));
+        var C = z1.times(_TWO).times(t2);
+        var D = t1.times(_TWO).times(z2);
+        var E = D.plus(C);
+        var F = B.minus(A);
+        var G = B.plus(A);
+        var H = D.minus(C);
+        return [E.times(F), G.times(H), F.times(G), E.times(H)];
+    }
+
+    function _xpt_double(pt1) {
+        var x1 = pt1[0];
+        var y1 = pt1[1];
+        var z1 = pt1[2];
+        var A = x1.times(x1);
+        var B = y1.times(y1);
+        var C = _TWO.times(z1).times(z1);
+        var D = _Q.minus(A);
+        var J = x1.plus(y1);
+        var E = J.times(J).minus(A).minus(B);
+        var G = D.plus(B);
+        var F = G.minus(C);
+        var H = D.minus(B);
+        return [E.times(F), G.times(H), F.times(G), E.times(H)];
+    }
+
+    function _xpt_mult(pt, n) {
+        if (n.equals(_ZERO)) {
+            return [_ZERO, _ONE, _ONE, _ZERO];
+        }
+        var odd = n.isOdd();
+        n.shiftRight(1);
+        var value = _xpt_double(_xpt_mult(pt, n));
+        return odd ? _x_pt_add(value, pt) : value;
+    }
+
+    function _pt_xform(pt) {
+        var x = pt[0];
+        var y = pt[1];
+        return [x, y, _ONE, x.times(y)];
+    }
+
+    function _pt_unxform(pt) {
+        var x = pt[0];
+        var y = pt[1];
+        var z = pt[2];
+        var invz = z.inv();
+        return [x.times(invz), y.times(invz)];
+    }
+
+    function _scalarmult(pt, n) {
+        return _pt_unxform(_xpt_mult(_pt_xform(pt), n));
+    }
+
+    function _bytesgetbit(bytes, n) {
+        return (bytes[bytes.length - (n >>> 3) - 1] >> (n & 7)) & 1;
+    }
+
+    function _xpt_mult_bytes(pt, bytes) {
+        var r = [_ZERO, _ONE, _ONE, _ZERO];
+        for (var i = (bytes.length << 3) - 1; i >= 0; i--) {
+            r = _xpt_double(r);
+            if (_bytesgetbit(bytes, i) === 1) {
+                r = _x_pt_add(r, pt);
+            }
+        }
+        return r;
+    }
+
+    function _scalarmultBytes(pt, bytes) {
+        return _pt_unxform(_xpt_mult_bytes(_pt_xform(pt), bytes));
+    }
+
+    var _by = _bi255(4).divide(_bi255(5));
+    var _bx = _xrecover(_by);
+    var _bp = [_bx, _by];
+
+    function _encodeint(n) {
+        return n.bytes(32).reverse();
+    }
+    function _decodeint(b) {
+        return _bi255(b.slice(0).reverse());
+    }
+
+    function _encodepoint(p) {
+        var v = _encodeint(p[1]);
+        if (p[0].isOdd()) {
+            v[31] |= 0x80;
+        }
+        return v;
+    }
+
+    function _decodepoint(v) {
+        v = v.slice(0);
+        var signbit = v[31] >> 7;
+        v[31] &= 127;
+        var y = _decodeint(v);
+        var x = _xrecover(y);
+        if ((x.n[0] & 1) !== signbit) {
+            x = _Q.minus(x);
+        }
+        var p = [x, y];
+        if (!_isoncurve(p)) {
+            throw ('Point is not on curve');
+        }
+        return p;
+    }
+
+    // //////////////////////////////////////////////////
+
+    /**
+     * Factory function to create a suitable BigInteger.
+     *
+     * @param value
+     *     The value for the big integer.
+     * @param base {integer}
+     *     Base of the conversion of elements in ``value``.
+     * @returns
+     *     A BigInteger object.
+     */
+    function _bi(value, base) {
+        if (base !== undefined) {
+            if (base === 256) {
+                return _bi(utils.string2bytes(value));
+            }
+            return new BigInteger(value, base);
+        } else if (typeof value === 'string') {
+            return new BigInteger(value, 10);
+        } else if ((value instanceof Array) || (value instanceof Uint8Array)
+          || Buffer.isBuffer(value)) {
+            return new BigInteger(value);
+        } else if (typeof value === 'number') {
+            return new BigInteger(value.toString(), 10);
+        } else {
+            throw "Can't convert " + value + " to BigInteger";
+        }
+    }
+
+    function _bi2bytes(n, cnt) {
+        if (cnt === undefined) {
+            cnt = (n.bitLength() + 7) >>> 3;
+        }
+        var bytes = new Array(cnt);
+        for (var i = cnt - 1; i >= 0; i--) {
+            bytes[i] = n[0] & 255; // n.and(0xff);
+            n = n.shiftRight(8);
+        }
+        return bytes;
+    }
+
+    BigInteger.prototype.bytes = function(n) {
+        return _bi2bytes(this, n);
+    };
+
+    // /////////////////////////////////////////////////////////
+
+    function _bytehash(s) {
+        var sha = crypto.createHash('sha512').update(s).digest();
+        return _bi2bytes(_bi(sha), 64).reverse();
+    }
+
+    function _stringhash(s) {
+        var sha = crypto.createHash('sha512').update(s).digest();
+        return _map(_chr, _bi2bytes(_bi(sha), 64)).join('');
+    }
+
+    function _inthash(s) {
+        // Need a leading 0 to prevent sign extension
+        return _bi([0].concat(_bytehash(s)));
+    }
+
+    function _inthash_lo(s) {
+        return _bi255(_bytehash(s).slice(32, 64));
+    }
+
+    function _inthash_mod_l(s) {
+        return _inthash(s).mod(_L_BI);
+    }
+
+    function _get_a(sk) {
+        var a = _inthash_lo(sk);
+        a.n[0] &= 0xfff8;
+        a.n[15] &= 0x3fff;
+        a.n[15] |= 0x4000;
+        return a;
+    }
+
+    function _publickey(sk) {
+        return _encodepoint(_scalarmult(_bp, _get_a(sk)));
+    }
+
+    function _map(f, l) {
+        var result = new Array(l.length);
+        for (var i = 0; i < l.length; i++) {
+            result[i] = f(l[i]);
+        }
+        return result;
+    }
+
+    function _chr(n) {
+        return String.fromCharCode(n);
+    }
+
+    function _ord(c) {
+        return c.charCodeAt(0);
+    }
+
+    function _pt_add(p1, p2) {
+        return _pt_unxform(_x_pt_add(_pt_xform(p1), _pt_xform(p2)));
+    }
+
+
+    // Exports for the API.
+
+    /**
+     * Checks whether a point is on the curve.
+     *
+     * @function
+     * @param point {string}
+     *     The point to check for in a byte string representation.
+     * @returns {boolean}
+     *     true if the point is on the curve, false otherwise.
+     */
+    ns.isOnCurve = function(point) {
+        try {
+            _isoncurve(_decodepoint(utils.string2bytes(point)));
+        } catch(e) {
+            if (e === 'Point is not on curve') {
+                return false;
+            } else {
+                throw e;
+            }
+        }
+        return true;
+    };
+
+
+    /**
+     * Computes the EdDSA public key.
+     *
+     * <p>Note: Seeds should be a byte string, not a unicode string containing
+     * multi-byte characters.</p>
+     *
+     * @function
+     * @param keySeed {string}
+     *     Private key seed in the form of a byte string.
+     * @returns {string}
+     *     Public key as byte string computed from the private key seed
+     *     (32 bytes).
+     */
+    ns.publicKey = function(keySeed) {
+        return utils.bytes2string(_publickey(keySeed));
+    };
+
+
+    /**
+     * Computes an EdDSA signature of a message.
+     *
+     * <p>Notes:</p>
+     *
+     * <ul>
+     *   <li>Unicode messages need to be converted to a byte representation
+     *   (e. g. UTF-8).</li>
+     *   <li>If `publicKey` is given, and it is *not* a point of the curve,
+     *   the signature will be faulty, but no error will be thrown.</li>
+     * </ul>
+     *
+     * @function
+     * @param message {string}
+     *     Message in the form of a byte string.
+     * @param keySeed {string}
+     *     Private key seed in the form of a byte string.
+     * @param publicKey {string}
+     *     Public key as byte string (if not present, it will be computed from
+     *     the private key seed).
+     * @returns {string}
+     *     Detached message signature in the form of a byte string (64 bytes).
+     */
+    ns.sign = function(message, keySeed, publicKey) {
+        if (publicKey === undefined) {
+            publicKey = _publickey(keySeed);
+        } else {
+            publicKey = utils.string2bytes(publicKey);
+        }
+        var a = _bi(_get_a(keySeed).toString(), 16);
+        var hs = _stringhash(keySeed);
+        var r = _bytehash(hs.slice(32, 64) + message);
+        var rp = _scalarmultBytes(_bp, r);
+        var erp = _encodepoint(rp);
+        r = _bi(r).mod(_bi(1, 10).shiftLeft(512));
+        var s = _map(_chr, erp).join('') + _map(_chr, publicKey).join('') + message;
+        s = _inthash_mod_l(s).multiply(a).add(r).mod(_L_BI);
+        return utils.bytes2string(erp.concat(_encodeint(s)));
+    };
+
+
+    /**
+     * Verifies an EdDSA signature of a message with the public key.
+     *
+     * <p>Note: Unicode messages need to be converted to a byte representation
+     * (e. g. UTF-8).</p>
+     *
+     * @function
+     * @param signature {string}
+     *     Message signature in the form of a byte string. Can be detached
+     *     (64 bytes), or attached to be sliced off.
+     * @param message {string}
+     *     Message in the form of a byte string.
+     * @param publicKey {string}
+     *     Public key as byte string (if not present, it will be computed from
+     *     the private key seed).
+     * @returns {boolean}
+     *     true, if the signature verifies.
+     */
+    ns.verify = function(signature, message, publicKey) {
+        signature = utils.string2bytes(signature.slice(0, 64));
+        publicKey = utils.string2bytes(publicKey);
+        var rpe = signature.slice(0, 32);
+        var rp = _decodepoint(rpe);
+        var a = _decodepoint(publicKey);
+        var s = _decodeint(signature.slice(32, 64));
+        var h = _inthash(utils.bytes2string(rpe.concat(publicKey)) + message);
+        var v1 = _scalarmult(_bp, s);
+        var value = _scalarmultBytes(a, _bi2bytes(h));
+        var v2 = _pt_add(rp, value);
+        return v1[0].equals(v2[0]) && v1[1].equals(v2[1]);
+    };
+
+
+    /**
+     * Generates a new random private key seed of 32 bytes length (256 bit).
+     *
+     * @function
+     * @returns {string}
+     *     Byte string containing a new random private key seed.
+     */
+    ns.generateKeySeed = function() {
+        return core.generateKey(false);
+    };
+
+module.exports = ns;
+
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"./core":409,"./curve255":410,"./utils":413,"crypto":584,"jsbn":415}],413:[function(_dereq_,module,exports){
+arguments[4][141][0].apply(exports,arguments)
+},{"./core":409,"dup":141}],414:[function(_dereq_,module,exports){
+(function (global){
+/*
+ * js-sha256 v0.3.0
+ * https://github.com/emn178/js-sha256
+ *
+ * Copyright 2014-2015, emn178@gmail.com
+ *
+ * Licensed under the MIT license:
+ * http://www.opensource.org/licenses/MIT
+ */
+;(function(root, undefined) {
+  'use strict';
+
+  var NODE_JS = typeof(module) != 'undefined';
+  if(NODE_JS) {
+    root = global;
+  }
+  var TYPED_ARRAY = typeof(Uint8Array) != 'undefined';
+  var HEX_CHARS = '0123456789abcdef'.split('');
+  var EXTRA = [-2147483648, 8388608, 32768, 128];
+  var SHIFT = [24, 16, 8, 0];
+  var K =[0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+          0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+          0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+          0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+          0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+          0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+          0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+          0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2];
+
+  var blocks = [];
+
+  var sha224 = function(message) {
+    return sha256(message, true);
+  };
+
+  var sha256 = function(message, is224) {
+    var notString = typeof(message) != 'string';
+    if(notString && message.constructor == root.ArrayBuffer) {
+      message = new Uint8Array(message);
+    }
+
+    var h0, h1, h2, h3, h4, h5, h6, h7, block, code, first = true, end = false,
+        i, j, index = 0, start = 0, bytes = 0, length = message.length,
+        s0, s1, maj, t1, t2, ch, ab, da, cd, bc;
+
+    if(is224) {
+      h0 = 0xc1059ed8;
+      h1 = 0x367cd507;
+      h2 = 0x3070dd17;
+      h3 = 0xf70e5939;
+      h4 = 0xffc00b31;
+      h5 = 0x68581511;
+      h6 = 0x64f98fa7;
+      h7 = 0xbefa4fa4;
+    } else { // 256
+      h0 = 0x6a09e667;
+      h1 = 0xbb67ae85;
+      h2 = 0x3c6ef372;
+      h3 = 0xa54ff53a;
+      h4 = 0x510e527f;
+      h5 = 0x9b05688c;
+      h6 = 0x1f83d9ab;
+      h7 = 0x5be0cd19;
+    }
+    block = 0;
+    do {
+      blocks[0] = block;
+      blocks[16] = blocks[1] = blocks[2] = blocks[3] =
+      blocks[4] = blocks[5] = blocks[6] = blocks[7] =
+      blocks[8] = blocks[9] = blocks[10] = blocks[11] =
+      blocks[12] = blocks[13] = blocks[14] = blocks[15] = 0;
+      if(notString) {
+        for (i = start;index < length && i < 64; ++index) {
+          blocks[i >> 2] |= message[index] << SHIFT[i++ & 3];
+        }
+      } else {
+        for (i = start;index < length && i < 64; ++index) {
+          code = message.charCodeAt(index);
+          if (code < 0x80) {
+            blocks[i >> 2] |= code << SHIFT[i++ & 3];
+          } else if (code < 0x800) {
+            blocks[i >> 2] |= (0xc0 | (code >> 6)) << SHIFT[i++ & 3];
+            blocks[i >> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
+          } else if (code < 0xd800 || code >= 0xe000) {
+            blocks[i >> 2] |= (0xe0 | (code >> 12)) << SHIFT[i++ & 3];
+            blocks[i >> 2] |= (0x80 | ((code >> 6) & 0x3f)) << SHIFT[i++ & 3];
+            blocks[i >> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
+          } else {
+            code = 0x10000 + (((code & 0x3ff) << 10) | (message.charCodeAt(++index) & 0x3ff));
+            blocks[i >> 2] |= (0xf0 | (code >> 18)) << SHIFT[i++ & 3];
+            blocks[i >> 2] |= (0x80 | ((code >> 12) & 0x3f)) << SHIFT[i++ & 3];
+            blocks[i >> 2] |= (0x80 | ((code >> 6) & 0x3f)) << SHIFT[i++ & 3];
+            blocks[i >> 2] |= (0x80 | (code & 0x3f)) << SHIFT[i++ & 3];
+          }
+        }
+      }
+      bytes += i - start;
+      start = i - 64;
+      if(index == length) {
+        blocks[i >> 2] |= EXTRA[i & 3];
+        ++index;
+      }
+      block = blocks[16];
+      if(index > length && i < 56) {
+        blocks[15] = bytes << 3;
+        end = true;
+      }
+
+      var a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+      for(j = 16;j < 64;++j) {
+        // rightrotate
+        t1 = blocks[j - 15];
+        s0 = ((t1 >>> 7) | (t1 << 25)) ^ ((t1 >>> 18) | (t1 << 14)) ^ (t1 >>> 3);
+        t1 = blocks[j - 2];
+        s1 = ((t1 >>> 17) | (t1 << 15)) ^ ((t1 >>> 19) | (t1 << 13)) ^ (t1 >>> 10);
+        blocks[j] = blocks[j - 16] + s0 + blocks[j - 7] + s1 << 0;
+      }
+
+      bc = b & c;
+      for(j = 0;j < 64;j += 4) {
+        if(first) {
+          if(is224) {
+            ab = 300032;
+            t1 = blocks[0] - 1413257819;
+            h = t1 - 150054599 << 0;
+            d = t1 + 24177077 << 0;
+          } else {
+            ab = 704751109;
+            t1 = blocks[0] - 210244248;
+            h = t1 - 1521486534 << 0;
+            d = t1 + 143694565 << 0;
+          }
+          first = false;
+        } else {
+          s0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+          s1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+          ab = a & b;
+          maj = ab ^ (a & c) ^ bc;
+          ch = (e & f) ^ (~e & g);
+          t1 = h + s1 + ch + K[j] + blocks[j];
+          t2 = s0 + maj;
+          h = d + t1 << 0;
+          d = t1 + t2 << 0;
+        }
+        s0 = ((d >>> 2) | (d << 30)) ^ ((d >>> 13) | (d << 19)) ^ ((d >>> 22) | (d << 10));
+        s1 = ((h >>> 6) | (h << 26)) ^ ((h >>> 11) | (h << 21)) ^ ((h >>> 25) | (h << 7));
+        da = d & a;
+        maj = da ^ (d & b) ^ ab;
+        ch = (h & e) ^ (~h & f);
+        t1 = g + s1 + ch + K[j + 1] + blocks[j + 1];
+        t2 = s0 + maj;
+        g = c + t1 << 0;
+        c = t1 + t2 << 0;
+        s0 = ((c >>> 2) | (c << 30)) ^ ((c >>> 13) | (c << 19)) ^ ((c >>> 22) | (c << 10));
+        s1 = ((g >>> 6) | (g << 26)) ^ ((g >>> 11) | (g << 21)) ^ ((g >>> 25) | (g << 7));
+        cd = c & d;
+        maj = cd ^ (c & a) ^ da;
+        ch = (g & h) ^ (~g & e);
+        t1 = f + s1 + ch + K[j + 2] + blocks[j + 2];
+        t2 = s0 + maj;
+        f = b + t1 << 0;
+        b = t1 + t2 << 0;
+        s0 = ((b >>> 2) | (b << 30)) ^ ((b >>> 13) | (b << 19)) ^ ((b >>> 22) | (b << 10));
+        s1 = ((f >>> 6) | (f << 26)) ^ ((f >>> 11) | (f << 21)) ^ ((f >>> 25) | (f << 7));
+        bc = b & c;
+        maj = bc ^ (b & d) ^ cd;
+        ch = (f & g) ^ (~f & h);
+        t1 = e + s1 + ch + K[j + 3] + blocks[j + 3];
+        t2 = s0 + maj;
+        e = a + t1 << 0;
+        a = t1 + t2 << 0;
+      }
+
+      h0 = h0 + a << 0;
+      h1 = h1 + b << 0;
+      h2 = h2 + c << 0;
+      h3 = h3 + d << 0;
+      h4 = h4 + e << 0;
+      h5 = h5 + f << 0;
+      h6 = h6 + g << 0;
+      h7 = h7 + h << 0;
+    } while(!end);
+
+    var hex = HEX_CHARS[(h0 >> 28) & 0x0F] + HEX_CHARS[(h0 >> 24) & 0x0F] +
+              HEX_CHARS[(h0 >> 20) & 0x0F] + HEX_CHARS[(h0 >> 16) & 0x0F] +
+              HEX_CHARS[(h0 >> 12) & 0x0F] + HEX_CHARS[(h0 >> 8) & 0x0F] +
+              HEX_CHARS[(h0 >> 4) & 0x0F] + HEX_CHARS[h0 & 0x0F] +
+              HEX_CHARS[(h1 >> 28) & 0x0F] + HEX_CHARS[(h1 >> 24) & 0x0F] +
+              HEX_CHARS[(h1 >> 20) & 0x0F] + HEX_CHARS[(h1 >> 16) & 0x0F] +
+              HEX_CHARS[(h1 >> 12) & 0x0F] + HEX_CHARS[(h1 >> 8) & 0x0F] +
+              HEX_CHARS[(h1 >> 4) & 0x0F] + HEX_CHARS[h1 & 0x0F] +
+              HEX_CHARS[(h2 >> 28) & 0x0F] + HEX_CHARS[(h2 >> 24) & 0x0F] +
+              HEX_CHARS[(h2 >> 20) & 0x0F] + HEX_CHARS[(h2 >> 16) & 0x0F] +
+              HEX_CHARS[(h2 >> 12) & 0x0F] + HEX_CHARS[(h2 >> 8) & 0x0F] +
+              HEX_CHARS[(h2 >> 4) & 0x0F] + HEX_CHARS[h2 & 0x0F] +
+              HEX_CHARS[(h3 >> 28) & 0x0F] + HEX_CHARS[(h3 >> 24) & 0x0F] +
+              HEX_CHARS[(h3 >> 20) & 0x0F] + HEX_CHARS[(h3 >> 16) & 0x0F] +
+              HEX_CHARS[(h3 >> 12) & 0x0F] + HEX_CHARS[(h3 >> 8) & 0x0F] +
+              HEX_CHARS[(h3 >> 4) & 0x0F] + HEX_CHARS[h3 & 0x0F] +
+              HEX_CHARS[(h4 >> 28) & 0x0F] + HEX_CHARS[(h4 >> 24) & 0x0F] +
+              HEX_CHARS[(h4 >> 20) & 0x0F] + HEX_CHARS[(h4 >> 16) & 0x0F] +
+              HEX_CHARS[(h4 >> 12) & 0x0F] + HEX_CHARS[(h4 >> 8) & 0x0F] +
+              HEX_CHARS[(h4 >> 4) & 0x0F] + HEX_CHARS[h4 & 0x0F] +
+              HEX_CHARS[(h5 >> 28) & 0x0F] + HEX_CHARS[(h5 >> 24) & 0x0F] +
+              HEX_CHARS[(h5 >> 20) & 0x0F] + HEX_CHARS[(h5 >> 16) & 0x0F] +
+              HEX_CHARS[(h5 >> 12) & 0x0F] + HEX_CHARS[(h5 >> 8) & 0x0F] +
+              HEX_CHARS[(h5 >> 4) & 0x0F] + HEX_CHARS[h5 & 0x0F] +
+              HEX_CHARS[(h6 >> 28) & 0x0F] + HEX_CHARS[(h6 >> 24) & 0x0F] +
+              HEX_CHARS[(h6 >> 20) & 0x0F] + HEX_CHARS[(h6 >> 16) & 0x0F] +
+              HEX_CHARS[(h6 >> 12) & 0x0F] + HEX_CHARS[(h6 >> 8) & 0x0F] +
+              HEX_CHARS[(h6 >> 4) & 0x0F] + HEX_CHARS[h6 & 0x0F];
+    if(!is224) {
+      hex += HEX_CHARS[(h7 >> 28) & 0x0F] + HEX_CHARS[(h7 >> 24) & 0x0F] +
+             HEX_CHARS[(h7 >> 20) & 0x0F] + HEX_CHARS[(h7 >> 16) & 0x0F] +
+             HEX_CHARS[(h7 >> 12) & 0x0F] + HEX_CHARS[(h7 >> 8) & 0x0F] +
+             HEX_CHARS[(h7 >> 4) & 0x0F] + HEX_CHARS[h7 & 0x0F];
+    }
+    return hex;
+  };
+  
+  if(!root.JS_SHA256_TEST && NODE_JS) {
+    sha256.sha256 = sha256;
+    sha256.sha224 = sha224;
+    module.exports = sha256;
+  } else if(root) {
+    root.sha256 = sha256;
+    root.sha224 = sha224;
+  }
+}(this));
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],415:[function(_dereq_,module,exports){
+arguments[4][143][0].apply(exports,arguments)
+},{"dup":143}],416:[function(_dereq_,module,exports){
+arguments[4][144][0].apply(exports,arguments)
+},{"dup":144}],417:[function(_dereq_,module,exports){
+arguments[4][145][0].apply(exports,arguments)
+},{"dup":145}],418:[function(_dereq_,module,exports){
+arguments[4][146][0].apply(exports,arguments)
+},{"dup":146}],419:[function(_dereq_,module,exports){
+/*
+ * lib/jsprim.js: utilities for primitive JavaScript types
+ */
+
+var mod_assert = _dereq_('assert');
+var mod_util = _dereq_('util');
+
+var mod_extsprintf = _dereq_('extsprintf');
+var mod_verror = _dereq_('verror');
+var mod_jsonschema = _dereq_('json-schema');
+
+/*
+ * Public interface
+ */
+exports.deepCopy = deepCopy;
+exports.deepEqual = deepEqual;
+exports.isEmpty = isEmpty;
+exports.forEachKey = forEachKey;
+exports.pluck = pluck;
+exports.flattenObject = flattenObject;
+exports.flattenIter = flattenIter;
+exports.validateJsonObject = validateJsonObjectJS;
+exports.validateJsonObjectJS = validateJsonObjectJS;
+exports.randElt = randElt;
+exports.extraProperties = extraProperties;
+exports.mergeObjects = mergeObjects;
+
+exports.startsWith = startsWith;
+exports.endsWith = endsWith;
+
+exports.iso8601 = iso8601;
+exports.rfc1123 = rfc1123;
+exports.parseDateTime = parseDateTime;
+
+exports.hrtimediff = hrtimeDiff;
+exports.hrtimeDiff = hrtimeDiff;
+exports.hrtimeAccum = hrtimeAccum;
+exports.hrtimeAdd = hrtimeAdd;
+exports.hrtimeNanosec = hrtimeNanosec;
+exports.hrtimeMicrosec = hrtimeMicrosec;
+exports.hrtimeMillisec = hrtimeMillisec;
+
+
+/*
+ * Deep copy an acyclic *basic* Javascript object.  This only handles basic
+ * scalars (strings, numbers, booleans) and arbitrarily deep arrays and objects
+ * containing these.  This does *not* handle instances of other classes.
+ */
+function deepCopy(obj)
+{
+	var ret, key;
+	var marker = '__deepCopy';
+
+	if (obj && obj[marker])
+		throw (new Error('attempted deep copy of cyclic object'));
+
+	if (obj && obj.constructor == Object) {
+		ret = {};
+		obj[marker] = true;
+
+		for (key in obj) {
+			if (key == marker)
+				continue;
+
+			ret[key] = deepCopy(obj[key]);
+		}
+
+		delete (obj[marker]);
+		return (ret);
+	}
+
+	if (obj && obj.constructor == Array) {
+		ret = [];
+		obj[marker] = true;
+
+		for (key = 0; key < obj.length; key++)
+			ret.push(deepCopy(obj[key]));
+
+		delete (obj[marker]);
+		return (ret);
+	}
+
+	/*
+	 * It must be a primitive type -- just return it.
+	 */
+	return (obj);
+}
+
+function deepEqual(obj1, obj2)
+{
+	if (typeof (obj1) != typeof (obj2))
+		return (false);
+
+	if (obj1 === null || obj2 === null || typeof (obj1) != 'object')
+		return (obj1 === obj2);
+
+	if (obj1.constructor != obj2.constructor)
+		return (false);
+
+	var k;
+	for (k in obj1) {
+		if (!obj2.hasOwnProperty(k))
+			return (false);
+
+		if (!deepEqual(obj1[k], obj2[k]))
+			return (false);
+	}
+
+	for (k in obj2) {
+		if (!obj1.hasOwnProperty(k))
+			return (false);
+	}
+
+	return (true);
+}
+
+function isEmpty(obj)
+{
+	var key;
+	for (key in obj)
+		return (false);
+	return (true);
+}
+
+function forEachKey(obj, callback)
+{
+	for (var key in obj)
+		callback(key, obj[key]);
+}
+
+function pluck(obj, key)
+{
+	mod_assert.equal(typeof (key), 'string');
+	return (pluckv(obj, key));
+}
+
+function pluckv(obj, key)
+{
+	if (obj === null || typeof (obj) !== 'object')
+		return (undefined);
+
+	if (obj.hasOwnProperty(key))
+		return (obj[key]);
+
+	var i = key.indexOf('.');
+	if (i == -1)
+		return (undefined);
+
+	var key1 = key.substr(0, i);
+	if (!obj.hasOwnProperty(key1))
+		return (undefined);
+
+	return (pluckv(obj[key1], key.substr(i + 1)));
+}
+
+/*
+ * Invoke callback(row) for each entry in the array that would be returned by
+ * flattenObject(data, depth).  This is just like flattenObject(data,
+ * depth).forEach(callback), except that the intermediate array is never
+ * created.
+ */
+function flattenIter(data, depth, callback)
+{
+	doFlattenIter(data, depth, [], callback);
+}
+
+function doFlattenIter(data, depth, accum, callback)
+{
+	var each;
+	var key;
+
+	if (depth === 0) {
+		each = accum.slice(0);
+		each.push(data);
+		callback(each);
+		return;
+	}
+
+	mod_assert.ok(data !== null);
+	mod_assert.equal(typeof (data), 'object');
+	mod_assert.equal(typeof (depth), 'number');
+	mod_assert.ok(depth >= 0);
+
+	for (key in data) {
+		each = accum.slice(0);
+		each.push(key);
+		doFlattenIter(data[key], depth - 1, each, callback);
+	}
+}
+
+function flattenObject(data, depth)
+{
+	if (depth === 0)
+		return ([ data ]);
+
+	mod_assert.ok(data !== null);
+	mod_assert.equal(typeof (data), 'object');
+	mod_assert.equal(typeof (depth), 'number');
+	mod_assert.ok(depth >= 0);
+
+	var rv = [];
+	var key;
+
+	for (key in data) {
+		flattenObject(data[key], depth - 1).forEach(function (p) {
+			rv.push([ key ].concat(p));
+		});
+	}
+
+	return (rv);
+}
+
+function startsWith(str, prefix)
+{
+	return (str.substr(0, prefix.length) == prefix);
+}
+
+function endsWith(str, suffix)
+{
+	return (str.substr(
+	    str.length - suffix.length, suffix.length) == suffix);
+}
+
+function iso8601(d)
+{
+	if (typeof (d) == 'number')
+		d = new Date(d);
+	mod_assert.ok(d.constructor === Date);
+	return (mod_extsprintf.sprintf('%4d-%02d-%02dT%02d:%02d:%02d.%03dZ',
+	    d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(),
+	    d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(),
+	    d.getUTCMilliseconds()));
+}
+
+var RFC1123_MONTHS = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+var RFC1123_DAYS = [
+    'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function rfc1123(date) {
+	return (mod_extsprintf.sprintf('%s, %02d %s %04d %02d:%02d:%02d GMT',
+	    RFC1123_DAYS[date.getUTCDay()], date.getUTCDate(),
+	    RFC1123_MONTHS[date.getUTCMonth()], date.getUTCFullYear(),
+	    date.getUTCHours(), date.getUTCMinutes(),
+	    date.getUTCSeconds()));
+}
+
+/*
+ * Parses a date expressed as a string, as either a number of milliseconds since
+ * the epoch or any string format that Date accepts, giving preference to the
+ * former where these two sets overlap (e.g., small numbers).
+ */
+function parseDateTime(str)
+{
+	/*
+	 * This is irritatingly implicit, but significantly more concise than
+	 * alternatives.  The "+str" will convert a string containing only a
+	 * number directly to a Number, or NaN for other strings.  Thus, if the
+	 * conversion succeeds, we use it (this is the milliseconds-since-epoch
+	 * case).  Otherwise, we pass the string directly to the Date
+	 * constructor to parse.
+	 */
+	var numeric = +str;
+	if (!isNaN(numeric)) {
+		return (new Date(numeric));
+	} else {
+		return (new Date(str));
+	}
+}
+
+function validateJsonObjectJS(schema, input)
+{
+	var report = mod_jsonschema.validate(input, schema);
+
+	if (report.errors.length === 0)
+		return (null);
+
+	/* Currently, we only do anything useful with the first error. */
+	var error = report.errors[0];
+
+	/* The failed property is given by a URI with an irrelevant prefix. */
+	var propname = error['property'];
+	var reason = error['message'].toLowerCase();
+	var i, j;
+
+	/*
+	 * There's at least one case where the property error message is
+	 * confusing at best.  We work around this here.
+	 */
+	if ((i = reason.indexOf('the property ')) != -1 &&
+	    (j = reason.indexOf(' is not defined in the schema and the ' +
+	    'schema does not allow additional properties')) != -1) {
+		i += 'the property '.length;
+		if (propname === '')
+			propname = reason.substr(i, j - i);
+		else
+			propname = propname + '.' + reason.substr(i, j - i);
+
+		reason = 'unsupported property';
+	}
+
+	var rv = new mod_verror.VError('property "%s": %s', propname, reason);
+	rv.jsv_details = error;
+	return (rv);
+}
+
+function randElt(arr)
+{
+	mod_assert.ok(Array.isArray(arr) && arr.length > 0,
+	    'randElt argument must be a non-empty array');
+
+	return (arr[Math.floor(Math.random() * arr.length)]);
+}
+
+function assertHrtime(a)
+{
+	mod_assert.ok(a[0] >= 0 && a[1] >= 0,
+	    'negative numbers not allowed in hrtimes');
+	mod_assert.ok(a[1] < 1e9, 'nanoseconds column overflow');
+}
+
+/*
+ * Compute the time elapsed between hrtime readings A and B, where A is later
+ * than B.  hrtime readings come from Node's process.hrtime().  There is no
+ * defined way to represent negative deltas, so it's illegal to diff B from A
+ * where the time denoted by B is later than the time denoted by A.  If this
+ * becomes valuable, we can define a representation and extend the
+ * implementation to support it.
+ */
+function hrtimeDiff(a, b)
+{
+	assertHrtime(a);
+	assertHrtime(b);
+	mod_assert.ok(a[0] > b[0] || (a[0] == b[0] && a[1] >= b[1]),
+	    'negative differences not allowed');
+
+	var rv = [ a[0] - b[0], 0 ];
+
+	if (a[1] >= b[1]) {
+		rv[1] = a[1] - b[1];
+	} else {
+		rv[0]--;
+		rv[1] = 1e9 - (b[1] - a[1]);
+	}
+
+	return (rv);
+}
+
+/*
+ * Convert a hrtime reading from the array format returned by Node's
+ * process.hrtime() into a scalar number of nanoseconds.
+ */
+function hrtimeNanosec(a)
+{
+	assertHrtime(a);
+
+	return (Math.floor(a[0] * 1e9 + a[1]));
+}
+
+/*
+ * Convert a hrtime reading from the array format returned by Node's
+ * process.hrtime() into a scalar number of microseconds.
+ */
+function hrtimeMicrosec(a)
+{
+	assertHrtime(a);
+
+	return (Math.floor(a[0] * 1e6 + a[1] / 1e3));
+}
+
+/*
+ * Convert a hrtime reading from the array format returned by Node's
+ * process.hrtime() into a scalar number of milliseconds.
+ */
+function hrtimeMillisec(a)
+{
+	assertHrtime(a);
+
+	return (Math.floor(a[0] * 1e3 + a[1] / 1e6));
+}
+
+/*
+ * Add two hrtime readings A and B, overwriting A with the result of the
+ * addition.  This function is useful for accumulating several hrtime intervals
+ * into a counter.  Returns A.
+ */
+function hrtimeAccum(a, b)
+{
+	assertHrtime(a);
+	assertHrtime(b);
+
+	/*
+	 * Accumulate the nanosecond component.
+	 */
+	a[1] += b[1];
+	if (a[1] >= 1e9) {
+		/*
+		 * The nanosecond component overflowed, so carry to the seconds
+		 * field.
+		 */
+		a[0]++;
+		a[1] -= 1e9;
+	}
+
+	/*
+	 * Accumulate the seconds component.
+	 */
+	a[0] += b[0];
+
+	return (a);
+}
+
+/*
+ * Add two hrtime readings A and B, returning the result as a new hrtime array.
+ * Does not modify either input argument.
+ */
+function hrtimeAdd(a, b)
+{
+	assertHrtime(a);
+
+	var rv = [ a[0], a[1] ];
+
+	return (hrtimeAccum(rv, b));
+}
+
+
+/*
+ * Check an object for unexpected properties.  Accepts the object to check, and
+ * an array of allowed property names (strings).  Returns an array of key names
+ * that were found on the object, but did not appear in the list of allowed
+ * properties.  If no properties were found, the returned array will be of
+ * zero length.
+ */
+function extraProperties(obj, allowed)
+{
+	mod_assert.ok(typeof (obj) === 'object' && obj !== null,
+	    'obj argument must be a non-null object');
+	mod_assert.ok(Array.isArray(allowed),
+	    'allowed argument must be an array of strings');
+	for (var i = 0; i < allowed.length; i++) {
+		mod_assert.ok(typeof (allowed[i]) === 'string',
+		    'allowed argument must be an array of strings');
+	}
+
+	return (Object.keys(obj).filter(function (key) {
+		return (allowed.indexOf(key) === -1);
+	}));
+}
+
+/*
+ * Given three sets of properties "provided" (may be undefined), "overrides"
+ * (required), and "defaults" (may be undefined), construct an object containing
+ * the union of these sets with "overrides" overriding "provided", and
+ * "provided" overriding "defaults".  None of the input objects are modified.
+ */
+function mergeObjects(provided, overrides, defaults)
+{
+	var rv, k;
+
+	rv = {};
+	if (defaults) {
+		for (k in defaults)
+			rv[k] = defaults[k];
+	}
+
+	if (provided) {
+		for (k in provided)
+			rv[k] = provided[k];
+	}
+
+	if (overrides) {
+		for (k in overrides)
+			rv[k] = overrides[k];
+	}
+
+	return (rv);
+}
+
+},{"assert":542,"extsprintf":371,"json-schema":416,"util":688,"verror":476}],420:[function(_dereq_,module,exports){
+arguments[4][173][0].apply(exports,arguments)
+},{"dup":173}],421:[function(_dereq_,module,exports){
+arguments[4][174][0].apply(exports,arguments)
+},{"./db.json":420,"dup":174}],422:[function(_dereq_,module,exports){
+arguments[4][175][0].apply(exports,arguments)
+},{"dup":175,"mime-db":421,"path":643}],423:[function(_dereq_,module,exports){
+arguments[4][176][0].apply(exports,arguments)
+},{"buffer":574,"crypto":584,"dup":176}],424:[function(_dereq_,module,exports){
+arguments[4][177][0].apply(exports,arguments)
+},{"crypto":584,"dup":177,"querystring":656}],425:[function(_dereq_,module,exports){
+arguments[4][178][0].apply(exports,arguments)
+},{"dup":178,"pinkie":426}],426:[function(_dereq_,module,exports){
+arguments[4][179][0].apply(exports,arguments)
+},{"dup":179}],427:[function(_dereq_,module,exports){
+arguments[4][180][0].apply(exports,arguments)
+},{"_process":646,"dup":180}],428:[function(_dereq_,module,exports){
+arguments[4][181][0].apply(exports,arguments)
+},{"./lib/cookies":430,"./lib/helpers":433,"./request":443,"dup":181,"extend":370}],429:[function(_dereq_,module,exports){
+arguments[4][182][0].apply(exports,arguments)
+},{"./helpers":433,"caseless":316,"dup":182,"node-uuid":423}],430:[function(_dereq_,module,exports){
+arguments[4][183][0].apply(exports,arguments)
+},{"dup":183,"tough-cookie":465}],431:[function(_dereq_,module,exports){
+arguments[4][184][0].apply(exports,arguments)
+},{"_process":646,"dup":184}],432:[function(_dereq_,module,exports){
+arguments[4][185][0].apply(exports,arguments)
+},{"dup":185,"extend":370,"fs":527,"har-validator":377,"querystring":656}],433:[function(_dereq_,module,exports){
+arguments[4][186][0].apply(exports,arguments)
+},{"_process":646,"buffer":574,"crypto":584,"dup":186,"json-stringify-safe":417}],434:[function(_dereq_,module,exports){
+arguments[4][187][0].apply(exports,arguments)
+},{"buffer":574,"combined-stream":317,"dup":187,"isstream":407,"node-uuid":423}],435:[function(_dereq_,module,exports){
+arguments[4][188][0].apply(exports,arguments)
+},{"buffer":574,"caseless":316,"crypto":584,"dup":188,"node-uuid":423,"oauth-sign":424,"qs":439,"url":684}],436:[function(_dereq_,module,exports){
+arguments[4][189][0].apply(exports,arguments)
+},{"dup":189,"qs":439,"querystring":656}],437:[function(_dereq_,module,exports){
+arguments[4][190][0].apply(exports,arguments)
+},{"dup":190,"url":684}],438:[function(_dereq_,module,exports){
+arguments[4][191][0].apply(exports,arguments)
+},{"dup":191,"tunnel-agent":472,"url":684}],439:[function(_dereq_,module,exports){
+arguments[4][192][0].apply(exports,arguments)
+},{"./parse":440,"./stringify":441,"dup":192}],440:[function(_dereq_,module,exports){
+arguments[4][193][0].apply(exports,arguments)
+},{"./utils":442,"dup":193}],441:[function(_dereq_,module,exports){
+arguments[4][194][0].apply(exports,arguments)
+},{"./utils":442,"dup":194}],442:[function(_dereq_,module,exports){
+arguments[4][195][0].apply(exports,arguments)
+},{"dup":195}],443:[function(_dereq_,module,exports){
+arguments[4][196][0].apply(exports,arguments)
+},{"./lib/auth":429,"./lib/cookies":430,"./lib/getProxyFromURI":431,"./lib/har":432,"./lib/helpers":433,"./lib/multipart":434,"./lib/oauth":435,"./lib/querystring":436,"./lib/redirect":437,"./lib/tunnel":438,"_process":646,"aws-sign2":307,"aws4":308,"bl":310,"buffer":574,"caseless":316,"dup":196,"extend":370,"forever-agent":372,"form-data":373,"hawk":395,"http":678,"http-signature":396,"https":620,"is-typedarray":406,"isstream":407,"mime-types":422,"stream":677,"stringstream":464,"url":684,"util":688,"zlib":572}],444:[function(_dereq_,module,exports){
+arguments[4][212][0].apply(exports,arguments)
+},{"buffer":574,"dup":212}],445:[function(_dereq_,module,exports){
+arguments[4][213][0].apply(exports,arguments)
+},{"./algs":444,"./key":457,"./private-key":458,"./utils":461,"assert-plus":462,"buffer":574,"crypto":584,"dup":213,"ecc-jsbn":367,"ecc-jsbn/lib/ec":368,"jodid25519":408,"jsbn":415}],446:[function(_dereq_,module,exports){
+arguments[4][214][0].apply(exports,arguments)
+},{"./signature":459,"assert-plus":462,"buffer":574,"dup":214,"stream":677,"tweetnacl":473,"util":688}],447:[function(_dereq_,module,exports){
+arguments[4][215][0].apply(exports,arguments)
+},{"assert-plus":462,"dup":215,"util":688}],448:[function(_dereq_,module,exports){
+arguments[4][216][0].apply(exports,arguments)
+},{"./algs":444,"./errors":447,"./key":457,"./utils":461,"assert-plus":462,"buffer":574,"crypto":584,"dup":216}],449:[function(_dereq_,module,exports){
+arguments[4][217][0].apply(exports,arguments)
+},{"../key":457,"../private-key":458,"../utils":461,"./pem":450,"./rfc4253":453,"./ssh":455,"assert-plus":462,"buffer":574,"dup":217}],450:[function(_dereq_,module,exports){
+arguments[4][218][0].apply(exports,arguments)
+},{"../algs":444,"../errors":447,"../key":457,"../private-key":458,"../utils":461,"./pkcs1":451,"./pkcs8":452,"./rfc4253":453,"./ssh-private":454,"asn1":303,"assert-plus":462,"buffer":574,"crypto":584,"dup":218}],451:[function(_dereq_,module,exports){
+arguments[4][219][0].apply(exports,arguments)
+},{"../algs":444,"../key":457,"../private-key":458,"../utils":461,"./pem":450,"./pkcs8":452,"asn1":303,"assert-plus":462,"buffer":574,"dup":219}],452:[function(_dereq_,module,exports){
+arguments[4][220][0].apply(exports,arguments)
+},{"../algs":444,"../key":457,"../private-key":458,"../utils":461,"./pem":450,"asn1":303,"assert-plus":462,"buffer":574,"dup":220}],453:[function(_dereq_,module,exports){
+arguments[4][221][0].apply(exports,arguments)
+},{"../algs":444,"../key":457,"../private-key":458,"../ssh-buffer":460,"../utils":461,"assert-plus":462,"buffer":574,"dup":221}],454:[function(_dereq_,module,exports){
+arguments[4][222][0].apply(exports,arguments)
+},{"../algs":444,"../key":457,"../private-key":458,"../ssh-buffer":460,"../utils":461,"./pem":450,"./rfc4253":453,"asn1":303,"assert-plus":462,"buffer":574,"crypto":584,"dup":222}],455:[function(_dereq_,module,exports){
+arguments[4][223][0].apply(exports,arguments)
+},{"../key":457,"../private-key":458,"../utils":461,"./rfc4253":453,"./ssh-private":454,"assert-plus":462,"buffer":574,"dup":223}],456:[function(_dereq_,module,exports){
+arguments[4][224][0].apply(exports,arguments)
+},{"./errors":447,"./fingerprint":448,"./key":457,"./private-key":458,"./signature":459,"dup":224}],457:[function(_dereq_,module,exports){
+(function (Buffer){
+// Copyright 2015 Joyent, Inc.
+
+module.exports = Key;
+
+var assert = _dereq_('assert-plus');
+var algs = _dereq_('./algs');
+var crypto = _dereq_('crypto');
+var Fingerprint = _dereq_('./fingerprint');
+var Signature = _dereq_('./signature');
+var DiffieHellman = _dereq_('./dhe');
+var errs = _dereq_('./errors');
+var utils = _dereq_('./utils');
+var PrivateKey = _dereq_('./private-key');
+var edCompat;
+
+try {
+	edCompat = _dereq_('./ed-compat');
+} catch (e) {
+	/* Just continue through, and bail out if we try to use it. */
+}
+
+var InvalidAlgorithmError = errs.InvalidAlgorithmError;
+var KeyParseError = errs.KeyParseError;
+
+var formats = {};
+formats['auto'] = _dereq_('./formats/auto');
+formats['pem'] = _dereq_('./formats/pem');
+formats['pkcs1'] = _dereq_('./formats/pkcs1');
+formats['pkcs8'] = _dereq_('./formats/pkcs8');
+formats['rfc4253'] = _dereq_('./formats/rfc4253');
+formats['ssh'] = _dereq_('./formats/ssh');
+formats['ssh-private'] = _dereq_('./formats/ssh-private');
+formats['openssh'] = formats['ssh-private'];
+
+function Key(opts) {
+	assert.object(opts, 'options');
+	assert.arrayOfObject(opts.parts, 'options.parts');
+	assert.string(opts.type, 'options.type');
+	assert.optionalString(opts.comment, 'options.comment');
+
+	var algInfo = algs.info[opts.type];
+	if (typeof (algInfo) !== 'object')
+		throw (new InvalidAlgorithmError(opts.type));
+
+	var partLookup = {};
+	for (var i = 0; i < opts.parts.length; ++i) {
+		var part = opts.parts[i];
+		partLookup[part.name] = part;
+	}
+
+	this.type = opts.type;
+	this.parts = opts.parts;
+	this.part = partLookup;
+	this.comment = undefined;
+	this.source = opts.source;
+
+	/* for speeding up hashing/fingerprint operations */
+	this._rfc4253Cache = opts._rfc4253Cache;
+	this._hashCache = {};
+
+	var sz;
+	this.curve = undefined;
+	if (this.type === 'ecdsa') {
+		var curve = this.part.curve.data.toString();
+		this.curve = curve;
+		sz = algs.curves[curve].size;
+	} else if (this.type === 'ed25519') {
+		sz = 256;
+		this.curve = 'curve25519';
+	} else {
+		var szPart = this.part[algInfo.sizePart];
+		sz = szPart.data.length;
+		sz = sz * 8 - utils.countZeros(szPart.data);
+	}
+	this.size = sz;
+}
+
+Key.formats = formats;
+
+Key.prototype.toBuffer = function (format, options) {
+	if (format === undefined)
+		format = 'ssh';
+	assert.string(format, 'format');
+	assert.object(formats[format], 'formats[format]');
+	assert.optionalObject(options, 'options');
+
+	if (format === 'rfc4253') {
+		if (this._rfc4253Cache === undefined)
+			this._rfc4253Cache = formats['rfc4253'].write(this);
+		return (this._rfc4253Cache);
+	}
+
+	return (formats[format].write(this, options));
+};
+
+Key.prototype.toString = function (format, options) {
+	return (this.toBuffer(format, options).toString());
+};
+
+Key.prototype.hash = function (algo) {
+	assert.string(algo, 'algorithm');
+	algo = algo.toLowerCase();
+	if (algs.hashAlgs[algo] === undefined)
+		throw (new InvalidAlgorithmError(algo));
+
+	if (this._hashCache[algo])
+		return (this._hashCache[algo]);
+
+	var hash = crypto.createHash(algo).
+	    update(this.toBuffer('rfc4253')).digest();
+	this._hashCache[algo] = hash;
+	return (hash);
+};
+
+Key.prototype.fingerprint = function (algo) {
+	if (algo === undefined)
+		algo = 'sha256';
+	assert.string(algo, 'algorithm');
+	var opts = {
+		hash: this.hash(algo),
+		algorithm: algo
+	};
+	return (new Fingerprint(opts));
+};
+
+Key.prototype.defaultHashAlgorithm = function () {
+	var hashAlgo = 'sha1';
+	if (this.type === 'rsa')
+		hashAlgo = 'sha256';
+	if (this.type === 'dsa' && this.size > 1024)
+		hashAlgo = 'sha256';
+	if (this.type === 'ed25519')
+		hashAlgo = 'sha512';
+	if (this.type === 'ecdsa') {
+		if (this.size <= 256)
+			hashAlgo = 'sha256';
+		else if (this.size <= 384)
+			hashAlgo = 'sha384';
+		else
+			hashAlgo = 'sha512';
+	}
+	return (hashAlgo);
+};
+
+Key.prototype.createVerify = function (hashAlgo) {
+	if (hashAlgo === undefined)
+		hashAlgo = this.defaultHashAlgorithm();
+	assert.string(hashAlgo, 'hash algorithm');
+
+	/* ED25519 is not supported by OpenSSL, use a javascript impl. */
+	if (this.type === 'ed25519' && edCompat !== undefined)
+		return (new edCompat.Verifier(this, hashAlgo));
+	if (this.type === 'curve25519')
+		throw (new Error('Curve25519 keys are not suitable for ' +
+		    'signing or verification'));
+
+	var v, nm, err;
+	try {
+		nm = hashAlgo.toUpperCase();
+		v = crypto.createVerify(nm);
+	} catch (e) {
+		err = e;
+	}
+	if (v === undefined || (err instanceof Error &&
+	    err.message.match(/Unknown message digest/))) {
+		nm = 'RSA-';
+		nm += hashAlgo.toUpperCase();
+		v = crypto.createVerify(nm);
+	}
+	assert.ok(v, 'failed to create verifier');
+	var oldVerify = v.verify.bind(v);
+	var key = this.toBuffer('pkcs8');
+	var self = this;
+	v.verify = function (signature, fmt) {
+		if (Signature.isSignature(signature, [2, 0])) {
+			if (signature.type !== self.type)
+				return (false);
+			if (signature.hashAlgorithm &&
+			    signature.hashAlgorithm !== hashAlgo)
+				return (false);
+			return (oldVerify(key, signature.toBuffer('asn1')));
+
+		} else if (typeof (signature) === 'string' ||
+		    Buffer.isBuffer(signature)) {
+			return (oldVerify(key, signature, fmt));
+
+		/*
+		 * Avoid doing this on valid arguments, walking the prototype
+		 * chain can be quite slow.
+		 */
+		} else if (Signature.isSignature(signature, [1, 0])) {
+			throw (new Error('signature was created by too old ' +
+			    'a version of sshpk and cannot be verified'));
+
+		} else {
+			throw (new TypeError('signature must be a string, ' +
+			    'Buffer, or Signature object'));
+		}
+	};
+	return (v);
+};
+
+Key.prototype.createDiffieHellman = function () {
+	if (this.type === 'rsa')
+		throw (new Error('RSA keys do not support Diffie-Hellman'));
+
+	return (new DiffieHellman(this));
+};
+Key.prototype.createDH = Key.prototype.createDiffieHellman;
+
+Key.parse = function (data, format, options) {
+	if (typeof (data) !== 'string')
+		assert.buffer(data, 'data');
+	if (format === undefined)
+		format = 'auto';
+	assert.string(format, 'format');
+	if (typeof (options) === 'string')
+		options = { filename: options };
+	assert.optionalObject(options, 'options');
+	if (options === undefined)
+		options = {};
+	assert.optionalString(options.filename, 'options.filename');
+	if (options.filename === undefined)
+		options.filename = '(unnamed)';
+
+	assert.object(formats[format], 'formats[format]');
+
+	try {
+		var k = formats[format].read(data, options);
+		if (k instanceof PrivateKey)
+			k = k.toPublic();
+		if (!k.comment)
+			k.comment = options.filename;
+		return (k);
+	} catch (e) {
+		if (e.name === 'KeyEncryptedError')
+			throw (e);
+		throw (new KeyParseError(options.filename, format, e));
+	}
+};
+
+Key.isKey = function (obj, ver) {
+	return (utils.isCompatible(obj, Key, ver));
+};
+
+/*
+ * API versions for Key:
+ * [1,0] -- initial ver, may take Signature for createVerify or may not
+ * [1,1] -- added pkcs1, pkcs8 formats
+ * [1,2] -- added auto, ssh-private, openssh formats
+ * [1,3] -- added defaultHashAlgorithm
+ * [1,4] -- added ed support, createDH
+ * [1,5] -- first explicitly tagged version
+ */
+Key.prototype._sshpkApiVersion = [1, 5];
+
+Key._oldVersionDetect = function (obj) {
+	assert.func(obj.toBuffer);
+	assert.func(obj.fingerprint);
+	if (obj.createDH)
+		return ([1, 4]);
+	if (obj.defaultHashAlgorithm)
+		return ([1, 3]);
+	if (obj.formats['auto'])
+		return ([1, 2]);
+	if (obj.formats['pkcs1'])
+		return ([1, 1]);
+	return ([1, 0]);
+};
+
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"./algs":444,"./dhe":445,"./ed-compat":446,"./errors":447,"./fingerprint":448,"./formats/auto":449,"./formats/pem":450,"./formats/pkcs1":451,"./formats/pkcs8":452,"./formats/rfc4253":453,"./formats/ssh":455,"./formats/ssh-private":454,"./private-key":458,"./signature":459,"./utils":461,"assert-plus":462,"crypto":584}],458:[function(_dereq_,module,exports){
+arguments[4][226][0].apply(exports,arguments)
+},{"./algs":444,"./ed-compat":446,"./errors":447,"./fingerprint":448,"./formats/auto":449,"./formats/pem":450,"./formats/pkcs1":451,"./formats/pkcs8":452,"./formats/rfc4253":453,"./formats/ssh-private":454,"./key":457,"./signature":459,"./utils":461,"assert-plus":462,"buffer":574,"crypto":584,"dup":226,"jodid25519":408,"util":688}],459:[function(_dereq_,module,exports){
+arguments[4][227][0].apply(exports,arguments)
+},{"./algs":444,"./errors":447,"./ssh-buffer":460,"./utils":461,"asn1":303,"assert-plus":462,"buffer":574,"crypto":584,"dup":227}],460:[function(_dereq_,module,exports){
+arguments[4][228][0].apply(exports,arguments)
+},{"assert-plus":462,"buffer":574,"dup":228}],461:[function(_dereq_,module,exports){
+arguments[4][229][0].apply(exports,arguments)
+},{"./private-key":458,"assert-plus":462,"buffer":574,"crypto":584,"dup":229,"jsbn":415}],462:[function(_dereq_,module,exports){
+(function (Buffer,process){
+// Copyright (c) 2012, Mark Cavage. All rights reserved.
+// Copyright 2015 Joyent, Inc.
+
+var assert = _dereq_('assert');
+var Stream = _dereq_('stream').Stream;
+var util = _dereq_('util');
+
+
+///--- Globals
+
+/* JSSTYLED */
+var UUID_REGEXP = /^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/;
+
+
+///--- Internal
+
+function _capitalize(str) {
+    return (str.charAt(0).toUpperCase() + str.slice(1));
+}
+
+function _toss(name, expected, oper, arg, actual) {
+    throw new assert.AssertionError({
+        message: util.format('%s (%s) is required', name, expected),
+        actual: (actual === undefined) ? typeof (arg) : actual(arg),
+        expected: expected,
+        operator: oper || '===',
+        stackStartFunction: _toss.caller
+    });
+}
+
+function _getClass(arg) {
+    return (Object.prototype.toString.call(arg).slice(8, -1));
+}
+
+function noop() {
+    // Why even bother with asserts?
+}
+
+
+///--- Exports
+
+var types = {
+    bool: {
+        check: function (arg) { return typeof (arg) === 'boolean'; }
+    },
+    func: {
+        check: function (arg) { return typeof (arg) === 'function'; }
+    },
+    string: {
+        check: function (arg) { return typeof (arg) === 'string'; }
+    },
+    object: {
+        check: function (arg) {
+            return typeof (arg) === 'object' && arg !== null;
+        }
+    },
+    number: {
+        check: function (arg) {
+            return typeof (arg) === 'number' && !isNaN(arg);
+        }
+    },
+    finite: {
+        check: function (arg) {
+            return typeof (arg) === 'number' && !isNaN(arg) && isFinite(arg);
+        }
+    },
+    buffer: {
+        check: function (arg) { return Buffer.isBuffer(arg); },
+        operator: 'Buffer.isBuffer'
+    },
+    array: {
+        check: function (arg) { return Array.isArray(arg); },
+        operator: 'Array.isArray'
+    },
+    stream: {
+        check: function (arg) { return arg instanceof Stream; },
+        operator: 'instanceof',
+        actual: _getClass
+    },
+    date: {
+        check: function (arg) { return arg instanceof Date; },
+        operator: 'instanceof',
+        actual: _getClass
+    },
+    regexp: {
+        check: function (arg) { return arg instanceof RegExp; },
+        operator: 'instanceof',
+        actual: _getClass
+    },
+    uuid: {
+        check: function (arg) {
+            return typeof (arg) === 'string' && UUID_REGEXP.test(arg);
+        },
+        operator: 'isUUID'
+    }
+};
+
+function _setExports(ndebug) {
+    var keys = Object.keys(types);
+    var out;
+
+    /* re-export standard assert */
+    if (process.env.NODE_NDEBUG) {
+        out = noop;
+    } else {
+        out = function (arg, msg) {
+            if (!arg) {
+                _toss(msg, 'true', arg);
+            }
+        };
+    }
+
+    /* standard checks */
+    keys.forEach(function (k) {
+        if (ndebug) {
+            out[k] = noop;
+            return;
+        }
+        var type = types[k];
+        out[k] = function (arg, msg) {
+            if (!type.check(arg)) {
+                _toss(msg, k, type.operator, arg, type.actual);
+            }
+        };
+    });
+
+    /* optional checks */
+    keys.forEach(function (k) {
+        var name = 'optional' + _capitalize(k);
+        if (ndebug) {
+            out[name] = noop;
+            return;
+        }
+        var type = types[k];
+        out[name] = function (arg, msg) {
+            if (arg === undefined || arg === null) {
+                return;
+            }
+            if (!type.check(arg)) {
+                _toss(msg, k, type.operator, arg, type.actual);
+            }
+        };
+    });
+
+    /* arrayOf checks */
+    keys.forEach(function (k) {
+        var name = 'arrayOf' + _capitalize(k);
+        if (ndebug) {
+            out[name] = noop;
+            return;
+        }
+        var type = types[k];
+        var expected = '[' + k + ']';
+        out[name] = function (arg, msg) {
+            if (!Array.isArray(arg)) {
+                _toss(msg, expected, type.operator, arg, type.actual);
+            }
+            var i;
+            for (i = 0; i < arg.length; i++) {
+                if (!type.check(arg[i])) {
+                    _toss(msg, expected, type.operator, arg, type.actual);
+                }
+            }
+        };
+    });
+
+    /* optionalArrayOf checks */
+    keys.forEach(function (k) {
+        var name = 'optionalArrayOf' + _capitalize(k);
+        if (ndebug) {
+            out[name] = noop;
+            return;
+        }
+        var type = types[k];
+        var expected = '[' + k + ']';
+        out[name] = function (arg, msg) {
+            if (arg === undefined || arg === null) {
+                return;
+            }
+            if (!Array.isArray(arg)) {
+                _toss(msg, expected, type.operator, arg, type.actual);
+            }
+            var i;
+            for (i = 0; i < arg.length; i++) {
+                if (!type.check(arg[i])) {
+                    _toss(msg, expected, type.operator, arg, type.actual);
+                }
+            }
+        };
+    });
+
+    /* re-export built-in assertions */
+    Object.keys(assert).forEach(function (k) {
+        if (k === 'AssertionError') {
+            out[k] = assert[k];
+            return;
+        }
+        if (ndebug) {
+            out[k] = noop;
+            return;
+        }
+        out[k] = assert[k];
+    });
+
+    /* export ourselves (for unit tests _only_) */
+    out._setExports = _setExports;
+
+    return out;
+}
+
+module.exports = _setExports(process.env.NODE_NDEBUG);
+
+}).call(this,{"isBuffer":_dereq_("../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js")},_dereq_('_process'))
+},{"../../../../../../../../../usr/local/lib/node_modules/browserify/node_modules/is-buffer/index.js":624,"_process":646,"assert":542,"stream":677,"util":688}],463:[function(_dereq_,module,exports){
+arguments[4][231][0].apply(exports,arguments)
+},{"buffer":574,"dup":231}],464:[function(_dereq_,module,exports){
+arguments[4][232][0].apply(exports,arguments)
+},{"buffer":574,"dup":232,"stream":677,"string_decoder":682,"util":688}],465:[function(_dereq_,module,exports){
+arguments[4][233][0].apply(exports,arguments)
+},{"../package.json":471,"./memstore":466,"./pathMatch":467,"./permuteDomain":468,"./pubsuffix":469,"./store":470,"dup":233,"net":527,"punycode":653,"url":684}],466:[function(_dereq_,module,exports){
+arguments[4][234][0].apply(exports,arguments)
+},{"./pathMatch":467,"./permuteDomain":468,"./store":470,"dup":234,"util":688}],467:[function(_dereq_,module,exports){
+arguments[4][235][0].apply(exports,arguments)
+},{"dup":235}],468:[function(_dereq_,module,exports){
+arguments[4][236][0].apply(exports,arguments)
+},{"./pubsuffix":469,"dup":236}],469:[function(_dereq_,module,exports){
+arguments[4][237][0].apply(exports,arguments)
+},{"dup":237,"punycode":653}],470:[function(_dereq_,module,exports){
+arguments[4][238][0].apply(exports,arguments)
+},{"dup":238}],471:[function(_dereq_,module,exports){
+module.exports={
+  "_args": [
+    [
+      {
+        "name": "tough-cookie",
+        "raw": "tough-cookie@~2.2.0",
+        "rawSpec": "~2.2.0",
+        "scope": null,
+        "spec": ">=2.2.0 <2.3.0",
+        "type": "range"
+      },
+      "/Users/zackcoburn/Sites/live/etheropt.github.io/node_modules/request"
+    ]
+  ],
+  "_from": "tough-cookie@>=2.2.0 <2.3.0",
+  "_id": "tough-cookie@2.2.2",
+  "_inCache": true,
+  "_installable": true,
+  "_location": "/tough-cookie",
+  "_nodeVersion": "5.1.1",
+  "_npmOperationalInternal": {
+    "host": "packages-13-west.internal.npmjs.com",
+    "tmp": "tmp/tough-cookie-2.2.2.tgz_1457564639182_0.5129188685677946"
+  },
+  "_npmUser": {
+    "email": "jstash@gmail.com",
+    "name": "jstash"
+  },
+  "_npmVersion": "3.3.12",
+  "_phantomChildren": {},
+  "_requested": {
+    "name": "tough-cookie",
+    "raw": "tough-cookie@~2.2.0",
+    "rawSpec": "~2.2.0",
+    "scope": null,
+    "spec": ">=2.2.0 <2.3.0",
+    "type": "range"
+  },
+  "_requiredBy": [
+    "/request"
+  ],
+  "_resolved": "https://registry.npmjs.org/tough-cookie/-/tough-cookie-2.2.2.tgz",
+  "_shasum": "c83a1830f4e5ef0b93ef2a3488e724f8de016ac7",
+  "_shrinkwrap": null,
+  "_spec": "tough-cookie@~2.2.0",
+  "_where": "/Users/zackcoburn/Sites/live/etheropt.github.io/node_modules/request",
+  "author": {
+    "email": "jstashewsky@salesforce.com",
+    "name": "Jeremy Stashewsky"
+  },
+  "bugs": {
+    "url": "https://github.com/SalesforceEng/tough-cookie/issues"
+  },
+  "contributors": [
+    {
+      "name": "Alexander Savin"
+    },
+    {
+      "name": "Ian Livingstone"
+    },
+    {
+      "name": "Ivan Nikulin"
+    },
+    {
+      "name": "Lalit Kapoor"
+    },
+    {
+      "name": "Sam Thompson"
+    },
+    {
+      "name": "Sebastian Mayr"
+    }
+  ],
+  "dependencies": {},
+  "description": "RFC6265 Cookies and Cookie Jar for node.js",
+  "devDependencies": {
+    "async": "^1.4.2",
+    "vows": "^0.8.1"
+  },
+  "directories": {},
+  "dist": {
+    "shasum": "c83a1830f4e5ef0b93ef2a3488e724f8de016ac7",
+    "tarball": "https://registry.npmjs.org/tough-cookie/-/tough-cookie-2.2.2.tgz"
+  },
+  "engines": {
+    "node": ">=0.10.0"
+  },
+  "files": [
+    "lib"
+  ],
+  "gitHead": "cc46628c4d7d2e8c372ecba29293ca8a207ec192",
+  "homepage": "https://github.com/SalesforceEng/tough-cookie",
+  "keywords": [
+    "HTTP",
+    "cookie",
+    "cookies",
+    "set-cookie",
+    "cookiejar",
+    "jar",
+    "RFC6265",
+    "RFC2965"
+  ],
+  "license": "BSD-3-Clause",
+  "main": "./lib/cookie",
+  "maintainers": [
+    {
+      "email": "jeremy@goinstant.com",
+      "name": "jstash"
+    },
+    {
+      "email": "services@goinstant.com",
+      "name": "goinstant"
+    }
+  ],
+  "name": "tough-cookie",
+  "optionalDependencies": {},
+  "readme": "ERROR: No README data found!",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/SalesforceEng/tough-cookie.git"
+  },
+  "scripts": {
+    "suffixup": "curl -o public_suffix_list.dat https://publicsuffix.org/list/public_suffix_list.dat && ./generate-pubsuffix.js",
+    "test": "vows test/*_test.js"
+  },
+  "version": "2.2.2"
+}
+
+},{}],472:[function(_dereq_,module,exports){
+arguments[4][240][0].apply(exports,arguments)
+},{"_process":646,"assert":542,"buffer":574,"dup":240,"events":612,"http":678,"https":620,"net":527,"tls":527,"util":688}],473:[function(_dereq_,module,exports){
+arguments[4][241][0].apply(exports,arguments)
+},{"buffer":546,"crypto":546,"dup":241}],474:[function(_dereq_,module,exports){
+arguments[4][242][0].apply(exports,arguments)
+},{"dup":242}],475:[function(_dereq_,module,exports){
+arguments[4][243][0].apply(exports,arguments)
+},{"dup":243}],476:[function(_dereq_,module,exports){
+arguments[4][245][0].apply(exports,arguments)
+},{"assert":542,"dup":245,"extsprintf":371,"util":688}],477:[function(_dereq_,module,exports){
+arguments[4][246][0].apply(exports,arguments)
+},{"./lib/web3":499,"dup":246}],478:[function(_dereq_,module,exports){
+arguments[4][247][0].apply(exports,arguments)
+},{"dup":247}],479:[function(_dereq_,module,exports){
+arguments[4][248][0].apply(exports,arguments)
+},{"dup":248}],480:[function(_dereq_,module,exports){
+arguments[4][249][0].apply(exports,arguments)
+},{"dup":249}],481:[function(_dereq_,module,exports){
+arguments[4][250][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":250}],482:[function(_dereq_,module,exports){
+arguments[4][251][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":251}],483:[function(_dereq_,module,exports){
+arguments[4][252][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":252}],484:[function(_dereq_,module,exports){
+arguments[4][253][0].apply(exports,arguments)
+},{"./address":481,"./bool":482,"./bytes":483,"./dynamicbytes":485,"./formatters":486,"./int":487,"./real":489,"./string":490,"./uint":492,"./ureal":493,"dup":253}],485:[function(_dereq_,module,exports){
+arguments[4][254][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":254}],486:[function(_dereq_,module,exports){
+arguments[4][255][0].apply(exports,arguments)
+},{"../utils/config":495,"../utils/utils":497,"./param":488,"bignumber.js":526,"dup":255}],487:[function(_dereq_,module,exports){
+arguments[4][256][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":256}],488:[function(_dereq_,module,exports){
+arguments[4][257][0].apply(exports,arguments)
+},{"../utils/utils":497,"dup":257}],489:[function(_dereq_,module,exports){
+arguments[4][258][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":258}],490:[function(_dereq_,module,exports){
+arguments[4][259][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":259}],491:[function(_dereq_,module,exports){
+arguments[4][260][0].apply(exports,arguments)
+},{"./formatters":486,"./param":488,"dup":260}],492:[function(_dereq_,module,exports){
+arguments[4][261][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":261}],493:[function(_dereq_,module,exports){
+arguments[4][262][0].apply(exports,arguments)
+},{"./formatters":486,"./type":491,"dup":262}],494:[function(_dereq_,module,exports){
+arguments[4][263][0].apply(exports,arguments)
+},{"dup":263}],495:[function(_dereq_,module,exports){
+arguments[4][264][0].apply(exports,arguments)
+},{"bignumber.js":526,"dup":264}],496:[function(_dereq_,module,exports){
+arguments[4][265][0].apply(exports,arguments)
+},{"crypto-js":327,"crypto-js/sha3":348,"dup":265}],497:[function(_dereq_,module,exports){
+arguments[4][266][0].apply(exports,arguments)
+},{"./sha3.js":496,"bignumber.js":526,"dup":266,"utf8":474}],498:[function(_dereq_,module,exports){
+arguments[4][267][0].apply(exports,arguments)
+},{"dup":267}],499:[function(_dereq_,module,exports){
+arguments[4][268][0].apply(exports,arguments)
+},{"./utils/sha3":496,"./utils/utils":497,"./version.json":498,"./web3/batch":501,"./web3/extend":505,"./web3/httpprovider":509,"./web3/iban":510,"./web3/ipcprovider":511,"./web3/methods/db":514,"./web3/methods/eth":515,"./web3/methods/net":516,"./web3/methods/personal":517,"./web3/methods/shh":518,"./web3/property":521,"./web3/requestmanager":522,"./web3/settings":523,"dup":268}],500:[function(_dereq_,module,exports){
+arguments[4][269][0].apply(exports,arguments)
+},{"../utils/sha3":496,"../utils/utils":497,"./event":504,"./filter":506,"./formatters":507,"./methods/watches":519,"dup":269}],501:[function(_dereq_,module,exports){
+arguments[4][270][0].apply(exports,arguments)
+},{"./errors":503,"./jsonrpc":512,"dup":270}],502:[function(_dereq_,module,exports){
+arguments[4][271][0].apply(exports,arguments)
+},{"../solidity/coder":484,"../utils/utils":497,"./allevents":500,"./event":504,"./function":508,"dup":271}],503:[function(_dereq_,module,exports){
+arguments[4][272][0].apply(exports,arguments)
+},{"dup":272}],504:[function(_dereq_,module,exports){
+arguments[4][273][0].apply(exports,arguments)
+},{"../solidity/coder":484,"../utils/sha3":496,"../utils/utils":497,"./filter":506,"./formatters":507,"./methods/watches":519,"dup":273}],505:[function(_dereq_,module,exports){
+arguments[4][274][0].apply(exports,arguments)
+},{"./../utils/utils":497,"./formatters":507,"./method":513,"./property":521,"dup":274}],506:[function(_dereq_,module,exports){
+arguments[4][275][0].apply(exports,arguments)
+},{"../utils/utils":497,"./formatters":507,"dup":275}],507:[function(_dereq_,module,exports){
+arguments[4][276][0].apply(exports,arguments)
+},{"../utils/config":495,"../utils/utils":497,"./iban":510,"dup":276}],508:[function(_dereq_,module,exports){
+arguments[4][277][0].apply(exports,arguments)
+},{"../solidity/coder":484,"../utils/sha3":496,"../utils/utils":497,"./formatters":507,"dup":277}],509:[function(_dereq_,module,exports){
+arguments[4][278][0].apply(exports,arguments)
+},{"./errors":503,"dup":278,"xmlhttprequest":494}],510:[function(_dereq_,module,exports){
+arguments[4][279][0].apply(exports,arguments)
+},{"bignumber.js":526,"dup":279}],511:[function(_dereq_,module,exports){
+arguments[4][280][0].apply(exports,arguments)
+},{"../utils/utils":497,"./errors":503,"dup":280}],512:[function(_dereq_,module,exports){
+arguments[4][281][0].apply(exports,arguments)
+},{"dup":281}],513:[function(_dereq_,module,exports){
+arguments[4][282][0].apply(exports,arguments)
+},{"../utils/utils":497,"./errors":503,"dup":282}],514:[function(_dereq_,module,exports){
+arguments[4][283][0].apply(exports,arguments)
+},{"../method":513,"dup":283}],515:[function(_dereq_,module,exports){
+arguments[4][284][0].apply(exports,arguments)
+},{"../../utils/config":495,"../../utils/utils":497,"../contract":502,"../filter":506,"../formatters":507,"../iban":510,"../method":513,"../namereg":520,"../property":521,"../syncing":524,"../transfer":525,"./watches":519,"dup":284}],516:[function(_dereq_,module,exports){
+arguments[4][285][0].apply(exports,arguments)
+},{"../../utils/utils":497,"../property":521,"dup":285}],517:[function(_dereq_,module,exports){
+arguments[4][286][0].apply(exports,arguments)
+},{"../method":513,"../property":521,"dup":286}],518:[function(_dereq_,module,exports){
+arguments[4][287][0].apply(exports,arguments)
+},{"../filter":506,"../formatters":507,"../method":513,"./watches":519,"dup":287}],519:[function(_dereq_,module,exports){
+arguments[4][288][0].apply(exports,arguments)
+},{"../method":513,"dup":288}],520:[function(_dereq_,module,exports){
+arguments[4][289][0].apply(exports,arguments)
+},{"../contracts/GlobalRegistrar.json":478,"../contracts/ICAPRegistrar.json":479,"dup":289}],521:[function(_dereq_,module,exports){
+arguments[4][290][0].apply(exports,arguments)
+},{"../utils/utils":497,"dup":290}],522:[function(_dereq_,module,exports){
+arguments[4][291][0].apply(exports,arguments)
+},{"../utils/config":495,"../utils/utils":497,"./errors":503,"./jsonrpc":512,"dup":291}],523:[function(_dereq_,module,exports){
+arguments[4][292][0].apply(exports,arguments)
+},{"dup":292}],524:[function(_dereq_,module,exports){
+arguments[4][293][0].apply(exports,arguments)
+},{"../utils/utils":497,"./formatters":507,"dup":293}],525:[function(_dereq_,module,exports){
+arguments[4][294][0].apply(exports,arguments)
+},{"../contracts/SmartExchange.json":480,"./iban":510,"dup":294}],526:[function(_dereq_,module,exports){
+arguments[4][295][0].apply(exports,arguments)
+},{"crypto":584,"dup":295}],527:[function(_dereq_,module,exports){
+
+},{}],528:[function(_dereq_,module,exports){
 var asn1 = exports;
 
 asn1.bignum = _dereq_('bn.js');
@@ -90109,7 +93126,7 @@ asn1.constants = _dereq_('./asn1/constants');
 asn1.decoders = _dereq_('./asn1/decoders');
 asn1.encoders = _dereq_('./asn1/encoders');
 
-},{"./asn1/api":314,"./asn1/base":316,"./asn1/constants":320,"./asn1/decoders":322,"./asn1/encoders":325,"bn.js":329}],314:[function(_dereq_,module,exports){
+},{"./asn1/api":529,"./asn1/base":531,"./asn1/constants":535,"./asn1/decoders":537,"./asn1/encoders":540,"bn.js":544}],529:[function(_dereq_,module,exports){
 var asn1 = _dereq_('../asn1');
 var inherits = _dereq_('inherits');
 
@@ -90170,7 +93187,7 @@ Entity.prototype.encode = function encode(data, enc, /* internal */ reporter) {
   return this._getEncoder(enc).encode(data, reporter);
 };
 
-},{"../asn1":313,"inherits":408,"vm":474}],315:[function(_dereq_,module,exports){
+},{"../asn1":528,"inherits":623,"vm":689}],530:[function(_dereq_,module,exports){
 var inherits = _dereq_('inherits');
 var Reporter = _dereq_('../base').Reporter;
 var Buffer = _dereq_('buffer').Buffer;
@@ -90288,7 +93305,7 @@ EncoderBuffer.prototype.join = function join(out, offset) {
   return out;
 };
 
-},{"../base":316,"buffer":359,"inherits":408}],316:[function(_dereq_,module,exports){
+},{"../base":531,"buffer":574,"inherits":623}],531:[function(_dereq_,module,exports){
 var base = exports;
 
 base.Reporter = _dereq_('./reporter').Reporter;
@@ -90296,7 +93313,7 @@ base.DecoderBuffer = _dereq_('./buffer').DecoderBuffer;
 base.EncoderBuffer = _dereq_('./buffer').EncoderBuffer;
 base.Node = _dereq_('./node');
 
-},{"./buffer":315,"./node":317,"./reporter":318}],317:[function(_dereq_,module,exports){
+},{"./buffer":530,"./node":532,"./reporter":533}],532:[function(_dereq_,module,exports){
 var Reporter = _dereq_('../base').Reporter;
 var EncoderBuffer = _dereq_('../base').EncoderBuffer;
 var DecoderBuffer = _dereq_('../base').DecoderBuffer;
@@ -90928,7 +93945,7 @@ Node.prototype._isPrintstr = function isPrintstr(str) {
   return /^[A-Za-z0-9 '\(\)\+,\-\.\/:=\?]*$/.test(str);
 };
 
-},{"../base":316,"minimalistic-assert":412}],318:[function(_dereq_,module,exports){
+},{"../base":531,"minimalistic-assert":627}],533:[function(_dereq_,module,exports){
 var inherits = _dereq_('inherits');
 
 function Reporter(options) {
@@ -91032,7 +94049,7 @@ ReporterError.prototype.rethrow = function rethrow(msg) {
   return this;
 };
 
-},{"inherits":408}],319:[function(_dereq_,module,exports){
+},{"inherits":623}],534:[function(_dereq_,module,exports){
 var constants = _dereq_('../constants');
 
 exports.tagClass = {
@@ -91076,7 +94093,7 @@ exports.tag = {
 };
 exports.tagByName = constants._reverse(exports.tag);
 
-},{"../constants":320}],320:[function(_dereq_,module,exports){
+},{"../constants":535}],535:[function(_dereq_,module,exports){
 var constants = exports;
 
 // Helper
@@ -91097,7 +94114,7 @@ constants._reverse = function reverse(map) {
 
 constants.der = _dereq_('./der');
 
-},{"./der":319}],321:[function(_dereq_,module,exports){
+},{"./der":534}],536:[function(_dereq_,module,exports){
 var inherits = _dereq_('inherits');
 
 var asn1 = _dereq_('../../asn1');
@@ -91422,13 +94439,13 @@ function derDecodeLen(buf, primitive, fail) {
   return len;
 }
 
-},{"../../asn1":313,"inherits":408}],322:[function(_dereq_,module,exports){
+},{"../../asn1":528,"inherits":623}],537:[function(_dereq_,module,exports){
 var decoders = exports;
 
 decoders.der = _dereq_('./der');
 decoders.pem = _dereq_('./pem');
 
-},{"./der":321,"./pem":323}],323:[function(_dereq_,module,exports){
+},{"./der":536,"./pem":538}],538:[function(_dereq_,module,exports){
 var inherits = _dereq_('inherits');
 var Buffer = _dereq_('buffer').Buffer;
 
@@ -91480,7 +94497,7 @@ PEMDecoder.prototype.decode = function decode(data, options) {
   return DERDecoder.prototype.decode.call(this, input, options);
 };
 
-},{"../../asn1":313,"./der":321,"buffer":359,"inherits":408}],324:[function(_dereq_,module,exports){
+},{"../../asn1":528,"./der":536,"buffer":574,"inherits":623}],539:[function(_dereq_,module,exports){
 var inherits = _dereq_('inherits');
 var Buffer = _dereq_('buffer').Buffer;
 
@@ -91780,13 +94797,13 @@ function encodeTag(tag, primitive, cls, reporter) {
   return res;
 }
 
-},{"../../asn1":313,"buffer":359,"inherits":408}],325:[function(_dereq_,module,exports){
+},{"../../asn1":528,"buffer":574,"inherits":623}],540:[function(_dereq_,module,exports){
 var encoders = exports;
 
 encoders.der = _dereq_('./der');
 encoders.pem = _dereq_('./pem');
 
-},{"./der":324,"./pem":326}],326:[function(_dereq_,module,exports){
+},{"./der":539,"./pem":541}],541:[function(_dereq_,module,exports){
 var inherits = _dereq_('inherits');
 var Buffer = _dereq_('buffer').Buffer;
 
@@ -91811,7 +94828,7 @@ PEMEncoder.prototype.encode = function encode(data, options) {
   return out.join('\n');
 };
 
-},{"../../asn1":313,"./der":324,"buffer":359,"inherits":408}],327:[function(_dereq_,module,exports){
+},{"../../asn1":528,"./der":539,"buffer":574,"inherits":623}],542:[function(_dereq_,module,exports){
 // http://wiki.commonjs.org/wiki/Unit_Testing/1.0
 //
 // THIS IS NOT TESTED NOR LIKELY TO WORK OUTSIDE V8!
@@ -92172,7 +95189,7 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-},{"util/":473}],328:[function(_dereq_,module,exports){
+},{"util/":688}],543:[function(_dereq_,module,exports){
 ;(function (exports) {
   'use strict'
 
@@ -92305,7 +95322,7 @@ var objectKeys = Object.keys || function (obj) {
   exports.fromByteArray = uint8ToBase64
 }(typeof exports === 'undefined' ? (this.base64js = {}) : exports))
 
-},{}],329:[function(_dereq_,module,exports){
+},{}],544:[function(_dereq_,module,exports){
 (function (module, exports) {
   'use strict';
 
@@ -95742,11 +98759,11 @@ var objectKeys = Object.keys || function (obj) {
   };
 })(typeof module === 'undefined' || module, this);
 
-},{}],330:[function(_dereq_,module,exports){
-arguments[4][24][0].apply(exports,arguments)
-},{"dup":24}],331:[function(_dereq_,module,exports){
-arguments[4][312][0].apply(exports,arguments)
-},{"dup":312}],332:[function(_dereq_,module,exports){
+},{}],545:[function(_dereq_,module,exports){
+arguments[4][23][0].apply(exports,arguments)
+},{"dup":23}],546:[function(_dereq_,module,exports){
+arguments[4][527][0].apply(exports,arguments)
+},{"dup":527}],547:[function(_dereq_,module,exports){
 (function (Buffer){
 // based on the aes implimentation in triple sec
 // https://github.com/keybase/triplesec
@@ -95927,7 +98944,7 @@ AES.prototype._doCryptBlock = function (M, keySchedule, SUB_MIX, SBOX) {
 exports.AES = AES
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],333:[function(_dereq_,module,exports){
+},{"buffer":574}],548:[function(_dereq_,module,exports){
 (function (Buffer){
 var aes = _dereq_('./aes')
 var Transform = _dereq_('cipher-base')
@@ -96028,7 +99045,7 @@ function xorTest (a, b) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./aes":332,"./ghash":337,"buffer":359,"buffer-xor":358,"cipher-base":362,"inherits":408}],334:[function(_dereq_,module,exports){
+},{"./aes":547,"./ghash":552,"buffer":574,"buffer-xor":573,"cipher-base":577,"inherits":623}],549:[function(_dereq_,module,exports){
 var ciphers = _dereq_('./encrypter')
 exports.createCipher = exports.Cipher = ciphers.createCipher
 exports.createCipheriv = exports.Cipheriv = ciphers.createCipheriv
@@ -96041,7 +99058,7 @@ function getCiphers () {
 }
 exports.listCiphers = exports.getCiphers = getCiphers
 
-},{"./decrypter":335,"./encrypter":336,"./modes":338}],335:[function(_dereq_,module,exports){
+},{"./decrypter":550,"./encrypter":551,"./modes":553}],550:[function(_dereq_,module,exports){
 (function (Buffer){
 var aes = _dereq_('./aes')
 var Transform = _dereq_('cipher-base')
@@ -96182,7 +99199,7 @@ exports.createDecipher = createDecipher
 exports.createDecipheriv = createDecipheriv
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./aes":332,"./authCipher":333,"./modes":338,"./modes/cbc":339,"./modes/cfb":340,"./modes/cfb1":341,"./modes/cfb8":342,"./modes/ctr":343,"./modes/ecb":344,"./modes/ofb":345,"./streamCipher":346,"buffer":359,"cipher-base":362,"evp_bytestokey":398,"inherits":408}],336:[function(_dereq_,module,exports){
+},{"./aes":547,"./authCipher":548,"./modes":553,"./modes/cbc":554,"./modes/cfb":555,"./modes/cfb1":556,"./modes/cfb8":557,"./modes/ctr":558,"./modes/ecb":559,"./modes/ofb":560,"./streamCipher":561,"buffer":574,"cipher-base":577,"evp_bytestokey":613,"inherits":623}],551:[function(_dereq_,module,exports){
 (function (Buffer){
 var aes = _dereq_('./aes')
 var Transform = _dereq_('cipher-base')
@@ -96308,7 +99325,7 @@ exports.createCipheriv = createCipheriv
 exports.createCipher = createCipher
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./aes":332,"./authCipher":333,"./modes":338,"./modes/cbc":339,"./modes/cfb":340,"./modes/cfb1":341,"./modes/cfb8":342,"./modes/ctr":343,"./modes/ecb":344,"./modes/ofb":345,"./streamCipher":346,"buffer":359,"cipher-base":362,"evp_bytestokey":398,"inherits":408}],337:[function(_dereq_,module,exports){
+},{"./aes":547,"./authCipher":548,"./modes":553,"./modes/cbc":554,"./modes/cfb":555,"./modes/cfb1":556,"./modes/cfb8":557,"./modes/ctr":558,"./modes/ecb":559,"./modes/ofb":560,"./streamCipher":561,"buffer":574,"cipher-base":577,"evp_bytestokey":613,"inherits":623}],552:[function(_dereq_,module,exports){
 (function (Buffer){
 var zeros = new Buffer(16)
 zeros.fill(0)
@@ -96410,7 +99427,7 @@ function xor (a, b) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],338:[function(_dereq_,module,exports){
+},{"buffer":574}],553:[function(_dereq_,module,exports){
 exports['aes-128-ecb'] = {
   cipher: 'AES',
   key: 128,
@@ -96583,7 +99600,7 @@ exports['aes-256-gcm'] = {
   type: 'auth'
 }
 
-},{}],339:[function(_dereq_,module,exports){
+},{}],554:[function(_dereq_,module,exports){
 var xor = _dereq_('buffer-xor')
 
 exports.encrypt = function (self, block) {
@@ -96602,7 +99619,7 @@ exports.decrypt = function (self, block) {
   return xor(out, pad)
 }
 
-},{"buffer-xor":358}],340:[function(_dereq_,module,exports){
+},{"buffer-xor":573}],555:[function(_dereq_,module,exports){
 (function (Buffer){
 var xor = _dereq_('buffer-xor')
 
@@ -96637,7 +99654,7 @@ function encryptStart (self, data, decrypt) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"buffer-xor":358}],341:[function(_dereq_,module,exports){
+},{"buffer":574,"buffer-xor":573}],556:[function(_dereq_,module,exports){
 (function (Buffer){
 function encryptByte (self, byteParam, decrypt) {
   var pad
@@ -96675,7 +99692,7 @@ function shiftIn (buffer, value) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],342:[function(_dereq_,module,exports){
+},{"buffer":574}],557:[function(_dereq_,module,exports){
 (function (Buffer){
 function encryptByte (self, byteParam, decrypt) {
   var pad = self._cipher.encryptBlock(self._prev)
@@ -96694,7 +99711,7 @@ exports.encrypt = function (self, chunk, decrypt) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],343:[function(_dereq_,module,exports){
+},{"buffer":574}],558:[function(_dereq_,module,exports){
 (function (Buffer){
 var xor = _dereq_('buffer-xor')
 
@@ -96729,7 +99746,7 @@ exports.encrypt = function (self, chunk) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"buffer-xor":358}],344:[function(_dereq_,module,exports){
+},{"buffer":574,"buffer-xor":573}],559:[function(_dereq_,module,exports){
 exports.encrypt = function (self, block) {
   return self._cipher.encryptBlock(block)
 }
@@ -96737,7 +99754,7 @@ exports.decrypt = function (self, block) {
   return self._cipher.decryptBlock(block)
 }
 
-},{}],345:[function(_dereq_,module,exports){
+},{}],560:[function(_dereq_,module,exports){
 (function (Buffer){
 var xor = _dereq_('buffer-xor')
 
@@ -96757,7 +99774,7 @@ exports.encrypt = function (self, chunk) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"buffer-xor":358}],346:[function(_dereq_,module,exports){
+},{"buffer":574,"buffer-xor":573}],561:[function(_dereq_,module,exports){
 (function (Buffer){
 var aes = _dereq_('./aes')
 var Transform = _dereq_('cipher-base')
@@ -96786,7 +99803,7 @@ StreamCipher.prototype._final = function () {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./aes":332,"buffer":359,"cipher-base":362,"inherits":408}],347:[function(_dereq_,module,exports){
+},{"./aes":547,"buffer":574,"cipher-base":577,"inherits":623}],562:[function(_dereq_,module,exports){
 var ebtk = _dereq_('evp_bytestokey')
 var aes = _dereq_('browserify-aes/browser')
 var DES = _dereq_('browserify-des')
@@ -96861,7 +99878,7 @@ function getCiphers () {
 }
 exports.listCiphers = exports.getCiphers = getCiphers
 
-},{"browserify-aes/browser":334,"browserify-aes/modes":338,"browserify-des":348,"browserify-des/modes":349,"evp_bytestokey":398}],348:[function(_dereq_,module,exports){
+},{"browserify-aes/browser":549,"browserify-aes/modes":553,"browserify-des":563,"browserify-des/modes":564,"evp_bytestokey":613}],563:[function(_dereq_,module,exports){
 (function (Buffer){
 var CipherBase = _dereq_('cipher-base')
 var des = _dereq_('des.js')
@@ -96908,7 +99925,7 @@ DES.prototype._final = function () {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"cipher-base":362,"des.js":370,"inherits":408}],349:[function(_dereq_,module,exports){
+},{"buffer":574,"cipher-base":577,"des.js":585,"inherits":623}],564:[function(_dereq_,module,exports){
 exports['des-ecb'] = {
   key: 8,
   iv: 0
@@ -96934,7 +99951,7 @@ exports['des-ede'] = {
   iv: 0
 }
 
-},{}],350:[function(_dereq_,module,exports){
+},{}],565:[function(_dereq_,module,exports){
 (function (Buffer){
 var bn = _dereq_('bn.js');
 var randomBytes = _dereq_('randombytes');
@@ -96978,7 +99995,7 @@ function getr(priv) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"bn.js":329,"buffer":359,"randombytes":442}],351:[function(_dereq_,module,exports){
+},{"bn.js":544,"buffer":574,"randombytes":657}],566:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict'
 exports['RSA-SHA224'] = exports.sha224WithRSAEncryption = {
@@ -97054,7 +100071,7 @@ exports['RSA-MD5'] = exports.md5WithRSAEncryption = {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],352:[function(_dereq_,module,exports){
+},{"buffer":574}],567:[function(_dereq_,module,exports){
 (function (Buffer){
 var _algos = _dereq_('./algos')
 var createHash = _dereq_('create-hash')
@@ -97161,7 +100178,7 @@ module.exports = {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./algos":351,"./sign":354,"./verify":355,"buffer":359,"create-hash":365,"inherits":408,"stream":462}],353:[function(_dereq_,module,exports){
+},{"./algos":566,"./sign":569,"./verify":570,"buffer":574,"create-hash":580,"inherits":623,"stream":677}],568:[function(_dereq_,module,exports){
 'use strict'
 exports['1.3.132.0.10'] = 'secp256k1'
 
@@ -97175,7 +100192,7 @@ exports['1.3.132.0.34'] = 'p384'
 
 exports['1.3.132.0.35'] = 'p521'
 
-},{}],354:[function(_dereq_,module,exports){
+},{}],569:[function(_dereq_,module,exports){
 (function (Buffer){
 // much of this based on https://github.com/indutny/self-signed/blob/gh-pages/lib/rsa.js
 var createHmac = _dereq_('create-hmac')
@@ -97364,7 +100381,7 @@ module.exports.getKey = getKey
 module.exports.makeKey = makeKey
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./curves":353,"bn.js":329,"browserify-rsa":350,"buffer":359,"create-hmac":368,"elliptic":380,"parse-asn1":427}],355:[function(_dereq_,module,exports){
+},{"./curves":568,"bn.js":544,"browserify-rsa":565,"buffer":574,"create-hmac":583,"elliptic":595,"parse-asn1":642}],570:[function(_dereq_,module,exports){
 (function (Buffer){
 // much of this based on https://github.com/indutny/self-signed/blob/gh-pages/lib/rsa.js
 var curves = _dereq_('./curves')
@@ -97471,7 +100488,7 @@ function checkValue (b, q) {
 module.exports = verify
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./curves":353,"bn.js":329,"buffer":359,"elliptic":380,"parse-asn1":427}],356:[function(_dereq_,module,exports){
+},{"./curves":568,"bn.js":544,"buffer":574,"elliptic":595,"parse-asn1":642}],571:[function(_dereq_,module,exports){
 (function (process,Buffer){
 var msg = _dereq_('pako/lib/zlib/messages');
 var zstream = _dereq_('pako/lib/zlib/zstream');
@@ -97711,7 +100728,7 @@ Zlib.prototype._error = function(status) {
 exports.Zlib = Zlib;
 
 }).call(this,_dereq_('_process'),_dereq_("buffer").Buffer)
-},{"_process":431,"buffer":359,"pako/lib/zlib/constants":415,"pako/lib/zlib/deflate.js":417,"pako/lib/zlib/inflate.js":419,"pako/lib/zlib/messages":421,"pako/lib/zlib/zstream":423}],357:[function(_dereq_,module,exports){
+},{"_process":646,"buffer":574,"pako/lib/zlib/constants":630,"pako/lib/zlib/deflate.js":632,"pako/lib/zlib/inflate.js":634,"pako/lib/zlib/messages":636,"pako/lib/zlib/zstream":638}],572:[function(_dereq_,module,exports){
 (function (process,Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -98325,7 +101342,7 @@ util.inherits(InflateRaw, Zlib);
 util.inherits(Unzip, Zlib);
 
 }).call(this,_dereq_('_process'),_dereq_("buffer").Buffer)
-},{"./binding":356,"_process":431,"_stream_transform":451,"assert":327,"buffer":359,"util":473}],358:[function(_dereq_,module,exports){
+},{"./binding":571,"_process":646,"_stream_transform":666,"assert":542,"buffer":574,"util":688}],573:[function(_dereq_,module,exports){
 (function (Buffer){
 module.exports = function xor (a, b) {
   var length = Math.min(a.length, b.length)
@@ -98339,7 +101356,7 @@ module.exports = function xor (a, b) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359}],359:[function(_dereq_,module,exports){
+},{"buffer":574}],574:[function(_dereq_,module,exports){
 (function (global){
 /*!
  * The buffer module from node.js, for the browser.
@@ -99805,9 +102822,9 @@ function blitBuffer (src, dst, offset, length) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"base64-js":328,"ieee754":406,"isarray":360}],360:[function(_dereq_,module,exports){
-arguments[4][18][0].apply(exports,arguments)
-},{"dup":18}],361:[function(_dereq_,module,exports){
+},{"base64-js":543,"ieee754":621,"isarray":575}],575:[function(_dereq_,module,exports){
+arguments[4][17][0].apply(exports,arguments)
+},{"dup":17}],576:[function(_dereq_,module,exports){
 module.exports = {
   "100": "Continue",
   "101": "Switching Protocols",
@@ -99872,9 +102889,9 @@ module.exports = {
   "511": "Network Authentication Required"
 }
 
-},{}],362:[function(_dereq_,module,exports){
-arguments[4][27][0].apply(exports,arguments)
-},{"buffer":359,"dup":27,"inherits":408,"stream":462,"string_decoder":467}],363:[function(_dereq_,module,exports){
+},{}],577:[function(_dereq_,module,exports){
+arguments[4][26][0].apply(exports,arguments)
+},{"buffer":574,"dup":26,"inherits":623,"stream":677,"string_decoder":682}],578:[function(_dereq_,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -99985,7 +103002,7 @@ function objectToString(o) {
 }
 
 }).call(this,{"isBuffer":_dereq_("../../is-buffer/index.js")})
-},{"../../is-buffer/index.js":409}],364:[function(_dereq_,module,exports){
+},{"../../is-buffer/index.js":624}],579:[function(_dereq_,module,exports){
 (function (Buffer){
 var elliptic = _dereq_('elliptic');
 var BN = _dereq_('bn.js');
@@ -100111,13 +103128,13 @@ function formatReturnValue(bn, enc, len) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"bn.js":329,"buffer":359,"elliptic":380}],365:[function(_dereq_,module,exports){
+},{"bn.js":544,"buffer":574,"elliptic":595}],580:[function(_dereq_,module,exports){
+arguments[4][29][0].apply(exports,arguments)
+},{"./md5":582,"buffer":574,"cipher-base":577,"dup":29,"inherits":623,"ripemd160":668,"sha.js":670}],581:[function(_dereq_,module,exports){
 arguments[4][30][0].apply(exports,arguments)
-},{"./md5":367,"buffer":359,"cipher-base":362,"dup":30,"inherits":408,"ripemd160":453,"sha.js":455}],366:[function(_dereq_,module,exports){
+},{"buffer":574,"dup":30}],582:[function(_dereq_,module,exports){
 arguments[4][31][0].apply(exports,arguments)
-},{"buffer":359,"dup":31}],367:[function(_dereq_,module,exports){
-arguments[4][32][0].apply(exports,arguments)
-},{"./helpers":366,"dup":32}],368:[function(_dereq_,module,exports){
+},{"./helpers":581,"dup":31}],583:[function(_dereq_,module,exports){
 (function (Buffer){
 'use strict';
 var createHash = _dereq_('create-hash/browser');
@@ -100189,7 +103206,7 @@ module.exports = function createHmac(alg, key) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"create-hash/browser":365,"inherits":408,"stream":462}],369:[function(_dereq_,module,exports){
+},{"buffer":574,"create-hash/browser":580,"inherits":623,"stream":677}],584:[function(_dereq_,module,exports){
 'use strict'
 
 exports.randomBytes = exports.rng = exports.pseudoRandomBytes = exports.prng = _dereq_('randombytes')
@@ -100268,7 +103285,7 @@ var publicEncrypt = _dereq_('public-encrypt')
   }
 })
 
-},{"browserify-cipher":347,"browserify-sign":352,"browserify-sign/algos":351,"create-ecdh":364,"create-hash":365,"create-hmac":368,"diffie-hellman":376,"pbkdf2":429,"public-encrypt":432,"randombytes":442}],370:[function(_dereq_,module,exports){
+},{"browserify-cipher":562,"browserify-sign":567,"browserify-sign/algos":566,"create-ecdh":579,"create-hash":580,"create-hmac":583,"diffie-hellman":591,"pbkdf2":644,"public-encrypt":647,"randombytes":657}],585:[function(_dereq_,module,exports){
 'use strict';
 
 exports.utils = _dereq_('./des/utils');
@@ -100277,7 +103294,7 @@ exports.DES = _dereq_('./des/des');
 exports.CBC = _dereq_('./des/cbc');
 exports.EDE = _dereq_('./des/ede');
 
-},{"./des/cbc":371,"./des/cipher":372,"./des/des":373,"./des/ede":374,"./des/utils":375}],371:[function(_dereq_,module,exports){
+},{"./des/cbc":586,"./des/cipher":587,"./des/des":588,"./des/ede":589,"./des/utils":590}],586:[function(_dereq_,module,exports){
 'use strict';
 
 var assert = _dereq_('minimalistic-assert');
@@ -100344,7 +103361,7 @@ proto._update = function _update(inp, inOff, out, outOff) {
   }
 };
 
-},{"inherits":408,"minimalistic-assert":412}],372:[function(_dereq_,module,exports){
+},{"inherits":623,"minimalistic-assert":627}],587:[function(_dereq_,module,exports){
 'use strict';
 
 var assert = _dereq_('minimalistic-assert');
@@ -100487,7 +103504,7 @@ Cipher.prototype._finalDecrypt = function _finalDecrypt() {
   return this._unpad(out);
 };
 
-},{"minimalistic-assert":412}],373:[function(_dereq_,module,exports){
+},{"minimalistic-assert":627}],588:[function(_dereq_,module,exports){
 'use strict';
 
 var assert = _dereq_('minimalistic-assert');
@@ -100632,7 +103649,7 @@ DES.prototype._decrypt = function _decrypt(state, lStart, rStart, out, off) {
   utils.rip(l, r, out, off);
 };
 
-},{"../des":370,"inherits":408,"minimalistic-assert":412}],374:[function(_dereq_,module,exports){
+},{"../des":585,"inherits":623,"minimalistic-assert":627}],589:[function(_dereq_,module,exports){
 'use strict';
 
 var assert = _dereq_('minimalistic-assert');
@@ -100689,7 +103706,7 @@ EDE.prototype._update = function _update(inp, inOff, out, outOff) {
 EDE.prototype._pad = DES.prototype._pad;
 EDE.prototype._unpad = DES.prototype._unpad;
 
-},{"../des":370,"inherits":408,"minimalistic-assert":412}],375:[function(_dereq_,module,exports){
+},{"../des":585,"inherits":623,"minimalistic-assert":627}],590:[function(_dereq_,module,exports){
 'use strict';
 
 exports.readUInt32BE = function readUInt32BE(bytes, off) {
@@ -100947,7 +103964,7 @@ exports.padSplit = function padSplit(num, size, group) {
   return out.join(' ');
 };
 
-},{}],376:[function(_dereq_,module,exports){
+},{}],591:[function(_dereq_,module,exports){
 (function (Buffer){
 var generatePrime = _dereq_('./lib/generatePrime')
 var primes = _dereq_('./lib/primes.json')
@@ -100993,7 +104010,7 @@ exports.DiffieHellmanGroup = exports.createDiffieHellmanGroup = exports.getDiffi
 exports.createDiffieHellman = exports.DiffieHellman = createDiffieHellman
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./lib/dh":377,"./lib/generatePrime":378,"./lib/primes.json":379,"buffer":359}],377:[function(_dereq_,module,exports){
+},{"./lib/dh":592,"./lib/generatePrime":593,"./lib/primes.json":594,"buffer":574}],592:[function(_dereq_,module,exports){
 (function (Buffer){
 var BN = _dereq_('bn.js');
 var MillerRabin = _dereq_('miller-rabin');
@@ -101161,7 +104178,7 @@ function formatReturnValue(bn, enc) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./generatePrime":378,"bn.js":329,"buffer":359,"miller-rabin":411,"randombytes":442}],378:[function(_dereq_,module,exports){
+},{"./generatePrime":593,"bn.js":544,"buffer":574,"miller-rabin":626,"randombytes":657}],593:[function(_dereq_,module,exports){
 var randomBytes = _dereq_('randombytes');
 module.exports = findPrime;
 findPrime.simpleSieve = simpleSieve;
@@ -101268,7 +104285,7 @@ function findPrime(bits, gen) {
 
 }
 
-},{"bn.js":329,"miller-rabin":411,"randombytes":442}],379:[function(_dereq_,module,exports){
+},{"bn.js":544,"miller-rabin":626,"randombytes":657}],594:[function(_dereq_,module,exports){
 module.exports={
     "modp1": {
         "gen": "02",
@@ -101303,9 +104320,9 @@ module.exports={
         "prime": "ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca18217c32905e462e36ce3be39e772c180e86039b2783a2ec07a28fb5c55df06f4c52c9de2bcbf6955817183995497cea956ae515d2261898fa051015728e5a8aaac42dad33170d04507a33a85521abdf1cba64ecfb850458dbef0a8aea71575d060c7db3970f85a6e1e4c7abf5ae8cdb0933d71e8c94e04a25619dcee3d2261ad2ee6bf12ffa06d98a0864d87602733ec86a64521f2b18177b200cbbe117577a615d6c770988c0bad946e208e24fa074e5ab3143db5bfce0fd108e4b82d120a92108011a723c12a787e6d788719a10bdba5b2699c327186af4e23c1a946834b6150bda2583e9ca2ad44ce8dbbbc2db04de8ef92e8efc141fbecaa6287c59474e6bc05d99b2964fa090c3a2233ba186515be7ed1f612970cee2d7afb81bdd762170481cd0069127d5b05aa993b4ea988d8fddc186ffb7dc90a6c08f4df435c93402849236c3fab4d27c7026c1d4dcb2602646dec9751e763dba37bdf8ff9406ad9e530ee5db382f413001aeb06a53ed9027d831179727b0865a8918da3edbebcf9b14ed44ce6cbaced4bb1bdb7f1447e6cc254b332051512bd7af426fb8f401378cd2bf5983ca01c64b92ecf032ea15d1721d03f482d7ce6e74fef6d55e702f46980c82b5a84031900b1c9e59e7c97fbec7e8f323a97a7e36cc88be0f1d45b7ff585ac54bd407b22b4154aacc8f6d7ebf48e1d814cc5ed20f8037e0a79715eef29be32806a1d58bb7c5da76f550aa3d8a1fbff0eb19ccb1a313d55cda56c9ec2ef29632387fe8d76e3c0468043e8f663f4860ee12bf2d5b0b7474d6e694f91e6dbe115974a3926f12fee5e438777cb6a932df8cd8bec4d073b931ba3bc832b68d9dd300741fa7bf8afc47ed2576f6936ba424663aab639c5ae4f5683423b4742bf1c978238f16cbe39d652de3fdb8befc848ad922222e04a4037c0713eb57a81a23f0c73473fc646cea306b4bcbc8862f8385ddfa9d4b7fa2c087e879683303ed5bdd3a062b3cf5b3a278a66d2a13f83f44f82ddf310ee074ab6a364597e899a0255dc164f31cc50846851df9ab48195ded7ea1b1d510bd7ee74d73faf36bc31ecfa268359046f4eb879f924009438b481c6cd7889a002ed5ee382bc9190da6fc026e479558e4475677e9aa9e3050e2765694dfc81f56e880b96e7160c980dd98edd3dfffffffffffffffff"
     }
 }
-},{}],380:[function(_dereq_,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"../package.json":396,"./elliptic/curve":383,"./elliptic/curves":386,"./elliptic/ec":387,"./elliptic/eddsa":390,"./elliptic/hmac-drbg":393,"./elliptic/utils":395,"brorand":330,"dup":85}],381:[function(_dereq_,module,exports){
+},{}],595:[function(_dereq_,module,exports){
+arguments[4][71][0].apply(exports,arguments)
+},{"../package.json":611,"./elliptic/curve":598,"./elliptic/curves":601,"./elliptic/ec":602,"./elliptic/eddsa":605,"./elliptic/hmac-drbg":608,"./elliptic/utils":610,"brorand":545,"dup":71}],596:[function(_dereq_,module,exports){
 'use strict';
 
 var BN = _dereq_('bn.js');
@@ -101658,7 +104675,7 @@ BasePoint.prototype.dblp = function dblp(k) {
   return r;
 };
 
-},{"../../elliptic":380,"bn.js":329}],382:[function(_dereq_,module,exports){
+},{"../../elliptic":595,"bn.js":544}],597:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -102070,9 +105087,9 @@ Point.prototype.eq = function eq(other) {
 Point.prototype.toP = Point.prototype.normalize;
 Point.prototype.mixedAdd = Point.prototype.add;
 
-},{"../../elliptic":380,"../curve":383,"bn.js":329,"inherits":408}],383:[function(_dereq_,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"./base":381,"./edwards":382,"./mont":384,"./short":385,"dup":88}],384:[function(_dereq_,module,exports){
+},{"../../elliptic":595,"../curve":598,"bn.js":544,"inherits":623}],598:[function(_dereq_,module,exports){
+arguments[4][74][0].apply(exports,arguments)
+},{"./base":596,"./edwards":597,"./mont":599,"./short":600,"dup":74}],599:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -102250,7 +105267,7 @@ Point.prototype.getX = function getX() {
   return this.x.fromRed();
 };
 
-},{"../../elliptic":380,"../curve":383,"bn.js":329,"inherits":408}],385:[function(_dereq_,module,exports){
+},{"../../elliptic":595,"../curve":598,"bn.js":544,"inherits":623}],600:[function(_dereq_,module,exports){
 'use strict';
 
 var curve = _dereq_('../curve');
@@ -103161,9 +106178,9 @@ JPoint.prototype.isInfinity = function isInfinity() {
   return this.z.cmpn(0) === 0;
 };
 
-},{"../../elliptic":380,"../curve":383,"bn.js":329,"inherits":408}],386:[function(_dereq_,module,exports){
-arguments[4][91][0].apply(exports,arguments)
-},{"../elliptic":380,"./precomputed/secp256k1":394,"dup":91,"hash.js":399}],387:[function(_dereq_,module,exports){
+},{"../../elliptic":595,"../curve":598,"bn.js":544,"inherits":623}],601:[function(_dereq_,module,exports){
+arguments[4][77][0].apply(exports,arguments)
+},{"../elliptic":595,"./precomputed/secp256k1":609,"dup":77,"hash.js":614}],602:[function(_dereq_,module,exports){
 'use strict';
 
 var BN = _dereq_('bn.js');
@@ -103387,15 +106404,15 @@ EC.prototype.getKeyRecoveryParam = function(e, signature, Q, enc) {
   throw new Error('Unable to find valid recovery factor');
 };
 
-},{"../../elliptic":380,"./key":388,"./signature":389,"bn.js":329}],388:[function(_dereq_,module,exports){
-arguments[4][93][0].apply(exports,arguments)
-},{"bn.js":329,"dup":93}],389:[function(_dereq_,module,exports){
-arguments[4][94][0].apply(exports,arguments)
-},{"../../elliptic":380,"bn.js":329,"dup":94}],390:[function(_dereq_,module,exports){
-arguments[4][95][0].apply(exports,arguments)
-},{"../../elliptic":380,"./key":391,"./signature":392,"dup":95,"hash.js":399}],391:[function(_dereq_,module,exports){
-arguments[4][180][0].apply(exports,arguments)
-},{"../../elliptic":380,"dup":180}],392:[function(_dereq_,module,exports){
+},{"../../elliptic":595,"./key":603,"./signature":604,"bn.js":544}],603:[function(_dereq_,module,exports){
+arguments[4][79][0].apply(exports,arguments)
+},{"bn.js":544,"dup":79}],604:[function(_dereq_,module,exports){
+arguments[4][80][0].apply(exports,arguments)
+},{"../../elliptic":595,"bn.js":544,"dup":80}],605:[function(_dereq_,module,exports){
+arguments[4][81][0].apply(exports,arguments)
+},{"../../elliptic":595,"./key":606,"./signature":607,"dup":81,"hash.js":614}],606:[function(_dereq_,module,exports){
+arguments[4][165][0].apply(exports,arguments)
+},{"../../elliptic":595,"dup":165}],607:[function(_dereq_,module,exports){
 'use strict';
 
 var BN = _dereq_('bn.js');
@@ -103463,11 +106480,11 @@ Signature.prototype.toHex = function toHex() {
 
 module.exports = Signature;
 
-},{"../../elliptic":380,"bn.js":329}],393:[function(_dereq_,module,exports){
-arguments[4][98][0].apply(exports,arguments)
-},{"../elliptic":380,"dup":98,"hash.js":399}],394:[function(_dereq_,module,exports){
-arguments[4][99][0].apply(exports,arguments)
-},{"dup":99}],395:[function(_dereq_,module,exports){
+},{"../../elliptic":595,"bn.js":544}],608:[function(_dereq_,module,exports){
+arguments[4][84][0].apply(exports,arguments)
+},{"../elliptic":595,"dup":84,"hash.js":614}],609:[function(_dereq_,module,exports){
+arguments[4][85][0].apply(exports,arguments)
+},{"dup":85}],610:[function(_dereq_,module,exports){
 'use strict';
 
 var utils = exports;
@@ -103642,7 +106659,7 @@ function intFromLE(bytes) {
 utils.intFromLE = intFromLE;
 
 
-},{"bn.js":329}],396:[function(_dereq_,module,exports){
+},{"bn.js":544}],611:[function(_dereq_,module,exports){
 module.exports={
   "_args": [
     [
@@ -103743,7 +106760,7 @@ module.exports={
   "version": "6.2.3"
 }
 
-},{}],397:[function(_dereq_,module,exports){
+},{}],612:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -104043,7 +107060,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],398:[function(_dereq_,module,exports){
+},{}],613:[function(_dereq_,module,exports){
 (function (Buffer){
 var md5 = _dereq_('create-hash/md5')
 module.exports = EVP_BytesToKey
@@ -104115,19 +107132,19 @@ function EVP_BytesToKey (password, salt, keyLen, ivLen) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"create-hash/md5":367}],399:[function(_dereq_,module,exports){
-arguments[4][131][0].apply(exports,arguments)
-},{"./hash/common":400,"./hash/hmac":401,"./hash/ripemd":402,"./hash/sha":403,"./hash/utils":404,"dup":131}],400:[function(_dereq_,module,exports){
-arguments[4][132][0].apply(exports,arguments)
-},{"../hash":399,"dup":132}],401:[function(_dereq_,module,exports){
-arguments[4][133][0].apply(exports,arguments)
-},{"../hash":399,"dup":133}],402:[function(_dereq_,module,exports){
-arguments[4][134][0].apply(exports,arguments)
-},{"../hash":399,"dup":134}],403:[function(_dereq_,module,exports){
-arguments[4][135][0].apply(exports,arguments)
-},{"../hash":399,"dup":135}],404:[function(_dereq_,module,exports){
-arguments[4][136][0].apply(exports,arguments)
-},{"dup":136,"inherits":408}],405:[function(_dereq_,module,exports){
+},{"buffer":574,"create-hash/md5":582}],614:[function(_dereq_,module,exports){
+arguments[4][117][0].apply(exports,arguments)
+},{"./hash/common":615,"./hash/hmac":616,"./hash/ripemd":617,"./hash/sha":618,"./hash/utils":619,"dup":117}],615:[function(_dereq_,module,exports){
+arguments[4][118][0].apply(exports,arguments)
+},{"../hash":614,"dup":118}],616:[function(_dereq_,module,exports){
+arguments[4][119][0].apply(exports,arguments)
+},{"../hash":614,"dup":119}],617:[function(_dereq_,module,exports){
+arguments[4][120][0].apply(exports,arguments)
+},{"../hash":614,"dup":120}],618:[function(_dereq_,module,exports){
+arguments[4][121][0].apply(exports,arguments)
+},{"../hash":614,"dup":121}],619:[function(_dereq_,module,exports){
+arguments[4][122][0].apply(exports,arguments)
+},{"dup":122,"inherits":623}],620:[function(_dereq_,module,exports){
 var http = _dereq_('http');
 
 var https = module.exports;
@@ -104143,7 +107160,7 @@ https.request = function (params, cb) {
     return http.request.call(this, params, cb);
 }
 
-},{"http":463}],406:[function(_dereq_,module,exports){
+},{"http":678}],621:[function(_dereq_,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -104229,7 +107246,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],407:[function(_dereq_,module,exports){
+},{}],622:[function(_dereq_,module,exports){
 
 var indexOf = [].indexOf;
 
@@ -104240,9 +107257,9 @@ module.exports = function(arr, obj){
   }
   return -1;
 };
-},{}],408:[function(_dereq_,module,exports){
-arguments[4][143][0].apply(exports,arguments)
-},{"dup":143}],409:[function(_dereq_,module,exports){
+},{}],623:[function(_dereq_,module,exports){
+arguments[4][129][0].apply(exports,arguments)
+},{"dup":129}],624:[function(_dereq_,module,exports){
 /**
  * Determine if an object is Buffer
  *
@@ -104261,12 +107278,12 @@ module.exports = function (obj) {
     ))
 }
 
-},{}],410:[function(_dereq_,module,exports){
+},{}],625:[function(_dereq_,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],411:[function(_dereq_,module,exports){
+},{}],626:[function(_dereq_,module,exports){
 var bn = _dereq_('bn.js');
 var brorand = _dereq_('brorand');
 
@@ -104381,7 +107398,7 @@ MillerRabin.prototype.getDivisor = function getDivisor(n, k) {
   return false;
 };
 
-},{"bn.js":329,"brorand":330}],412:[function(_dereq_,module,exports){
+},{"bn.js":544,"brorand":545}],627:[function(_dereq_,module,exports){
 module.exports = assert;
 
 function assert(val, msg) {
@@ -104394,7 +107411,7 @@ assert.equal = function assertEqual(l, r, msg) {
     throw new Error(msg || ('Assertion failed: ' + l + ' != ' + r));
 };
 
-},{}],413:[function(_dereq_,module,exports){
+},{}],628:[function(_dereq_,module,exports){
 'use strict';
 
 
@@ -104498,7 +107515,7 @@ exports.setTyped = function (on) {
 
 exports.setTyped(TYPED_OK);
 
-},{}],414:[function(_dereq_,module,exports){
+},{}],629:[function(_dereq_,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
@@ -104532,7 +107549,7 @@ function adler32(adler, buf, len, pos) {
 
 module.exports = adler32;
 
-},{}],415:[function(_dereq_,module,exports){
+},{}],630:[function(_dereq_,module,exports){
 module.exports = {
 
   /* Allowed flush values; see deflate() and inflate() below for details */
@@ -104581,7 +107598,7 @@ module.exports = {
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
 
-},{}],416:[function(_dereq_,module,exports){
+},{}],631:[function(_dereq_,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -104624,7 +107641,7 @@ function crc32(crc, buf, len, pos) {
 
 module.exports = crc32;
 
-},{}],417:[function(_dereq_,module,exports){
+},{}],632:[function(_dereq_,module,exports){
 'use strict';
 
 var utils   = _dereq_('../utils/common');
@@ -106391,7 +109408,7 @@ exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
 
-},{"../utils/common":413,"./adler32":414,"./crc32":416,"./messages":421,"./trees":422}],418:[function(_dereq_,module,exports){
+},{"../utils/common":628,"./adler32":629,"./crc32":631,"./messages":636,"./trees":637}],633:[function(_dereq_,module,exports){
 'use strict';
 
 // See state defs from inflate.js
@@ -106719,7 +109736,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],419:[function(_dereq_,module,exports){
+},{}],634:[function(_dereq_,module,exports){
 'use strict';
 
 
@@ -108224,7 +111241,7 @@ exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
 
-},{"../utils/common":413,"./adler32":414,"./crc32":416,"./inffast":418,"./inftrees":420}],420:[function(_dereq_,module,exports){
+},{"../utils/common":628,"./adler32":629,"./crc32":631,"./inffast":633,"./inftrees":635}],635:[function(_dereq_,module,exports){
 'use strict';
 
 
@@ -108553,7 +111570,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":413}],421:[function(_dereq_,module,exports){
+},{"../utils/common":628}],636:[function(_dereq_,module,exports){
 'use strict';
 
 module.exports = {
@@ -108568,7 +111585,7 @@ module.exports = {
   '-6':   'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
 
-},{}],422:[function(_dereq_,module,exports){
+},{}],637:[function(_dereq_,module,exports){
 'use strict';
 
 
@@ -109769,7 +112786,7 @@ exports._tr_flush_block  = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
 
-},{"../utils/common":413}],423:[function(_dereq_,module,exports){
+},{"../utils/common":628}],638:[function(_dereq_,module,exports){
 'use strict';
 
 
@@ -109800,7 +112817,7 @@ function ZStream() {
 
 module.exports = ZStream;
 
-},{}],424:[function(_dereq_,module,exports){
+},{}],639:[function(_dereq_,module,exports){
 module.exports={"2.16.840.1.101.3.4.1.1": "aes-128-ecb",
 "2.16.840.1.101.3.4.1.2": "aes-128-cbc",
 "2.16.840.1.101.3.4.1.3": "aes-128-ofb",
@@ -109814,7 +112831,7 @@ module.exports={"2.16.840.1.101.3.4.1.1": "aes-128-ecb",
 "2.16.840.1.101.3.4.1.43": "aes-256-ofb",
 "2.16.840.1.101.3.4.1.44": "aes-256-cfb"
 }
-},{}],425:[function(_dereq_,module,exports){
+},{}],640:[function(_dereq_,module,exports){
 // from https://github.com/indutny/self-signed/blob/gh-pages/lib/asn1.js
 // Fedor, you are amazing.
 
@@ -109933,7 +112950,7 @@ exports.signature = asn1.define('signature', function () {
   )
 })
 
-},{"asn1.js":313}],426:[function(_dereq_,module,exports){
+},{"asn1.js":528}],641:[function(_dereq_,module,exports){
 (function (Buffer){
 // adapted from https://github.com/apatil/pemstrip
 var findProc = /Proc-Type: 4,ENCRYPTED\r?\nDEK-Info: AES-((?:128)|(?:192)|(?:256))-CBC,([0-9A-H]+)\r?\n\r?\n([0-9A-z\n\r\+\/\=]+)\r?\n/m
@@ -109967,7 +112984,7 @@ module.exports = function (okey, password) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"browserify-aes":334,"buffer":359,"evp_bytestokey":398}],427:[function(_dereq_,module,exports){
+},{"browserify-aes":549,"buffer":574,"evp_bytestokey":613}],642:[function(_dereq_,module,exports){
 (function (Buffer){
 var asn1 = _dereq_('./asn1')
 var aesid = _dereq_('./aesid.json')
@@ -110072,7 +113089,7 @@ function decrypt (data, password) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./aesid.json":424,"./asn1":425,"./fixProc":426,"browserify-aes":334,"buffer":359,"pbkdf2":429}],428:[function(_dereq_,module,exports){
+},{"./aesid.json":639,"./asn1":640,"./fixProc":641,"browserify-aes":549,"buffer":574,"pbkdf2":644}],643:[function(_dereq_,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -110300,7 +113317,7 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,_dereq_('_process'))
-},{"_process":431}],429:[function(_dereq_,module,exports){
+},{"_process":646}],644:[function(_dereq_,module,exports){
 (function (Buffer){
 var createHmac = _dereq_('create-hmac')
 var MAX_ALLOC = Math.pow(2, 30) - 1 // default in iojs
@@ -110384,7 +113401,7 @@ function pbkdf2Sync (password, salt, iterations, keylen, digest) {
 }
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"create-hmac":368}],430:[function(_dereq_,module,exports){
+},{"buffer":574,"create-hmac":583}],645:[function(_dereq_,module,exports){
 (function (process){
 'use strict';
 
@@ -110408,7 +113425,7 @@ function nextTick(fn) {
 }
 
 }).call(this,_dereq_('_process'))
-},{"_process":431}],431:[function(_dereq_,module,exports){
+},{"_process":646}],646:[function(_dereq_,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -110501,7 +113518,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],432:[function(_dereq_,module,exports){
+},{}],647:[function(_dereq_,module,exports){
 exports.publicEncrypt = _dereq_('./publicEncrypt');
 exports.privateDecrypt = _dereq_('./privateDecrypt');
 
@@ -110512,7 +113529,7 @@ exports.privateEncrypt = function privateEncrypt(key, buf) {
 exports.publicDecrypt = function publicDecrypt(key, buf) {
   return exports.privateDecrypt(key, buf, true);
 };
-},{"./privateDecrypt":434,"./publicEncrypt":435}],433:[function(_dereq_,module,exports){
+},{"./privateDecrypt":649,"./publicEncrypt":650}],648:[function(_dereq_,module,exports){
 (function (Buffer){
 var createHash = _dereq_('create-hash');
 module.exports = function (seed, len) {
@@ -110531,7 +113548,7 @@ function i2ops(c) {
   return out;
 }
 }).call(this,_dereq_("buffer").Buffer)
-},{"buffer":359,"create-hash":365}],434:[function(_dereq_,module,exports){
+},{"buffer":574,"create-hash":580}],649:[function(_dereq_,module,exports){
 (function (Buffer){
 var parseKeys = _dereq_('parse-asn1');
 var mgf = _dereq_('./mgf');
@@ -110642,7 +113659,7 @@ function compare(a, b){
   return dif;
 }
 }).call(this,_dereq_("buffer").Buffer)
-},{"./mgf":433,"./withPublic":436,"./xor":437,"bn.js":329,"browserify-rsa":350,"buffer":359,"create-hash":365,"parse-asn1":427}],435:[function(_dereq_,module,exports){
+},{"./mgf":648,"./withPublic":651,"./xor":652,"bn.js":544,"browserify-rsa":565,"buffer":574,"create-hash":580,"parse-asn1":642}],650:[function(_dereq_,module,exports){
 (function (Buffer){
 var parseKeys = _dereq_('parse-asn1');
 var randomBytes = _dereq_('randombytes');
@@ -110740,7 +113757,7 @@ function nonZero(len, crypto) {
   return out;
 }
 }).call(this,_dereq_("buffer").Buffer)
-},{"./mgf":433,"./withPublic":436,"./xor":437,"bn.js":329,"browserify-rsa":350,"buffer":359,"create-hash":365,"parse-asn1":427,"randombytes":442}],436:[function(_dereq_,module,exports){
+},{"./mgf":648,"./withPublic":651,"./xor":652,"bn.js":544,"browserify-rsa":565,"buffer":574,"create-hash":580,"parse-asn1":642,"randombytes":657}],651:[function(_dereq_,module,exports){
 (function (Buffer){
 var bn = _dereq_('bn.js');
 function withPublic(paddedMsg, key) {
@@ -110753,7 +113770,7 @@ function withPublic(paddedMsg, key) {
 
 module.exports = withPublic;
 }).call(this,_dereq_("buffer").Buffer)
-},{"bn.js":329,"buffer":359}],437:[function(_dereq_,module,exports){
+},{"bn.js":544,"buffer":574}],652:[function(_dereq_,module,exports){
 module.exports = function xor(a, b) {
   var len = a.length;
   var i = -1;
@@ -110762,7 +113779,7 @@ module.exports = function xor(a, b) {
   }
   return a
 };
-},{}],438:[function(_dereq_,module,exports){
+},{}],653:[function(_dereq_,module,exports){
 (function (global){
 /*! https://mths.be/punycode v1.4.0 by @mathias */
 ;(function(root) {
@@ -111299,7 +114316,7 @@ module.exports = function xor(a, b) {
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],439:[function(_dereq_,module,exports){
+},{}],654:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -111385,7 +114402,7 @@ var isArray = Array.isArray || function (xs) {
   return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{}],440:[function(_dereq_,module,exports){
+},{}],655:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -111472,13 +114489,13 @@ var objectKeys = Object.keys || function (obj) {
   return res;
 };
 
-},{}],441:[function(_dereq_,module,exports){
+},{}],656:[function(_dereq_,module,exports){
 'use strict';
 
 exports.decode = exports.parse = _dereq_('./decode');
 exports.encode = exports.stringify = _dereq_('./encode');
 
-},{"./decode":439,"./encode":440}],442:[function(_dereq_,module,exports){
+},{"./decode":654,"./encode":655}],657:[function(_dereq_,module,exports){
 (function (process,global,Buffer){
 'use strict'
 
@@ -111517,9 +114534,9 @@ function randomBytes (size, cb) {
 }
 
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
-},{"_process":431,"buffer":359}],443:[function(_dereq_,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"./lib/_stream_duplex.js":444,"dup":19}],444:[function(_dereq_,module,exports){
+},{"_process":646,"buffer":574}],658:[function(_dereq_,module,exports){
+arguments[4][18][0].apply(exports,arguments)
+},{"./lib/_stream_duplex.js":659,"dup":18}],659:[function(_dereq_,module,exports){
 // a duplex stream is just a stream that is both readable and writable.
 // Since JS doesn't have multiple prototypal inheritance, this class
 // prototypally inherits from Readable, and then parasitically from
@@ -111603,7 +114620,7 @@ function forEach (xs, f) {
   }
 }
 
-},{"./_stream_readable":446,"./_stream_writable":448,"core-util-is":363,"inherits":408,"process-nextick-args":430}],445:[function(_dereq_,module,exports){
+},{"./_stream_readable":661,"./_stream_writable":663,"core-util-is":578,"inherits":623,"process-nextick-args":645}],660:[function(_dereq_,module,exports){
 // a passthrough stream.
 // basically just the most minimal sort of Transform stream.
 // Every written chunk gets output as-is.
@@ -111632,7 +114649,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"./_stream_transform":447,"core-util-is":363,"inherits":408}],446:[function(_dereq_,module,exports){
+},{"./_stream_transform":662,"core-util-is":578,"inherits":623}],661:[function(_dereq_,module,exports){
 (function (process){
 'use strict';
 
@@ -112611,7 +115628,7 @@ function indexOf (xs, x) {
 }
 
 }).call(this,_dereq_('_process'))
-},{"./_stream_duplex":444,"_process":431,"buffer":359,"core-util-is":363,"events":397,"inherits":408,"isarray":410,"process-nextick-args":430,"string_decoder/":467,"util":331}],447:[function(_dereq_,module,exports){
+},{"./_stream_duplex":659,"_process":646,"buffer":574,"core-util-is":578,"events":612,"inherits":623,"isarray":625,"process-nextick-args":645,"string_decoder/":682,"util":546}],662:[function(_dereq_,module,exports){
 // a transform stream is a readable/writable stream where you do
 // something with the data.  Sometimes it's called a "filter",
 // but that's not a great name for it, since that implies a thing where
@@ -112810,7 +115827,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":444,"core-util-is":363,"inherits":408}],448:[function(_dereq_,module,exports){
+},{"./_stream_duplex":659,"core-util-is":578,"inherits":623}],663:[function(_dereq_,module,exports){
 // A bit simpler than readable streams.
 // Implement an async ._write(chunk, encoding, cb), and it'll handle all
 // the drain event emission and buffering.
@@ -113341,10 +116358,10 @@ function endWritable(stream, state, cb) {
   state.ended = true;
 }
 
-},{"./_stream_duplex":444,"buffer":359,"core-util-is":363,"events":397,"inherits":408,"process-nextick-args":430,"util-deprecate":471}],449:[function(_dereq_,module,exports){
+},{"./_stream_duplex":659,"buffer":574,"core-util-is":578,"events":612,"inherits":623,"process-nextick-args":645,"util-deprecate":686}],664:[function(_dereq_,module,exports){
 module.exports = _dereq_("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":445}],450:[function(_dereq_,module,exports){
+},{"./lib/_stream_passthrough.js":660}],665:[function(_dereq_,module,exports){
 var Stream = (function (){
   try {
     return _dereq_('st' + 'ream'); // hack to fix a circular dependency issue when used with browserify
@@ -113358,19 +116375,19 @@ exports.Duplex = _dereq_('./lib/_stream_duplex.js');
 exports.Transform = _dereq_('./lib/_stream_transform.js');
 exports.PassThrough = _dereq_('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":444,"./lib/_stream_passthrough.js":445,"./lib/_stream_readable.js":446,"./lib/_stream_transform.js":447,"./lib/_stream_writable.js":448}],451:[function(_dereq_,module,exports){
+},{"./lib/_stream_duplex.js":659,"./lib/_stream_passthrough.js":660,"./lib/_stream_readable.js":661,"./lib/_stream_transform.js":662,"./lib/_stream_writable.js":663}],666:[function(_dereq_,module,exports){
 module.exports = _dereq_("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":447}],452:[function(_dereq_,module,exports){
+},{"./lib/_stream_transform.js":662}],667:[function(_dereq_,module,exports){
 module.exports = _dereq_("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":448}],453:[function(_dereq_,module,exports){
-arguments[4][212][0].apply(exports,arguments)
-},{"buffer":359,"dup":212}],454:[function(_dereq_,module,exports){
-arguments[4][219][0].apply(exports,arguments)
-},{"buffer":359,"dup":219}],455:[function(_dereq_,module,exports){
-arguments[4][220][0].apply(exports,arguments)
-},{"./sha":456,"./sha1":457,"./sha224":458,"./sha256":459,"./sha384":460,"./sha512":461,"dup":220}],456:[function(_dereq_,module,exports){
+},{"./lib/_stream_writable.js":663}],668:[function(_dereq_,module,exports){
+arguments[4][197][0].apply(exports,arguments)
+},{"buffer":574,"dup":197}],669:[function(_dereq_,module,exports){
+arguments[4][204][0].apply(exports,arguments)
+},{"buffer":574,"dup":204}],670:[function(_dereq_,module,exports){
+arguments[4][205][0].apply(exports,arguments)
+},{"./sha":671,"./sha1":672,"./sha224":673,"./sha256":674,"./sha384":675,"./sha512":676,"dup":205}],671:[function(_dereq_,module,exports){
 (function (Buffer){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-0, as defined
@@ -113474,7 +116491,7 @@ module.exports = Sha
 
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":454,"buffer":359,"inherits":408}],457:[function(_dereq_,module,exports){
+},{"./hash":669,"buffer":574,"inherits":623}],672:[function(_dereq_,module,exports){
 (function (Buffer){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-1, as defined
@@ -113574,7 +116591,7 @@ Sha1.prototype._hash = function () {
 module.exports = Sha1
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":454,"buffer":359,"inherits":408}],458:[function(_dereq_,module,exports){
+},{"./hash":669,"buffer":574,"inherits":623}],673:[function(_dereq_,module,exports){
 (function (Buffer){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
@@ -113630,7 +116647,7 @@ Sha224.prototype._hash = function () {
 module.exports = Sha224
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":454,"./sha256":459,"buffer":359,"inherits":408}],459:[function(_dereq_,module,exports){
+},{"./hash":669,"./sha256":674,"buffer":574,"inherits":623}],674:[function(_dereq_,module,exports){
 (function (Buffer){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
@@ -113775,7 +116792,7 @@ Sha256.prototype._hash = function () {
 module.exports = Sha256
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":454,"buffer":359,"inherits":408}],460:[function(_dereq_,module,exports){
+},{"./hash":669,"buffer":574,"inherits":623}],675:[function(_dereq_,module,exports){
 (function (Buffer){
 var inherits = _dereq_('inherits')
 var SHA512 = _dereq_('./sha512')
@@ -113835,7 +116852,7 @@ Sha384.prototype._hash = function () {
 module.exports = Sha384
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":454,"./sha512":461,"buffer":359,"inherits":408}],461:[function(_dereq_,module,exports){
+},{"./hash":669,"./sha512":676,"buffer":574,"inherits":623}],676:[function(_dereq_,module,exports){
 (function (Buffer){
 var inherits = _dereq_('inherits')
 var Hash = _dereq_('./hash')
@@ -114105,7 +117122,7 @@ Sha512.prototype._hash = function () {
 module.exports = Sha512
 
 }).call(this,_dereq_("buffer").Buffer)
-},{"./hash":454,"buffer":359,"inherits":408}],462:[function(_dereq_,module,exports){
+},{"./hash":669,"buffer":574,"inherits":623}],677:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -114234,7 +117251,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":397,"inherits":408,"readable-stream/duplex.js":443,"readable-stream/passthrough.js":449,"readable-stream/readable.js":450,"readable-stream/transform.js":451,"readable-stream/writable.js":452}],463:[function(_dereq_,module,exports){
+},{"events":612,"inherits":623,"readable-stream/duplex.js":658,"readable-stream/passthrough.js":664,"readable-stream/readable.js":665,"readable-stream/transform.js":666,"readable-stream/writable.js":667}],678:[function(_dereq_,module,exports){
 (function (global){
 var ClientRequest = _dereq_('./lib/request')
 var extend = _dereq_('xtend')
@@ -114316,7 +117333,7 @@ http.METHODS = [
 	'UNSUBSCRIBE'
 ]
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./lib/request":465,"builtin-status-codes":361,"url":469,"xtend":475}],464:[function(_dereq_,module,exports){
+},{"./lib/request":680,"builtin-status-codes":576,"url":684,"xtend":690}],679:[function(_dereq_,module,exports){
 (function (global){
 exports.fetch = isFunction(global.fetch) && isFunction(global.ReadableByteStream)
 
@@ -114360,7 +117377,7 @@ function isFunction (value) {
 xhr = null // Help gc
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],465:[function(_dereq_,module,exports){
+},{}],680:[function(_dereq_,module,exports){
 (function (process,global,Buffer){
 // var Base64 = require('Base64')
 var capability = _dereq_('./capability')
@@ -114642,7 +117659,7 @@ var unsafeHeaders = [
 ]
 
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
-},{"./capability":464,"./response":466,"_process":431,"buffer":359,"inherits":408,"stream":462,"to-arraybuffer":468}],466:[function(_dereq_,module,exports){
+},{"./capability":679,"./response":681,"_process":646,"buffer":574,"inherits":623,"stream":677,"to-arraybuffer":683}],681:[function(_dereq_,module,exports){
 (function (process,global,Buffer){
 var capability = _dereq_('./capability')
 var inherits = _dereq_('inherits')
@@ -114818,9 +117835,9 @@ IncomingMessage.prototype._onXHRProgress = function () {
 }
 
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
-},{"./capability":464,"_process":431,"buffer":359,"inherits":408,"stream":462}],467:[function(_dereq_,module,exports){
-arguments[4][246][0].apply(exports,arguments)
-},{"buffer":359,"dup":246}],468:[function(_dereq_,module,exports){
+},{"./capability":679,"_process":646,"buffer":574,"inherits":623,"stream":677}],682:[function(_dereq_,module,exports){
+arguments[4][231][0].apply(exports,arguments)
+},{"buffer":574,"dup":231}],683:[function(_dereq_,module,exports){
 var Buffer = _dereq_('buffer').Buffer
 
 module.exports = function (buf) {
@@ -114849,7 +117866,7 @@ module.exports = function (buf) {
 	}
 }
 
-},{"buffer":359}],469:[function(_dereq_,module,exports){
+},{"buffer":574}],684:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -115583,7 +118600,7 @@ Url.prototype.parseHost = function() {
   if (host) this.hostname = host;
 };
 
-},{"./util":470,"punycode":438,"querystring":441}],470:[function(_dereq_,module,exports){
+},{"./util":685,"punycode":653,"querystring":656}],685:[function(_dereq_,module,exports){
 'use strict';
 
 module.exports = {
@@ -115601,16 +118618,16 @@ module.exports = {
   }
 };
 
-},{}],471:[function(_dereq_,module,exports){
-arguments[4][258][0].apply(exports,arguments)
-},{"dup":258}],472:[function(_dereq_,module,exports){
+},{}],686:[function(_dereq_,module,exports){
+arguments[4][243][0].apply(exports,arguments)
+},{"dup":243}],687:[function(_dereq_,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],473:[function(_dereq_,module,exports){
+},{}],688:[function(_dereq_,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -116200,7 +119217,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,_dereq_('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":472,"_process":431,"inherits":408}],474:[function(_dereq_,module,exports){
+},{"./support/isBuffer":687,"_process":646,"inherits":623}],689:[function(_dereq_,module,exports){
 var indexOf = _dereq_('indexof');
 
 var Object_keys = function (obj) {
@@ -116340,7 +119357,7 @@ exports.createContext = Script.createContext = function (context) {
     return copy;
 };
 
-},{"indexof":407}],475:[function(_dereq_,module,exports){
-arguments[4][146][0].apply(exports,arguments)
-},{"dup":146}]},{},[1])(1)
+},{"indexof":622}],690:[function(_dereq_,module,exports){
+arguments[4][132][0].apply(exports,arguments)
+},{"dup":132}]},{},[1])(1)
 });

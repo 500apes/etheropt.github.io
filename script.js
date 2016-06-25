@@ -1,16 +1,16 @@
 $(function () {
   google.charts.load('current', {packages: ['corechart', 'line']});
   google.charts.setOnLoadCallback(function() {
-    bundle.Main.draw_option_chart('buy_call', {strike: 12.5, kind: 'Call', margin: 5.0}, 1.5, 100.0);
-    bundle.Main.draw_option_chart('sell_call', {strike: 12.5, kind: 'Call', margin: 5.0}, 1.5, -100.0);
-    bundle.Main.draw_option_chart('buy_put', {strike: 8.5, kind: 'Put', margin: 5.0}, 0.5, 10.0);
-    bundle.Main.draw_option_chart('sell_put', {strike: 8.5, kind: 'Put', margin: 5.0}, 0.5, -10.0);
+    bundle.Main.drawOptionChart('buy_call', {strike: 12.5, kind: 'Call', margin: 5.0}, 1.5, 100.0);
+    bundle.Main.drawOptionChart('sell_call', {strike: 12.5, kind: 'Call', margin: 5.0}, 1.5, -100.0);
+    bundle.Main.drawOptionChart('buy_put', {strike: 8.5, kind: 'Put', margin: 5.0}, 0.5, 10.0);
+    bundle.Main.drawOptionChart('sell_put', {strike: 8.5, kind: 'Put', margin: 5.0}, 0.5, -10.0);
   });
 });
 $(function () {
   var period = 1800; //30 minute bars
-  var days_data = 10; //10 days
-  var start = Math.ceil(Date.now()/1000 - days_data*86400);
+  var daysData = 10; //10 days
+  var start = Math.ceil(Date.now()/1000 - daysData*86400);
   var end = Math.ceil(Date.now()/1000);
   Highcharts.setOptions({
     global: {timezoneOffset: (new Date()).getTimezoneOffset()}
@@ -33,7 +33,7 @@ $(function () {
         chart : {
           events : {
             load : function () {
-              var new_point_interval = 5;
+              var newPointInterval = 5;
               var chart = this;
               function new_point() {
                 var price = bundle.Main.getPrice();
@@ -42,7 +42,7 @@ $(function () {
                 }
                 setTimeout(function () {
                   new_point();
-                }, new_point_interval*1000);
+                }, newPointInterval*1000);
               }
               new_point();
             }
@@ -59,10 +59,10 @@ $(function () {
   });
 });
 $(function () {
-    $('body').on('click', '#address_submit', function (e) {
+    $('body').on('click', '#account_submit', function (e) {
         e.preventDefault();
-        $('#address_modal').modal('hide');
-        bundle.Main.addAddress($('#address_addr').val(), $('#address_pk').val());
+        $('#account_modal').modal('hide');
+        bundle.Main.addAccount($('#account_addr').val(), $('#account_pk').val());
     });
 });
 $(function () {
@@ -154,13 +154,13 @@ $(function () {
       $(e.currentTarget).find('input[id="withdraw_contract_addr"]').val(contract_addr);
     });
 });
-function buy_margin() {
+function buyMargin() {
   var price = Number($('#buy_price').val());
   var size = Number($('#buy_size').val());
   var option = JSON.parse($('#buy_option').val());
-  var margin = bundle.utility.roundTo(price*size,3);
+  var margin = (price*size).toFixed(3);
   $('#buy_margin').html(margin+" eth");
-  bundle.Main.draw_option_chart('buy_graph', option, price, size);
+  bundle.Main.drawOptionChart('buy_graph', option, price, size);
 }
 $(function () {
     $('body').on('click', '#buy_submit', function (e) {
@@ -179,16 +179,16 @@ $(function () {
         $(e.currentTarget).find('input[id="buy_size"]').val(size);
         var description = $(e.relatedTarget).data('description');
         $(e.currentTarget).find('#buy_description').html(description);
-        buy_margin();
+        buyMargin();
     });
 });
-function sell_margin() {
+function sellMargin() {
   var price = Number($('#sell_price').val());
   var size = Number($('#sell_size').val());
   var option = JSON.parse($('#sell_option').val());
-  var margin = bundle.utility.roundTo((option.margin-price)*size,3);
+  var margin = ((option.margin-price)*size).toFixed(3);
   $('#sell_margin').html(margin+" eth");
-  bundle.Main.draw_option_chart('sell_graph', option, price, -size);
+  bundle.Main.drawOptionChart('sell_graph', option, price, -size);
 }
 $(function () {
     $('body').on('click', '#sell_submit', function (e) {
@@ -207,7 +207,7 @@ $(function () {
         $(e.currentTarget).find('input[id="sell_size"]').val(size);
         var description = $(e.relatedTarget).data('description');
         $(e.currentTarget).find('#sell_description').html(description);
-        sell_margin();
+        sellMargin();
     });
 });
 $(function() {

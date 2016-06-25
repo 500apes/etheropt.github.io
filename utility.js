@@ -40,7 +40,7 @@ function readFile(filename, callback) {
           }
         });
       } else {
-        request.get(config.home_url+"/"+filename, function(err, httpResponse, body){
+        request.get(config.homeURL+"/"+filename, function(err, httpResponse, body){
           callback(body);
         });
       }
@@ -84,7 +84,7 @@ function call(web3, contract, address, functionName, args, callback) {
     var web3 = new Web3();
     var data = contract[functionName].getData.apply(null, args);
     var result = undefined;
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_call&to='+address+'&data='+data;
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_call&to='+address+'&data='+data;
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         try {
@@ -138,7 +138,7 @@ function testSend(web3, contract, address, functionName, args, fromAddress, priv
   var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
   var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
   if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
-    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasPrice = config.ethGasPrice;
     args[args.length-1].gasLimit = args[args.length-1].gas;
     delete args[args.length-1].gas;
   }
@@ -172,7 +172,7 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
   args = Array.prototype.slice.call(args).filter(function (a) {return a !== undefined; });
   var options = {};
   if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
-    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasPrice = config.ethGasPrice;
     args[args.length-1].gasLimit = args[args.length-1].gas;
     delete args[args.length-1].gas;
   }
@@ -202,7 +202,7 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
       if (tx) {
         var serializedTx = tx.serialize().toString('hex');
         function proxy() {
-          var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api';
+          var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api';
           request.post({url: url, form: {module: 'proxy', action: 'eth_sendRawTransaction', hex: serializedTx}}, function(err, httpResponse, body){
             if (!err) {
               try {
@@ -257,7 +257,7 @@ function estimateGas(web3, contract, address, functionName, args, fromAddress, p
   var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
   var inputTypes = functionAbi.inputs.map(function(x) {return x.type});
   if (typeof(args[args.length-1])=='object' && args[args.length-1].gas!=undefined) {
-    args[args.length-1].gasPrice = config.eth_gas_price;
+    args[args.length-1].gasPrice = config.ethGasPrice;
     args[args.length-1].gasLimit = args[args.length-1].gas;
     delete args[args.length-1].gas;
   }
@@ -300,7 +300,7 @@ function estimateGas(web3, contract, address, functionName, args, fromAddress, p
 
 function txReceipt(web3, txHash, callback) {
   function proxy(){
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getTransactionReceipt&txhash='+txHash;
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getTransactionReceipt&txhash='+txHash;
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         result = JSON.parse(body);
@@ -331,7 +331,7 @@ function logs(web3, contract, address, fromBlock, toBlock, callback) {
     }
   }
   function proxy(retries) {
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=logs&action=getLogs&address='+address+'&fromBlock='+fromBlock+'&toBlock='+toBlock;
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=logs&action=getLogs&address='+address+'&fromBlock='+fromBlock+'&toBlock='+toBlock;
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         try {
@@ -378,7 +378,7 @@ function logs(web3, contract, address, fromBlock, toBlock, callback) {
 
 function getBalance(web3, address, callback) {
   function proxy(){
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=balance&address='+address+'&tag=latest';
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=account&action=balance&address='+address+'&tag=latest';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         result = JSON.parse(body);
@@ -399,7 +399,7 @@ function getBalance(web3, address, callback) {
 
 function getNextNonce(web3, address, callback) {
   function proxy(){
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getTransactionCount&address='+address+'&tag=latest';
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getTransactionCount&address='+address+'&tag=latest';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         result = JSON.parse(body);
@@ -423,7 +423,7 @@ function getNextNonce(web3, address, callback) {
 
 function blockNumber(web3, callback) {
   function proxy() {
-    var url = 'https://'+(config.eth_testnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_blockNumber';
     request.get(url, function(err, httpResponse, body){
       if (!err) {
         var result = JSON.parse(body);
