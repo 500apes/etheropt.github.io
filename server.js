@@ -120,9 +120,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 									try {
 										var ordersNew = req.body.orders;
 										async.each(ordersNew, function(order, callbackEach) {
-											var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
-											console.log([order.optionID, order.price, order.size, order.orderID, order.blockExpires]);
-											console.log(condensed);
+											var condensed = utility.pack([Number(order.optionID), order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
 											var hash = '0x'+sha256(new Buffer(condensed,'hex'));
 											var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
 											utility.call(web3, myContract, order.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
