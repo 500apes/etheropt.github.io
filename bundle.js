@@ -201,6 +201,7 @@ Main.processOrders = function(callback) {
                             Main.alertInfo('Your order is being sent to the order book.');
                             async.each(browserOrder.option.marketMakers,
                               function(marketMaker, callbackMarketMaker) {
+                                console.log(marketMaker, order);
                                 request.post(marketMaker, {form:{orders: [order]}}, function(err, httpResponse, body) {
                                   callbackMarketMaker();
                                 });

@@ -118,8 +118,8 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 								console.log(req.body);
 								utility.blockNumber(web3, function(err, blockNumber) {
 									try {
-										var new_orders = req.body.orders;
-										async.each(new_orders, function(order, callbackEach) {
+										var ordersNew = req.body.orders;
+										async.each(ordersNew, function(order, callbackEach) {
 											var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
 											var hash = '0x'+sha256(new Buffer(condensed,'hex'));
 											var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
@@ -144,6 +144,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 										});
 									} catch(err) {
 										console.log(err);
+										console.trace();
 									}
 								});
 								res.writeHead(200);
