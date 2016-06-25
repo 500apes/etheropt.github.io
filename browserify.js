@@ -861,9 +861,9 @@ var selectedAccount = 0;
 var cookie = Main.readCookie("user");
 if (cookie) {
   cookie = JSON.parse(cookie);
+  addrs = cookie["addrs"];
+  pks = cookie["pks"];
   if (cookie["selectedAccount"]) {
-    addrs = cookie["addrs"];
-    pks = cookie["pks"];
     selectedAccount = cookie["selectedAccount"];
   }
 }
