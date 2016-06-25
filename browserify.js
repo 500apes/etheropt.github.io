@@ -180,10 +180,7 @@ Main.processOrders = function(callback) {
                   var condensed = utility.pack([browserOrder.option.optionID, browserOrder.priceTied, browserOrder.size-cumulativeMatchSize, orderID, blockExpires], [256, 256, 256, 256, 256]);
                   var hash = sha256(new Buffer(condensed,'hex'));
                   utility.sign(web3, addrs[selectedAccount], hash, pks[selectedAccount], function(err, sig) {
-                    if (err) {
-                      Main.alertInfo('You tried sending an order to the order book, but it could not be signed.');
-                      callbackBrowserOrder();
-                    } else {
+                    if (sig) {
                       var order = {contractAddr: browserOrder.option.contractAddr, optionID: browserOrder.option.optionID, price: browserOrder.priceTied, size: browserOrder.size-cumulativeMatchSize, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAccount], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
                       condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
                       hash = '0x'+sha256(new Buffer(condensed,'hex'));
@@ -216,6 +213,10 @@ Main.processOrders = function(callback) {
                           }
                         });
                       });
+                    } else {
+                      Main.alertInfo('You tried sending an order to the order book, but it could not be signed.');
+                      console.log(err, sig);
+                      callbackBrowserOrder();
                     }
                   });
                 });
@@ -858,11 +859,13 @@ var addrs = [config.ethAddr];
 var pks = [config.ethAddrPrivateKey];
 var selectedAccount = 0;
 var cookie = Main.readCookie("user");
-if (cookie && cookie["selectedAccount"]) {
+if (cookie) {
   cookie = JSON.parse(cookie);
-  addrs = cookie["addrs"];
-  pks = cookie["pks"];
-  selectedAccount = cookie["selectedAccount"];
+  if (cookie["selectedAccount"]) {
+    addrs = cookie["addrs"];
+    pks = cookie["pks"];
+    selectedAccount = cookie["selectedAccount"];
+  }
 }
 var connection = undefined;
 var nonce = undefined;

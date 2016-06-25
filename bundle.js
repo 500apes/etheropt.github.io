@@ -182,10 +182,7 @@ Main.processOrders = function(callback) {
                   var condensed = utility.pack([browserOrder.option.optionID, browserOrder.priceTied, browserOrder.size-cumulativeMatchSize, orderID, blockExpires], [256, 256, 256, 256, 256]);
                   var hash = sha256(new Buffer(condensed,'hex'));
                   utility.sign(web3, addrs[selectedAccount], hash, pks[selectedAccount], function(err, sig) {
-                    if (err) {
-                      Main.alertInfo('You tried sending an order to the order book, but it could not be signed.');
-                      callbackBrowserOrder();
-                    } else {
+                    if (sig) {
                       var order = {contractAddr: browserOrder.option.contractAddr, optionID: browserOrder.option.optionID, price: browserOrder.priceTied, size: browserOrder.size-cumulativeMatchSize, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAccount], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
                       condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
                       hash = '0x'+sha256(new Buffer(condensed,'hex'));
@@ -218,6 +215,10 @@ Main.processOrders = function(callback) {
                           }
                         });
                       });
+                    } else {
+                      Main.alertInfo('You tried sending an order to the order book, but it could not be signed.');
+                      console.log(err, sig);
+                      callbackBrowserOrder();
                     }
                   });
                 });
@@ -860,11 +861,13 @@ var addrs = [config.ethAddr];
 var pks = [config.ethAddrPrivateKey];
 var selectedAccount = 0;
 var cookie = Main.readCookie("user");
-if (cookie && cookie["selectedAccount"]) {
+if (cookie) {
   cookie = JSON.parse(cookie);
-  addrs = cookie["addrs"];
-  pks = cookie["pks"];
-  selectedAccount = cookie["selectedAccount"];
+  if (cookie["selectedAccount"]) {
+    addrs = cookie["addrs"];
+    pks = cookie["pks"];
+    selectedAccount = cookie["selectedAccount"];
+  }
 }
 var connection = undefined;
 var nonce = undefined;
@@ -84666,30 +84669,38 @@ function roundToNearest(numToRound, numToRoundTo) {
 }
 
 function readFile(filename, callback) {
-  try {
-    if (typeof(window) === 'undefined') {
-      fs.readFile(filename,{ encoding: 'utf8' }, function(err, data) {
-        if (err) {
-          callback(err, undefined);
-        } else {
-          callback(undefined, data);
-        }
-      });
-    } else {
-      request.get(config.homeURL+"/"+filename, function(err, httpResponse, body){
-        if (err) {
-          callback(err, undefined);
-        } else {
-          callback(undefined, body);
-        }
-      });
+  if (callback) {
+    try {
+      if (typeof(window) === 'undefined') {
+        fs.readFile(filename,{ encoding: 'utf8' }, function(err, data) {
+          if (err) {
+            callback(err, undefined);
+          } else {
+            callback(undefined, data);
+          }
+        });
+      } else {
+        request.get(config.homeURL+"/"+filename, function(err, httpResponse, body){
+          if (err) {
+            callback(err, undefined);
+          } else {
+            callback(undefined, body);
+          }
+        });
+      }
+    } catch (err) {
+      callback(err, undefined);
     }
-  } catch (err) {
-    callback(err, undefined);
+  } else {
+    try {
+      return fs.readFileSync(filename,{ encoding: 'utf8' });
+    } catch (err) {
+      return undefined;
+    }
   }
 }
 
-function writeFile(filename, data) {
+function writeFile(filename, data, callback) {
   fs.writeFile(filename, data, function(err) {
     if(err) {
       callback(err, false);
@@ -85177,7 +85188,11 @@ function verify(web3, address, v, r, s, value, callback) {
   if (value.substring(0,2)=='0x') value=value.substring(2,value.length);
   var pubKey = ethUtil.ecrecover(new Buffer(value, 'hex'), Number(v), new Buffer(r, 'hex'), new Buffer(s, 'hex'));
   var result = address == '0x'+ethUtil.pubToAddress(new Buffer(pubKey, 'hex')).toString('hex');
-  callback(undefined, result);
+  if (callback) {
+    callback(undefined, result);
+  } else {
+    return result;
+  }
 }
 
 function createAccount() {
@@ -85460,6 +85475,14 @@ Array.prototype.equals = function(b) {
   return true;
 }
 
+Math.sign = Math.sign || function(x) {
+  x = +x; // convert to a number
+  if (x === 0 || isNaN(x)) {
+    return x;
+  }
+  return x > 0 ? 1 : -1;
+}
+
 exports.decToHex = decToHex;
 exports.hexToDec = hexToDec;
 exports.roundToNearest = roundToNearest;
@@ -85493,7 +85516,7 @@ exports.getRandomInt = getRandomInt;
 var config = {};
 
 config.homeURL = 'https://etheropt.github.io';
-// config.homeURL = 'http://localhost:8080';
+config.homeURL = 'http://localhost:8080';
 config.contractMarket = 'etheropt.sol';
 config.contractContracts = 'etheropt_contracts.sol';
 config.contractAddrs = [];

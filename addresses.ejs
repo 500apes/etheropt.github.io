@@ -4,7 +4,7 @@
   </button>
   <ul class="dropdown-menu pull-right">
     <% addresses.forEach(function(address, i, array) { %>
-      <li><a href="#" onclick="bundle.Main.selectAddress(<%= i%>);"><%= address.addr %> <span class="badge"><%= bundle.utility.weiToEth(address.balance) %> eth</span></a></li>
+      <li><a href="#" onclick="bundle.Main.selectAccount(<%= i%>);"><%= address.addr %> <span class="badge"><%= bundle.utility.weiToEth(address.balance) %> eth</span></a></li>
     <% }); %>
     <li role="separator" class="divider"></li>
     <li><a href="#" onclick="bundle.Main.createAccount()">Create account</a></li>
