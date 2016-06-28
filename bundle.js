@@ -15,7 +15,7 @@ Main.alertInfo = function(message) {
   console.log(message);
 }
 Main.alertTxResult = function(err, result) {
-  if (txHash) {
+  if (result.txHash) {
     Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+result.txHash+'" target="_blank">'+result.txHash+'</a>.');
   } else {
     Main.alertInfo('You tried to send an Ethereum transaction but there was an error: '+err);
@@ -888,30 +888,19 @@ web3.setProvider(new web3.providers.HttpProvider(config.ethProvider));
 //get contracts
 var contractsContract = undefined;
 var myContract = undefined;
-var bytecode = undefined;
-var abi = undefined;
-utility.readFile(config.contractContracts+'.bytecode', function(err, result){
-  bytecode = JSON.parse(result);
-  utility.readFile(config.contractContracts+'.interface', function(err, result){
-    abi = JSON.parse(result);
-    contractsContract = web3.eth.contract(abi);
-    contractsContract = contractsContract.at(config.contractContractsAddr);
-    utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
-      if (result) {
-        config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
-        utility.readFile(config.contractMarket+'.bytecode', function(err, result){
-          bytecode = JSON.parse(result);
-          utility.readFile(config.contractMarket+'.interface', function(err, result){
-            abi = JSON.parse(result);
-            myContract = web3.eth.contract(abi);
-            myContract = myContract.at(config.contractAddr);
-            Main.init(); //initial load
-          });
-        });
-      }
-    });
+utility.loadContract(web3, config.contractContracts, config.contractContractsAddr, function(err, contract){
+  contractsContract = contract;
+  utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
+    if (result) {
+      config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
+      utility.loadContract(web3, config.contractMarket, undefined, function(err, contract){
+        myContract = contract;
+        Main.init();
+      });
+    }
   });
 });
+
 
 module.exports = {Main: Main, utility: utility};
 
@@ -85054,7 +85043,36 @@ function getBalance(web3, address, callback) {
         if (!err) {
           callback(undefined, balance);
         } else {
-          callback(err, undefined);
+          proxy();
+        }
+      });
+    } else {
+      proxy();
+    }
+  } catch(err) {
+    proxy();
+  }
+}
+
+function getCode(web3, address, callback) {
+  function proxy(){
+    var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=proxy&action=eth_getCode&address='+address+'&tag=latest';
+    request.get(url, function(err, httpResponse, body){
+      if (!err) {
+        result = JSON.parse(body);
+        callback(undefined, result['result']);
+      } else {
+        callback(err, undefined);
+      }
+    });
+  }
+  try {
+    if (web3.currentProvider) {
+      web3.eth.getCode(address, function(err, code){
+        if (!err) {
+          callback(undefined, code);
+        } else {
+          proxy();
         }
       });
     } else {
@@ -85235,34 +85253,39 @@ function loadContract(web3, sourceCode, address, callback) {
 }
 
 function deployContract(web3, sourceFile, contractName, constructorParams, address, callback) {
-  utility.readFile(sourceFile+'.bytecode', function(err, bytecode){
-    utility.readFile(sourceFile+'.interface', function(err, abi){
-      utility.readFile(sourceFile, function(err, source){
+  readFile(sourceFile+'.bytecode', function(err, bytecode){
+    readFile(sourceFile+'.interface', function(err, abi){
+      readFile(sourceFile, function(err, source){
         if (abi && bytecode) {
           abi = JSON.parse(abi);
           bytecode = JSON.parse(bytecode);
         } else {
-          callback('Could not load bytecode and ABI', undefined)
+          callback('Could not load bytecode and ABI', undefined);
           // var solc = require('solc');
           // var compiled = solc.compile(source, 1).contracts[contractName];
           // abi = JSON.parse(compiled.interface);
           // bytecode = compiled.bytecode;
         }
         var contract = web3.eth.contract(abi);
-        utility.testSend(web3, contract, undefined, 'constructor', constructorParams.concat([{from: address, data: bytecode}]), address, undefined, 0, function(err, result) {
-          if (!err) {
-            txReceipt(result.txHash, function(err, receipt) {
-              if (!err) {
-                var addr = receipt.contractAddress;
-                contract = contract.at(addr);
-                callback(undefined, {contract: contract, addr: addr});
-              } else {
-                callback(err, undefined);
-              }
-            });
-          } else {
-            callback(err, undefined);
-          }
+        send(web3, contract, undefined, 'constructor', constructorParams.concat([{from: address, data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}]), address, undefined, 0, function(err, result) {
+          var txHash = result.txHash;
+          var address = undefined;
+          async.whilst(
+            function () { return address==undefined; },
+            function (callbackWhilst) {
+                setTimeout(function () {
+                  txReceipt(web3, txHash, function(err, receipt) {
+                    if (receipt) {
+                      address = receipt.contractAddress;
+                    }
+                    callbackWhilst(null);
+                  });
+                }, 1*1000);
+            },
+            function (err) {
+              callback(undefined, address);
+            }
+          );
         });
       });
     });
@@ -85306,12 +85329,12 @@ function hexToDec(hexStr, length) { //length implies this is a two's complement 
 function pack(data, lengths) {
   packed = "";
   for (var i=0; i<lengths.length; i++) {
-    if (typeof(data[i])=='string') {
-      if (data[i].substring(0,2)=='0x') data[i] = data[i].substring(2);
-      packed += data[i];
-    } else {
-      packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
-    }
+    // if (typeof(data[i])=='string') {
+    //   if (data[i].substring(0,2)=='0x') data[i] = data[i].substring(2);
+    //   packed += data[i];
+    // } else {
+    packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
+    // }
   }
   return packed;
 }
@@ -85493,6 +85516,8 @@ exports.roundToNearest = roundToNearest;
 exports.pack = pack;
 exports.unpack = unpack;
 exports.getBalance = getBalance;
+exports.getCode = getCode;
+exports.getNextNonce = getNextNonce;
 exports.send = send;
 exports.call = call;
 exports.testSend = testSend;

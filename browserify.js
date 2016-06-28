@@ -13,7 +13,7 @@ Main.alertInfo = function(message) {
   console.log(message);
 }
 Main.alertTxResult = function(err, result) {
-  if (txHash) {
+  if (result.txHash) {
     Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+result.txHash+'" target="_blank">'+result.txHash+'</a>.');
   } else {
     Main.alertInfo('You tried to send an Ethereum transaction but there was an error: '+err);
@@ -886,29 +886,18 @@ web3.setProvider(new web3.providers.HttpProvider(config.ethProvider));
 //get contracts
 var contractsContract = undefined;
 var myContract = undefined;
-var bytecode = undefined;
-var abi = undefined;
-utility.readFile(config.contractContracts+'.bytecode', function(err, result){
-  bytecode = JSON.parse(result);
-  utility.readFile(config.contractContracts+'.interface', function(err, result){
-    abi = JSON.parse(result);
-    contractsContract = web3.eth.contract(abi);
-    contractsContract = contractsContract.at(config.contractContractsAddr);
-    utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
-      if (result) {
-        config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
-        utility.readFile(config.contractMarket+'.bytecode', function(err, result){
-          bytecode = JSON.parse(result);
-          utility.readFile(config.contractMarket+'.interface', function(err, result){
-            abi = JSON.parse(result);
-            myContract = web3.eth.contract(abi);
-            myContract = myContract.at(config.contractAddr);
-            Main.init(); //initial load
-          });
-        });
-      }
-    });
+utility.loadContract(web3, config.contractContracts, config.contractContractsAddr, function(err, contract){
+  contractsContract = contract;
+  utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
+    if (result) {
+      config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
+      utility.loadContract(web3, config.contractMarket, undefined, function(err, contract){
+        myContract = contract;
+        Main.init();
+      });
+    }
   });
 });
+
 
 module.exports = {Main: Main, utility: utility};
