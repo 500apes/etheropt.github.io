@@ -477,7 +477,7 @@ Main.connectionTest = function() {
   Main.popovers();
   return connection;
 }
-Main.loadAddresses = function() {
+Main.loadAccounts = function() {
   if (Main.connectionTest().connection=='Geth') {
     $('#pk_div').hide();
   }
@@ -816,7 +816,7 @@ Main.refresh = function() {
     refreshing = true;
     Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
-    Main.loadAddresses();
+    Main.loadAccounts();
     var events = Object.values(eventsCache);
     events.sort(function(a,b){ return b.blockNumber-a.blockNumber || b.transactionIndex-a.transactionIndex });
     new EJS({url: config.homeURL+'/'+'events_table.ejs'}).update('events', {events: events, options: optionsCache});
@@ -844,7 +844,7 @@ Main.refresh = function() {
 Main.init = function() {
   Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
   Main.connectionTest();
-  Main.loadAddresses();
+  Main.loadAccounts();
   Main.displayMarket(function(){
     function mainLoop() {
       Main.refresh();

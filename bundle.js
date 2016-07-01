@@ -479,7 +479,7 @@ Main.connectionTest = function() {
   Main.popovers();
   return connection;
 }
-Main.loadAddresses = function() {
+Main.loadAccounts = function() {
   if (Main.connectionTest().connection=='Geth') {
     $('#pk_div').hide();
   }
@@ -818,7 +818,7 @@ Main.refresh = function() {
     refreshing = true;
     Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
-    Main.loadAddresses();
+    Main.loadAccounts();
     var events = Object.values(eventsCache);
     events.sort(function(a,b){ return b.blockNumber-a.blockNumber || b.transactionIndex-a.transactionIndex });
     new EJS({url: config.homeURL+'/'+'events_table.ejs'}).update('events', {events: events, options: optionsCache});
@@ -846,7 +846,7 @@ Main.refresh = function() {
 Main.init = function() {
   Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
   Main.connectionTest();
-  Main.loadAddresses();
+  Main.loadAccounts();
   Main.displayMarket(function(){
     function mainLoop() {
       Main.refresh();
@@ -84863,13 +84863,13 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
                 if (result['result']) {
                   callback(undefined, {txHash: result['result'], nonce: nonce+1});
                 } else if (result['error']) {
-                  callback(result['error']['message'], {txHash: undefined, nonce: nonce+1});
+                  callback(result['error']['message'], {txHash: undefined, nonce: nonce});
                 }
               } catch (err) {
-                callback(err, {txHash: undefined, nonce: nonce+1});
+                callback(err, {txHash: undefined, nonce: nonce});
               }
             } else {
-              callback(err, {txHash: undefined, nonce: nonce+1});
+              callback(err, {txHash: undefined, nonce: nonce});
             }
           });
         }
@@ -84889,7 +84889,7 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
           proxy();
         }
       } else {
-        callback('Failed to sign transaction', {txHash: undefined, nonce: nonce+1});
+        callback('Failed to sign transaction', {txHash: undefined, nonce: nonce});
       }
     });
   });
@@ -84911,7 +84911,7 @@ function estimateGas(web3, contract, address, functionName, args, fromAddress, p
   if (args.length > inputTypes.length && utils.isObject(args[args.length-1])) {
       options = args[args.length-1];
   }
-  getNextNonce(web3, fromAddress, function(nextNonce){
+  getNextNonce(web3, fromAddress, function(err, nextNonce){
     if (nonce==undefined) {
       nonce = nextNonce;
     }
@@ -84920,7 +84920,7 @@ function estimateGas(web3, contract, address, functionName, args, fromAddress, p
     var typeName = inputTypes.join();
     options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
     var tx = new Tx(options);
-    signTx(web3, fromAddress, tx, privateKey, function(tx){
+    signTx(web3, fromAddress, tx, privateKey, function(err, tx){
       if (tx) {
         var serializedTx = tx.serialize().toString('hex');
         if (web3.currentProvider) {
@@ -85329,12 +85329,12 @@ function hexToDec(hexStr, length) { //length implies this is a two's complement 
 function pack(data, lengths) {
   packed = "";
   for (var i=0; i<lengths.length; i++) {
-    // if (typeof(data[i])=='string') {
-    //   if (data[i].substring(0,2)=='0x') data[i] = data[i].substring(2);
-    //   packed += data[i];
-    // } else {
-    packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
-    // }
+    if (typeof(data[i])=='string' && data[i].substring(0,2)=='0x') {
+      if (data[i].substring(0,2)=='0x') data[i] = data[i].substring(2);
+      packed += data[i];
+    } else {
+      packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
+    }
   }
   return packed;
 }
