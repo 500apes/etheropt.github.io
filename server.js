@@ -85,7 +85,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 
 	//web3
 	web3 = new Web3();
-	web3.eth.defaultAccount = config.ethAddr;
+	web3.eth.defaultAccount = self.ethAddr;
 	web3.setProvider(new web3.providers.HttpProvider(config.ethProvider));
 
 	//get contracts
@@ -159,7 +159,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 										utility.call(web3, myContract, contractAddr, 'getMarketMakerFunds', [], function(err, result) {
 											if (result) {
 												var min_funds = result.map(function(x){return x.toNumber()}).min();
-												utility.call(web3, myContract, contractAddr, 'getFundsAndAvailable', [ethAddr], function(err, result) {
+												utility.call(web3, myContract, contractAddr, 'getFundsAndAvailable', [self.ethAddr], function(err, result) {
 													if (result) {
 														var funds = result[0].toNumber();
 														async.whilst(
@@ -228,7 +228,7 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 													var margin = result[2].toNumber() / 1000000000000000000;
 													var realityID = result[3].toNumber();
 													var optionChainDescription = {expiration: expiration, fromcur: fromcur, tocur: tocur, margin: margin, realityID: realityID};
-													utility.call(web3, myContract, contractAddr, 'getMarket', [config.ethAddr], function(err, result) {
+													utility.call(web3, myContract, contractAddr, 'getMarket', [self.ethAddr], function(err, result) {
 														if (result) {
 															var optionIDs = result[0];
 															var strikes = result[1];
