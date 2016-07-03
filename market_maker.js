@@ -1,4 +1,4 @@
-var config = require('./config.js');
+var config = require('./config_testnet.js');
 var server = require('./server.js');
 var utility = require('./common/utility.js');
 var Web3 = require('web3');

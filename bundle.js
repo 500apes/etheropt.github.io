@@ -85335,9 +85335,15 @@ function decToHex(dec, length) {
     // return convertBase((Math.pow(2, length) + decStr).toString(), 10, 16);
     return (new BigNumber(2)).pow(length).add(new BigNumber(dec)).toString(16);
   } else {
+    var result = null;
     try {
-      return convertBase(dec.toString(), 10, 16);
+      result = convertBase(dec.toString(), 10, 16);
     } catch (err) {
+      result = null;
+    }
+    if (result) {
+      return result;
+    } else {
       return (new BigNumber(dec)).toString(16);
     }
   }
@@ -85368,8 +85374,8 @@ function pack(data, lengths) {
       if (data[i].substring(0,2)=='0x') data[i] = data[i].substring(2);
       packed += zeroPad(data[i], lengths[i]/4);
     } else {
-      packed += zeroPad(new BigNumber(data[i]).toString(16), lengths[i]/4);
-      // packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
+      // packed += zeroPad(new BigNumber(data[i]).toString(16), lengths[i]/4);
+      packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
     }
   }
   return packed;
