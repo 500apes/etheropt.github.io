@@ -176,7 +176,7 @@ Main.processOrders = function(callback) {
               if (browserOrder.size-cumulativeMatchSize!=0) {
                 browserOrder.priceTied = utility.roundToNearest(browserOrder.priceTied, 1000000);
                 utility.blockNumber(web3, function(err, blockNumber) {
-                  var orderID = utility.getRandomInt(0,Math.pow(2,64));
+                  var orderID = utility.getRandomInt(0,Math.pow(2,32));
                   var blockExpires = blockNumber + browserOrder.update;
                   var condensed = utility.pack([browserOrder.option.optionID, browserOrder.priceTied, browserOrder.size-cumulativeMatchSize, orderID, blockExpires], [256, 256, 256, 256, 256]);
                   var hash = sha256(new Buffer(condensed,'hex'));
