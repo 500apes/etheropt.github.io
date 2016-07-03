@@ -13,7 +13,7 @@ var sha256 = require('js-sha256').sha256;
 var BigNumber = require('bignumber.js');
 require('datejs');
 
-function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn) {
+function Server(ethAddr, armed, pricerDataFn, pricerFn) {
 	//self
 	var self = this;
 

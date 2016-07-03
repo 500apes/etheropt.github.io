@@ -12,10 +12,6 @@ require('datejs');
 var cli = commandLineArgs([
 	{ name: 'help', alias: 'h', type: Boolean },
   { name: 'armed', type: Boolean, defaultValue: false },
-	{ name: 'domain', type: String, defaultValue: config.domain },
-  { name: 'port', type: String, defaultValue: config.port },
-	{ name: 'url', type: String, defaultValue: config.url },
-	{ name: 'punch', type: Boolean, defaultValue: true },
 	{ name: 'ethAddr', type: String, defaultValue: config.ethAddr }
 ]);
 var cliOptions = cli.parse()
@@ -23,7 +19,7 @@ var cliOptions = cli.parse()
 if (cliOptions.help) {
 	console.log(cli.getUsage());
 } else {
-	var server = new server.Server(cliOptions.domain, cliOptions.port, cliOptions.url, cliOptions.punch, cliOptions.ethAddr, cliOptions.armed,
+	var server = new server.Server(cliOptions.ethAddr, cliOptions.armed,
     function (existingPricerData, callback) {
       callback();
     },
