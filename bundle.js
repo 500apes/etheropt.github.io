@@ -178,7 +178,7 @@ Main.processOrders = function(callback) {
               if (browserOrder.size-cumulativeMatchSize!=0) {
                 browserOrder.priceTied = utility.roundToNearest(browserOrder.priceTied, 1000000);
                 utility.blockNumber(web3, function(err, blockNumber) {
-                  var orderID = utility.getRandomInt(0,Math.pow(2,64));
+                  var orderID = utility.getRandomInt(0,Math.pow(2,32));
                   var blockExpires = blockNumber + browserOrder.update;
                   var condensed = utility.pack([browserOrder.option.optionID, browserOrder.priceTied, browserOrder.size-cumulativeMatchSize, orderID, blockExpires], [256, 256, 256, 256, 256]);
                   var hash = sha256(new Buffer(condensed,'hex'));
@@ -563,10 +563,8 @@ Main.loadPrices = function(callback) {
                 utility.call(web3, myContract, order.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
                   balance = balance + result.toNumber();
                   if (verified && hash==order.hash && balance>=0) {
-                    console.log('YES', order);
                     callbackFilter(true);
                   } else {
-                    console.log('NO', verified, hash==order.hash, balance, order);
                     callbackFilter(false);
                   }
                 });
@@ -85365,9 +85363,13 @@ function pack(data, lengths) {
   for (var i=0; i<lengths.length; i++) {
     if (typeof(data[i])=='string' && data[i].substring(0,2)=='0x') {
       if (data[i].substring(0,2)=='0x') data[i] = data[i].substring(2);
-      packed += data[i];
+      packed += zeroPad(data[i], lengths[i]/4);
+    } else if (typeof(data[i])!='number' && /[a-f]/.test(data[i])) {
+      if (data[i].substring(0,2)=='0x') data[i] = data[i].substring(2);
+      packed += zeroPad(data[i], lengths[i]/4);
     } else {
-      packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
+      packed += zeroPad(new BigNumber(data[i]).toString(16), lengths[i]/4);
+      // packed += zeroPad(decToHex(data[i], lengths[i]), lengths[i]/4);
     }
   }
   return packed;
