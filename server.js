@@ -18,8 +18,6 @@ function Server(ethAddr, armed, pricerDataFn, pricerFn) {
 	var self = this;
 
 	//config
-	this.domain = domain;
-	this.port = port;
   this.ethAddr = ethAddr;
   this.armed = armed;
   this.pricerDataFn = pricerDataFn;
