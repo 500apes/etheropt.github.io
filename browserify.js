@@ -2,6 +2,7 @@ var Web3 = require('web3');
 var utility = require('./common/utility.js');
 var request = require('request');
 var sha256 = require('js-sha256').sha256;
+var BigNumber = require('bignumber.js');
 require('datejs');
 var async = (typeof(window) === 'undefined') ? require('async') : require('async/dist/async.min.js');
 
@@ -196,18 +197,14 @@ Main.processOrders = function(callback) {
                             Main.alertInfo('You tried sending an order to the order book, but you do not have enough funds to place your order. You need to add '+(utility.weiToEth(-balance))+' eth to your account to cover this trade. ');
                             callbackBrowserOrder();
                           } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
-                            Main.alertInfo('Your order is being sent to the order book.');
-                            async.each(browserOrder.option.marketMakers,
-                              function(marketMaker, callbackMarketMaker) {
-                                request.post(marketMaker, {form:{orders: [order]}}, function(err, httpResponse, body) {
-                                  callbackMarketMaker();
-                                });
-                              },
-                              function(err) {
-                                //finished sending order to order book
-                                callbackBrowserOrder();
+                            utility.postGitterMessage(JSON.stringify(order), function(err, result){
+                              if (!err) {
+                                Main.alertInfo('You sent an order to the order book!');
+                              } else {
+                                Main.alertInfo('You tried sending an order to the order book but there was an error.');
                               }
-                            );
+                              callbackBrowserOrder();
+                            });
                           } else {
                             callbackBrowserOrder();
                           }
@@ -417,7 +414,7 @@ Main.newExpiration = function(date, calls, puts, margin) {
   var expiration = date;
   var expirationTimestamp = Date.parse(expiration+" 00:00:00 +0000").getTime()/1000;
   var strikes = calls.split(",").map(function(x){return Number(x)}).slice(0,5).concat(puts.split(",").map(function(x){return -Number(x)}).slice(0,5));
-  strikes.sort(function(a,b){return Math.abs(b)>Math.abs(a) ? -1 : (Math.abs(b)==Math.abs(a) ? (a>b ? -1 : 1) : 1)});
+  strikes.sort(function(a,b){ return Math.abs(a)-Math.abs(b) || a-b });
   request.post('https://www.realitykeys.com/api/v1/exchange/new', {form: {fromcur: fromcur, tocur: tocur, settlement_date: expiration, objection_period_secs: '86400', accept_terms_of_service: 'current', use_existing: '1'}}, function(err, httpResponse, body){
     if (!err) {
       result = JSON.parse(body);
@@ -477,7 +474,7 @@ Main.connectionTest = function() {
   Main.popovers();
   return connection;
 }
-Main.loadAccounts = function() {
+Main.loadAccounts = function(callback) {
   if (Main.connectionTest().connection=='Geth') {
     $('#pk_div').hide();
   }
@@ -494,12 +491,13 @@ Main.loadAccounts = function() {
     },
     function(err, addresses) {
       new EJS({url: config.homeURL+'/'+'addresses.ejs'}).update('addresses', {addresses: addresses, selectedAccount: selectedAccount});
+      callback();
     }
   );
 }
 Main.displayMarket = function(callback) {
   if (contractsCache && optionsCache) {
-    contractsCache.sort(function(a,b){return (optionsCache.filter(function(x){return x.contractAddr==a.contractAddr}).length==0 ? "2020-01-01" : optionsCache.filter(function(x){return x.contractAddr==a.contractAddr})[0].expiration) > (optionsCache.filter(function(x){return x.contractAddr==b.contractAddr}).length==0 ? "2020-01-01" : optionsCache.filter(function(x){return x.contractAddr==b.contractAddr})[0].expiration) ? 1 : -1});
+    contractsCache.sort(function(a,b){return new Date(optionsCache.filter(function(x){return x.contractAddr==a.contractAddr}).length==0 ? "2020-01-01" : optionsCache.filter(function(x){return x.contractAddr==a.contractAddr})[0].expiration) - new Date(optionsCache.filter(function(x){return x.contractAddr==b.contractAddr}).length==0 ? "2020-01-01" : optionsCache.filter(function(x){return x.contractAddr==b.contractAddr})[0].expiration)});
     contractsCache.forEach(function(contract){
       var optionsFiltered = optionsCache.filter(function(x){return x.contractAddr==contract.contractAddr});
       var item = {
@@ -519,82 +517,98 @@ Main.displayMarket = function(callback) {
     if (callback) callback();
   } else {
     $('#market-spinner').show();
-    Main.loadContractsFunds(function(contracts){
-      contractsCache = contracts;
-      Main.loadOptions(function(options){
-        optionsCache = options;
-        Main.loadPrices(optionsCache, function(options){
-          optionsCache = options;
-          Main.displayMarket();
-          Main.loadLog(eventsCache, function(events){
-            eventsCache = events;
-            if (callback) callback();
+    Main.loadContractsFunds(function(){
+      Main.loadOptions(function(){
+        Main.getGitterMessages(function(){
+          Main.loadPrices(function(){
+            Main.displayMarket(function(){
+              Main.loadLog(function(){
+                if (callback) callback();
+              });
+            });
           });
         });
       });
     });
   }
 }
-Main.loadPrices = function(options, callback) {
-  async.reduce(config.contractAddrs, [],
-    function(memo, contractAddr, callbackReduce){
-      var optionsFiltered = options.filter(function(x){return x.contractAddr==contractAddr})
-      if (optionsFiltered.length>0) {
-
-        if (optionsFiltered[0].timer) clearInterval(optionsFiltered[0].timer);
-        optionsFiltered[0].lastUpdated = Date.now();
-        optionsFiltered[0].timer = setInterval(function () {
-          function pad(val) {return val > 9 ? val : "0" + val;}
-          var sec = Math.ceil((Date.now() - optionsFiltered[0].lastUpdated) / 1000);
-          if ($('#'+contractAddr+"_updated").length) {
-            $('#'+contractAddr+"_updated")[0].innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
-          }
-        }, 1000);
-
-        var marketMakers = optionsFiltered[0].marketMakers;
-        async.reduce(marketMakers, [],
-          function(memo, marketMaker, callbackReduce) {
-            request.get(marketMaker+'/'+contractAddr, {timeout: 2500}, function(err, httpResponse, body) {
-              try {
-                callbackReduce(null, memo.concat(JSON.parse(body)));
-              } catch (err) {
-                callbackReduce(null, memo);
-              }
-            });
+Main.loadPrices = function(callback) {
+  utility.blockNumber(web3, function(err, blockNumber) {
+    var orders = [];
+    var expectedKeys = JSON.stringify(['addr','blockExpires','contractAddr','hash','optionID','orderID','price','r','s','size','v']);
+    for(id in gitterMessagesCache) {
+      var message = gitterMessagesCache[id];
+      if (typeof(message)=='object' && JSON.stringify(Object.keys(message).sort())==expectedKeys) {
+        message.id = id;
+        orders.push(message);
+      }
+    }
+    async.map(optionsCache,
+      function(option, callbackMap){
+        var ordersFiltered = orders.filter(function(x){return x.contractAddr==option.contractAddr && x.optionID==option.optionID});
+        ordersFiltered = ordersFiltered.map(function(x){return {size: Math.abs(x.size), price: x.price/1000000000000000000, order: x}});
+        var newBuyOrders = {};
+        var newSellOrders = {};
+        async.filter(ordersFiltered,
+          function(order, callbackFilter) {
+            order = order.order;
+            if (blockNumber<=order.blockExpires) {
+              var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
+              var hash = '0x'+sha256(new Buffer(condensed,'hex'));
+              var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+              utility.call(web3, myContract, order.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
+                var balance = result.toNumber();
+                utility.call(web3, myContract, order.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
+                  balance = balance + result.toNumber();
+                  if (verified && hash==order.hash && balance>=0) {
+                    callbackFilter(true);
+                  } else {
+                    callbackFilter(false);
+                  }
+                });
+              });
+            } else {
+              callbackFilter(false);
+            }
           },
-          function(err, markets){
-            callbackReduce(null, memo.concat(markets));
+          function(ordersValid) {
+            for (var i=0; i<ordersValid.length; i++) {
+              var order = ordersValid[i];
+              if (order.order.size>0) newBuyOrders[order.order.orderID] = order;
+              if (order.order.size<0) newSellOrders[order.order.orderID] = order;
+            }
+            option.buyOrders = Object.values(newBuyOrders);
+            option.sellOrders = Object.values(newSellOrders);
+            option.buyOrders.sort(function(a,b){return b.price - a.price || b.size - a.size || a.id - b.id});
+            option.sellOrders.sort(function(a,b){return a.price - b.price || b.size - a.size || a.id - b.id});
+            callbackMap(null, option);
           }
         );
-      } else {
-        callbackReduce(null, memo);
-      }
-    },
-    function(err, markets){
-      async.map(options,
-        function(option, callbackMap){
-          var orders = markets.filter(function(x){return x.contractAddr==option.contractAddr && x.optionID==option.optionID});
-          orders = orders.map(function(x){return {size: Math.abs(x.size), price: x.price/1000000000000000000, order: x}});
-          var newBuyOrders = {};
-          var newSellOrders = {};
-          for (var i=0; i<orders.length; i++) {
-            if (orders[i].order.size>0) newBuyOrders[orders[i].order.orderID] = orders[i];
-            if (orders[i].order.size<0) newSellOrders[orders[i].order.orderID] = orders[i];
+      },
+      function(err, options){
+        //update last updated timer
+        config.contractAddrs.forEach(function(contractAddr){
+          var optionsFiltered = optionsCache ? optionsCache.filter(function(x){return x.contractAddr==contractAddr}) : [];
+          if (optionsFiltered.length>0) {
+            if (optionsFiltered[0].timer) clearInterval(optionsFiltered[0].timer);
+            optionsFiltered[0].lastUpdated = Date.now();
+            optionsFiltered[0].timer = setInterval(function () {
+              function pad(val) {return val > 9 ? val : "0" + val;}
+              var sec = Math.ceil((Date.now() - optionsFiltered[0].lastUpdated) / 1000);
+              if ($('#'+contractAddr+"_updated").length) {
+                $('#'+contractAddr+"_updated")[0].innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
+              }
+            }, 1000);
           }
-          option.buyOrders = Object.values(newBuyOrders);
-          option.sellOrders = Object.values(newSellOrders);
-          option.buyOrders.sort(function(a, b) {return b.price > a.price ? 1 : (b.price == a.price ? (b.size > a.size ? 1 : -1) : -1)});
-          option.sellOrders.sort(function(a, b) {return b.price < a.price ? 1 : (b.price == a.price ? (b.size > a.size ? 1 : -1) : -1)});
-          callbackMap(null, option);
-        },
-        function(err, options){
-          callback(options);
-        }
-      );
-    }
-  );
+        });
+        //update cache
+        optionsCache = options;
+        callback();
+      }
+    );
+  });
 }
-Main.loadPositions = function(optionsOriginal, callback) {
+Main.loadPositions = function(callback) {
   async.map(config.contractAddrs,
     function(contractAddr, callback) {
       utility.call(web3, myContract, contractAddr, 'getMarket', [addrs[selectedAccount]], function(err, result) {
@@ -625,7 +639,7 @@ Main.loadPositions = function(optionsOriginal, callback) {
     },
     function(err, options) {
       options = options.reduce(function(a, b) {return a.concat(b);}, []);
-      async.map(optionsOriginal,
+      async.map(optionsCache,
         function(option, callbackMap) {
           for (var i=0; i<options.length; i++) {
             if (options[i].contractAddr==option.contractAddr && options[i].optionID==option.optionID) {
@@ -637,24 +651,25 @@ Main.loadPositions = function(optionsOriginal, callback) {
           callbackMap(null, option);
         },
         function(err, options) {
-          callback(options);
+          optionsCache = options;
+          callback();
         }
       );
     }
   );
 }
-Main.loadLog = function(events, callback) {
+Main.loadLog = function(callback) {
   async.eachSeries(config.contractAddrs,
     function(contractAddr, callbackEach){
       utility.logs(web3, myContract, contractAddr, 0, 'latest', function(err, event) {
         event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
-        events[event.transactionHash+event.logIndex] = event;
+        eventsCache[event.transactionHash+event.logIndex] = event;
         Main.refresh();
       });
       callbackEach();
     },
     function (err) {
-      callback(events);
+      callback();
     }
   );
 }
@@ -673,12 +688,13 @@ Main.loadContractsFunds = function(callback) {
       });
     },
     function(err, contracts) {
-      contracts = contracts.filter(function(x){return x!=undefined});
-      callback(contracts);
+      contractsCache = contracts.filter(function(x){return x!=undefined});
+      callback();
     }
   );
 }
 Main.loadOptions = function(callback) {
+  //Note: loadOptions loads everything it can about options and should be called less frequently. loadPositions loads just positions.
   async.mapSeries(config.contractAddrs,
     function(contractAddr, callback) {
       utility.call(web3, myContract, contractAddr, 'getOptionChain', [], function(err, result) {
@@ -699,42 +715,34 @@ Main.loadOptions = function(callback) {
                 if (strikes[i].toNumber()!=0) is.push(i);
               }
               var optionChainDescription = {expiration: expiration, fromcur: fromcur, tocur: tocur, margin: margin, realityID: realityID};
-              utility.call(web3, myContract, contractAddr, 'getMarketMakers', [], function(err, result) {
-                if (result) {
-                  var marketMakers = result ? result.filter(function(x){return x!=''}) : [];
-                  async.map(is,
-                    function(i, callbackMap) {
-                      var optionID = optionIDs[i].toNumber();
-                      var strike = strikes[i].toNumber() / 1000000000000000000;
-                      var cash = cashes[i].toNumber() / 1000000000000000000;
-                      var position = positions[i].toNumber();
-                      var option = Object();
-                      if (strike>0) {
-                        option.kind = 'Call';
-                      } else {
-                        option.kind = 'Put';
-                      }
-                      option.strike = Math.abs(strike);
-                      option.optionID = optionID;
-                      option.cash = cash;
-                      option.position = position;
-                      option.contractAddr = contractAddr;
-                      option.marketMakers = marketMakers;
-                      option.expiration = optionChainDescription.expiration;
-                      option.fromcur = optionChainDescription.fromcur;
-                      option.tocur = optionChainDescription.tocur;
-                      option.margin = optionChainDescription.margin;
-                      option.realityID = realityID;
-                      callbackMap(null, option);
-                    },
-                    function(err, options) {
-                      callback(null, options);
-                    }
-                  );
-                } else {
-                  callback(null, []);
+              async.map(is,
+                function(i, callbackMap) {
+                  var optionID = optionIDs[i].toNumber();
+                  var strike = strikes[i].toNumber() / 1000000000000000000;
+                  var cash = cashes[i].toNumber() / 1000000000000000000;
+                  var position = positions[i].toNumber();
+                  var option = Object();
+                  if (strike>0) {
+                    option.kind = 'Call';
+                  } else {
+                    option.kind = 'Put';
+                  }
+                  option.strike = Math.abs(strike);
+                  option.optionID = optionID;
+                  option.cash = cash;
+                  option.position = position;
+                  option.contractAddr = contractAddr;
+                  option.expiration = optionChainDescription.expiration;
+                  option.fromcur = optionChainDescription.fromcur;
+                  option.tocur = optionChainDescription.tocur;
+                  option.margin = optionChainDescription.margin;
+                  option.realityID = realityID;
+                  callbackMap(null, option);
+                },
+                function(err, options) {
+                  callback(null, options);
                 }
-              });
+              );
             } else {
               callback(null, []);
             }
@@ -746,8 +754,9 @@ Main.loadOptions = function(callback) {
     },
     function(err, options) {
       options = options.reduce(function(a, b) {return a.concat(b);}, []);
-      options.sort(function(a,b){ return a.expiration+(a.strike+10000000).toFixed(3).toString()+(a.kind=='Put' ? '0' : '1')<b.expiration+(b.strike+10000000).toFixed(3).toString()+(b.kind=='Put' ? '0' : '1') ? -1 : 1 });
-      callback(options);
+      options.sort(function(a,b){ return a.expiration-b.expiration || a.strike-b.strike || a.kind-b.kind});
+      optionsCache = options;
+      callback();
     }
   );
 }
@@ -811,29 +820,50 @@ Main.updatePrice = function(callback) {
 Main.getPrice = function() {
   return price;
 }
+Main.getGitterMessages = function(callback) {
+  utility.getGitterMessages(gitterMessagesCache, function(err, result){
+    if (!err) {
+      gitterMessagesCache = result.gitterMessages;
+      if (result.newMessagesFound) {
+        Main.displayEvents(function(){});
+      }
+    }
+    callback();
+  });
+}
+Main.displayEvents = function(callback) {
+  var events = Object.values(eventsCache);
+  events.sort(function(a,b){ return b.blockNumber-a.blockNumber || b.transactionIndex-a.transactionIndex });
+  new EJS({url: config.homeURL+'/'+'events_table.ejs'}).update('events', {events: events, options: optionsCache});
+  callback();
+}
+Main.displayPrices = function(callback) {
+  contractsCache.forEach(function(contract){
+    new EJS({url: config.homeURL+'/'+'contract_nav.ejs'}).update(contract.contractAddr+'_nav', {contract: contract, options: optionsCache});
+    new EJS({url: config.homeURL+'/'+'contract_prices.ejs'}).update(contract.contractAddr+'_prices', {contract: contract, options: optionsCache, addr: addrs[selectedAccount]});
+  });
+  callback();
+}
 Main.refresh = function() {
   if (!refreshing || Date.now()-lastRefresh>60*1000) {
     refreshing = true;
     Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
-    Main.loadAccounts();
-    var events = Object.values(eventsCache);
-    events.sort(function(a,b){ return b.blockNumber-a.blockNumber || b.transactionIndex-a.transactionIndex });
-    new EJS({url: config.homeURL+'/'+'events_table.ejs'}).update('events', {events: events, options: optionsCache});
-    Main.updatePrice(function(){
-      Main.loadContractsFunds(function(contracts){
-        contractsCache = contracts;
-        Main.loadPositions(optionsCache, function(options){
-          optionsCache = options;
-          Main.processOrders(function(){
-            Main.loadPrices(optionsCache, function(options) {
-              optionsCache = options;
-              contractsCache.forEach(function(contract){
-                new EJS({url: config.homeURL+'/'+'contract_nav.ejs'}).update(contract.contractAddr+'_nav', {contract: contract, options: optionsCache});
-                new EJS({url: config.homeURL+'/'+'contract_prices.ejs'}).update(contract.contractAddr+'_prices', {contract: contract, options: optionsCache, addr: addrs[selectedAccount]});
+    Main.loadAccounts(function() {
+      Main.getGitterMessages(function() {
+        Main.displayEvents(function() {
+          Main.updatePrice(function(){
+            Main.loadContractsFunds(function(){
+              Main.loadPositions(function(){
+                Main.processOrders(function(){
+                  Main.loadPrices(function() {
+                    Main.displayPrices(function() {
+                      refreshing = false;
+                      lastRefresh = Date.now();
+                    });
+                  });
+                });
               });
-              refreshing = false;
-              lastRefresh = Date.now();
             });
           });
         });
@@ -844,13 +874,14 @@ Main.refresh = function() {
 Main.init = function() {
   Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
   Main.connectionTest();
-  Main.loadAccounts();
-  Main.displayMarket(function(){
-    function mainLoop() {
-      Main.refresh();
-      setTimeout(mainLoop, 10*1000);
-    }
-    mainLoop();
+  Main.loadAccounts(function(){
+    Main.displayMarket(function(){
+      function mainLoop() {
+        Main.refresh();
+        setTimeout(mainLoop, 10*1000);
+      }
+      mainLoop();
+    });
   });
 }
 
@@ -878,6 +909,7 @@ var refreshing = false;
 var lastRefresh = Date.now();
 var price = undefined;
 var priceUpdated = Date.now();
+var gitterMessagesCache = {};
 //web3
 var web3 = new Web3();
 web3.eth.defaultAccount = config.ethAddr;

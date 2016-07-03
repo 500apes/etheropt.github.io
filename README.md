@@ -10,7 +10,7 @@ Installation
 ----------
 In order to ease interaction with the smart contract, Etheropt has a graphical user interface (GUI).
 
-There is no installation necessary to use the GUI. Just go to the main Etheropt page ([http://etheropt.github.io](https://etheropt.github.io)) and the GUI will be running in your Web browser. You can also choose to download the GitHub repository and run the GUI locally. The GUI stores your account in the browser only and does not store anything remotely. The only remote servers it interacts with are the Ethereum network (through Geth or through a Web proxy), and the market makers (a collection of servers that are responsible for making markets and maintaining a distributed order book of resting orders).
+There is no installation necessary to use the GUI. Just go to the main Etheropt page ([http://etheropt.github.io](https://etheropt.github.io)) and the GUI will be running in your Web browser. You can also choose to download the GitHub repository and run the GUI locally. The GUI stores your account in the browser only and does not store anything remotely. The only remote servers it interacts with are the Ethereum network (through Geth or through a Web proxy), and Gitter (for the order book).
 
 Ethereum network
 ----------
@@ -36,21 +36,19 @@ Option contracts
 ----------
 Etheropt consists of a series of smart contracts. Each Etheropt smart contract is initialized with a single expiration consisting of an underlying (ETH/USD) and a series of options (for example, the 10 call, the 10 put, the 11 call, and the 11 put). There is a limit on the number of options that can exist in a single Etheropt smart contract (the limit is 20). If you want to see a new expiration listed, raise your hand on Gitter, Twitter, or reddit. Note that there is an in-the-money limit that caps the potential upside of an option. In the smart contract source code, this is called "margin." For example, if the in-the-money limit is 5.0000 and you buy 10 eth worth of the 7 call expiring March 1 for 0.2000 and ETH/USD settles at 13.0000, your net profit will be 10 eth * (-0.2000 + min(5.0000, 13.0000 - 7.0000)) = 48 eth. If the settlement value is below the strike, your net profit will be 10 eth * (-0.2000) = -2 eth.
 
-Market makers
+Order book
 ----------
-The order book for each Etheropt smart contract is maintained in a distributed fashion by a collection of market makers who are responsible for making markets and maintaining an order book of resting orders. Anyone can become a market maker by running [market_maker.js](market_maker.js) using node.js. When run with the --armed parameter, this file will send a transaction to the smart contract indicating that the user wishes to become a market maker. The smart contract can handle at most six market makers. If there are already six market makers, someone can only become a market maker if the balance in his account exceeds the smallest balance of the other market makers, in which case he will replace the market maker with the smallest balance.
-
-A market maker is responsible for making markets, maintaining an order book of resting orders, and publishing this data via a small server. The [market_maker.js](market_maker.js) script does all of this automatically. The market making strategy currently makes markets as wide as possible. Individuals are free to modify the script and provide tighter markets.
+The order book Etheropt is stored in a Gitter chat room.
 
 Placing orders
 ----------
-The GUI queries the market makers and shows the best bid and offer for each option. To place an order, simply click the buy or sell button next to the contract and enter the size and price you wish to trade. Every contract shows your current position under "My position." If you place an order that doesn't immediately cross with the tightest resting order, the order will be broadcast to all of the market makers. The order will then rest on the order book until it expires or someone trades with it. By default, orders sent from the GUI will expire in 10 blocks (approximately two minutes).
+The GUI queries the order book and shows the best bid and offer for each option. To place an order, simply click the buy or sell button next to the contract and enter the size and price you wish to trade. Every contract shows your current position under "My position." If you place an order that doesn't immediately cross with the tightest resting order, the order will be broadcast to the order book. The order will then rest on the order book until it expires or someone trades with it. By default, orders sent from the GUI will expire in 10 blocks (approximately two minutes).
 
 The GUI will only send an order if you have enough funds to cover it. If the order can partially match against a resting order, the partial cross will be sent to the smart contract to trade and the remaining order will rest on the book. For example, if you want to buy 10 eth worth of an option but there is only 5 eth offered, 5 eth will match and the remaining 5 eth will rest on the order book. Similarly, resting orders can be filled in pieces because the smart contract records the portion of an order that has already traded. For example, if you have a resting order to buy 10 eth worth of an option, it can be filled by two counterparties each selling 5 eth of the order.
 
-Every order resting on the order book (whether submitted by a market maker or through the GUI) consists of an option, a price, a size, an expiration block number, an order ID, and a signature. When the smart contract processes an order match, it will verify that the signature is valid, the order has not expired, there is enough unfilled volume in the order, and both users have enough available funds to cover the trade. If these things are true, the smart contract will record the trade.
+Every order resting on the order book consists of an option, a price, a size, an expiration block number, an order ID, and a signature. When the smart contract processes an order match, it will verify that the signature is valid, the order has not expired, there is enough unfilled volume in the order, and both users have enough available funds to cover the trade. If these things are true, the smart contract will record the trade.
 
-An advantage of the distributed market maker system is that transactions with the smart contract are only necessary when crossing trades. The transaction fee (Ethereum gas fee) is paid by the person who crosses the trade and not by the person who creates the resting order. This is similar to the maker/taker fee model used by some centralized exchanges.
+An advantage of the offchain order book is that transactions with the smart contract are only necessary when crossing trades. The transaction fee (Ethereum gas fee) is paid by the person who crosses the trade and not by the person who creates the resting order. This is similar to the maker/taker fee model used by some centralized exchanges.
 
 Cash usage and expiration
 ----------
@@ -74,11 +72,11 @@ The Solidity code for the smart contract can be found in the GitHub repository a
 
 * **getFundsAndAvailable(address user) constant returns(int, int)**: This function gets the funds and available funds in the user's account.
 
-* **marketMaker(string server)**: This function can be called to establish the user as a market maker. Note that there can only be six market makers. If there are already six market makers, the new market maker must have a higher balance than the market maker with the lowest balance. In this case, the new market maker will replace the market maker with the lowest balance.
+* **marketMaker(string server)**: Deprecated.
 
-* **getMarketMakers() constant returns(string, string, string, string, string, string)**: This function returns the market makers.
+* **getMarketMakers() constant returns(string, string, string, string, string, string)**: Deprecated.
 
-* **getMarketMakerFunds() constant returns(int, int, int, int, int, int)**: This function returns the balances of the market makers. It can be used to determine the minimum balance required to become a market maker.
+* **getMarketMakerFunds() constant returns(int, int, int, int, int, int)**: Deprecated.
 
 * **getOptionChain() constant returns (uint, string, uint, uint, bytes32, address)**: This function returns the expiration (timestamp), underlying, margin, Reality Keys ID, Reality Keys fact hash, and Reality Keys address.
 
