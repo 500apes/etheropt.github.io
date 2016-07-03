@@ -552,7 +552,7 @@ Main.loadPrices = function(callback) {
         async.filter(ordersFiltered,
           function(order, callbackFilter) {
             order = order.order;
-            if (blockNumber<=order.blockExpires) {
+            if (blockNumber<order.blockExpires) {
               var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
               var hash = '0x'+sha256(new Buffer(condensed,'hex'));
               var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);

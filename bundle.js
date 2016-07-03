@@ -554,7 +554,7 @@ Main.loadPrices = function(callback) {
         async.filter(ordersFiltered,
           function(order, callbackFilter) {
             order = order.order;
-            if (blockNumber<=order.blockExpires) {
+            if (blockNumber<order.blockExpires) {
               var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
               var hash = '0x'+sha256(new Buffer(condensed,'hex'));
               var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
@@ -85461,7 +85461,7 @@ function getGitterMessages(gitterMessages, callback) {
   var numMessages = undefined;
   var beforeId = undefined;
   var messages = [];
-  var limit = 10;
+  var limit = 5;
   var newMessagesFound = false;
   async.until(
     function () { return numMessages <= 0 || limit <= 0; },
@@ -85472,19 +85472,23 @@ function getGitterMessages(gitterMessages, callback) {
       request.get(url, function(err, httpResponse, body){
         if (!err) {
           var data = JSON.parse(body);
-          numMessages = data.length;
-          if (data.length>0) beforeId = data[0].id;
-          data.forEach(function(message){
-            if (gitterMessages[message.id]) {
-              numMessages = 0;
-            } else {
-              newMessagesFound = true;
-            }
-            try {
-              gitterMessages[message.id] = JSON.parse(message.text);
-            } catch (err) {
-            }
-          });
+          if (data && data.length>0) {
+            numMessages = data.length;
+            beforeId = data[0].id;
+            data.forEach(function(message){
+              if (gitterMessages[message.id]) {
+                numMessages = 0;
+              } else {
+                newMessagesFound = true;
+              }
+              try {
+                gitterMessages[message.id] = JSON.parse(message.text);
+              } catch (err) {
+              }
+            });
+          } else {
+            numMessages = 0;
+          }
           callbackUntil(null);
         } else {
           numMessages = 0;
