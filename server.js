@@ -10,6 +10,7 @@ var Web3 = require('web3');
 var request = require('request');
 var commandLineArgs = require('command-line-args');
 var sha256 = require('js-sha256').sha256;
+var BigNumber = require('bignumber.js');
 require('datejs');
 
 function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn) {
@@ -177,10 +178,10 @@ function Server(domain, port, url, punch, ethAddr, armed, pricerDataFn, pricerFn
 														var result = self.pricerFn(option, self.pricerData, fundsData, events);
 														if (result) {
 															console.log(option.expiration, option.kind, option.strike, ((result.buyPrice)+" ("+(utility.weiToEth(result.buySize))+" eth) @ "+(result.sellPrice)+" ("+(utility.weiToEth(result.sellSize))+" eth)"));
-															var buyPrice = Number(result.buyPrice * 1000000000000000000);
-															var sellPrice = Number(result.sellPrice * 1000000000000000000);
-															var buySize = Number(result.buySize);
-															var sellSize = Number(result.sellSize);
+															var buyPrice = new BigNumber(result.buyPrice).times(new BigNumber(1000000000000000000));
+															var sellPrice = new BigNumber(result.sellPrice).times(new BigNumber(1000000000000000000));
+															var buySize = new BigNumber(result.buySize);
+															var sellSize = new BigNumber(result.sellSize);
 															var blockExpires = Number(blockNumber + result.expires);
 
 															var orders = [];
