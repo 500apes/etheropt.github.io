@@ -525,7 +525,9 @@ Main.displayMarket = function(callback) {
           Main.loadPrices(function(){
             Main.displayMarket(function(){
               Main.loadLog(function(){
-                if (callback) callback();
+                Main.loadGitterStream(function(){
+                  if (callback) callback();
+                });
               });
             });
           });
@@ -539,18 +541,20 @@ Main.loadPrices = function(callback) {
     var orders = [];
     var expectedKeys = JSON.stringify(['addr','blockExpires','contractAddr','hash','optionID','orderID','price','r','s','size','v']);
     for(id in gitterMessagesCache) {
-      var message = gitterMessagesCache[id];
+      var message = JSON.parse(JSON.stringify(gitterMessagesCache[id]));
       if (typeof(message)=='object' && JSON.stringify(Object.keys(message).sort())==expectedKeys) {
         message.id = id;
-        orders.push(message);
+        if (!deadOrders[id]) {
+          orders.push(message);
+        }
       }
     }
     async.map(optionsCache,
       function(option, callbackMap){
         var ordersFiltered = orders.filter(function(x){return x.contractAddr==option.contractAddr && x.optionID==option.optionID});
         ordersFiltered = ordersFiltered.map(function(x){return {size: Math.abs(x.size), price: x.price/1000000000000000000, order: x}});
-        var newBuyOrders = {};
-        var newSellOrders = {};
+        var newBuyOrders = [];
+        var newSellOrders = [];
         async.filter(ordersFiltered,
           function(order, callbackFilter) {
             order = order.order;
@@ -565,24 +569,27 @@ Main.loadPrices = function(callback) {
                   if (verified && hash==order.hash && balance>=0) {
                     callbackFilter(true);
                   } else {
+                    deadOrders[order.id] = true;
                     callbackFilter(false);
                   }
                 });
               });
             } else {
+              deadOrders[order.id] = true;
               callbackFilter(false);
             }
           },
           function(ordersValid) {
             for (var i=0; i<ordersValid.length; i++) {
               var order = ordersValid[i];
-              if (order.order.size>0) newBuyOrders[order.order.orderID] = order;
-              if (order.order.size<0) newSellOrders[order.order.orderID] = order;
+              if (order.order.size>0) newBuyOrders.push(order);
+              if (order.order.size<0) newSellOrders.push(order);
             }
-            option.buyOrders = Object.values(newBuyOrders);
-            option.sellOrders = Object.values(newSellOrders);
+            option.buyOrders = newBuyOrders;
+            option.sellOrders = newSellOrders;
             option.buyOrders.sort(function(a,b){return b.price - a.price || b.size - a.size || a.id - b.id});
             option.sellOrders.sort(function(a,b){return a.price - b.price || b.size - a.size || a.id - b.id});
+            // console.log(option.expiration+' '+option.strike+' '+option.kind, option.buyOrders.length,option.sellOrders.length);
             callbackMap(null, option);
           }
         );
@@ -826,12 +833,20 @@ Main.getGitterMessages = function(callback) {
   utility.getGitterMessages(gitterMessagesCache, function(err, result){
     if (!err) {
       gitterMessagesCache = result.gitterMessages;
-      if (result.newMessagesFound) {
+      if (result.newMessagesFound>0) {
         Main.displayEvents(function(){});
       }
     }
     callback();
   });
+}
+Main.loadGitterStream = function(callback) {
+  // utility.streamGitterMessages(function(err, result){
+  //   if (!err && result) {
+  //     Main.displayEvents(function(){});
+  //   }
+  // });
+  callback();
 }
 Main.displayEvents = function(callback) {
   var events = Object.values(eventsCache);
@@ -907,6 +922,7 @@ var contractsCache = undefined;
 var optionsCache = undefined;
 var browserOrders = [];
 var marketMakers = {};
+var deadOrders = {};
 var refreshing = false;
 var lastRefresh = Date.now();
 var price = undefined;
@@ -84675,6 +84691,7 @@ var Tx = _dereq_('ethereumjs-tx');
 var keythereum = _dereq_('keythereum');
 var ethUtil = _dereq_('ethereumjs-util');
 var BigNumber = _dereq_('bignumber.js');
+var https = _dereq_('https');
 
 function weiToEth(wei) {
   return (wei/1000000000000000000).toFixed(3);
@@ -85457,14 +85474,45 @@ function getRandomInt(min, max) {
   return Math.floor(Math.random() * (max - min)) + min;
 }
 
+function streamGitterMessages(gitterMessages, callback) {
+  var heartbeat = " \n";
+  var options = {
+    hostname: config.gitterStream,
+    port:     443,
+    path:     '/v1/rooms/' + config.gitterRoomID + '/chatMessages',
+    method:   'GET',
+    headers:  {'Authorization': 'Bearer ' + config.gitterToken}
+  };
+  var req = https.request(options, function(res) {
+    res.on('data', function(chunk) {
+      var msg = chunk.toString();
+      if (msg !== heartbeat) {
+        try {
+          var message = JSON.parse(msg);
+          if (!gitterMessages[message.id]) {
+            gitterMessages[message.id] = JSON.parse(message.text);
+            callback(undefined, true);
+          }
+        } catch (err) {
+          callback(err, false);
+        }
+      }
+    });
+  });
+  req.on('error', function(err) {
+    callback(err, false);
+  });
+  req.end();
+}
+
 function getGitterMessages(gitterMessages, callback) {
   var numMessages = undefined;
   var beforeId = undefined;
   var messages = [];
   var limit = 5;
-  var newMessagesFound = false;
+  var newMessagesFound = 0;
   async.until(
-    function () { return numMessages <= 0 || limit <= 0; },
+    function () { return limit <= 0; },
     function (callbackUntil) {
       limit -= 1;
       var url = config.gitterHost + '/v1/rooms/'+config.gitterRoomID+'/chatMessages?access_token='+config.gitterToken+'&limit=50';
@@ -85473,13 +85521,12 @@ function getGitterMessages(gitterMessages, callback) {
         if (!err) {
           var data = JSON.parse(body);
           if (data && data.length>0) {
-            numMessages = data.length;
             beforeId = data[0].id;
             data.forEach(function(message){
               if (gitterMessages[message.id]) {
-                numMessages = 0;
+                limit = 0;
               } else {
-                newMessagesFound = true;
+                newMessagesFound++;
               }
               try {
                 gitterMessages[message.id] = JSON.parse(message.text);
@@ -85487,7 +85534,7 @@ function getGitterMessages(gitterMessages, callback) {
               }
             });
           } else {
-            numMessages = 0;
+            limit = 0;
           }
           callbackUntil(null);
         } else {
@@ -85640,11 +85687,12 @@ exports.ethToWei = ethToWei;
 exports.loadContract = loadContract;
 exports.deployContract = deployContract;
 exports.getRandomInt = getRandomInt;
+exports.streamGitterMessages = streamGitterMessages;
 exports.getGitterMessages = getGitterMessages;
 exports.postGitterMessage = postGitterMessage;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
-},{"../config.js":297,"async":10,"async/dist/async.min.js":9,"bignumber.js":14,"buffer":575,"ethereumjs-tx":88,"ethereumjs-util":91,"fs":528,"keythereum":149,"request":181,"web3":246,"web3/lib/solidity/coder.js":253,"web3/lib/utils/sha3.js":265,"web3/lib/utils/utils.js":266,"web3/lib/web3/event.js":273,"web3/lib/web3/function.js":277}],297:[function(_dereq_,module,exports){
+},{"../config.js":297,"async":10,"async/dist/async.min.js":9,"bignumber.js":14,"buffer":575,"ethereumjs-tx":88,"ethereumjs-util":91,"fs":528,"https":621,"keythereum":149,"request":181,"web3":246,"web3/lib/solidity/coder.js":253,"web3/lib/utils/sha3.js":265,"web3/lib/utils/utils.js":266,"web3/lib/web3/event.js":273,"web3/lib/web3/function.js":277}],297:[function(_dereq_,module,exports){
 (function (global){
 var config = {};
 
@@ -85663,6 +85711,7 @@ config.ethGasPrice = 20000000000;
 config.ethAddr = '0x0000000000000000000000000000000000000000';
 config.ethAddrPrivateKey = '';
 config.gitterHost = 'https://api.gitter.im';
+config.gitterStream = 'stream.gitter.im';
 config.gitterToken = 'fab13af0884785b1876c813dddc1727c573326f5';
 config.gitterRoomID = '5776ec9ac2f0db084a2105c2';
 

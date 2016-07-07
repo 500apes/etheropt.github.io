@@ -523,7 +523,9 @@ Main.displayMarket = function(callback) {
           Main.loadPrices(function(){
             Main.displayMarket(function(){
               Main.loadLog(function(){
-                if (callback) callback();
+                Main.loadGitterStream(function(){
+                  if (callback) callback();
+                });
               });
             });
           });
@@ -537,18 +539,20 @@ Main.loadPrices = function(callback) {
     var orders = [];
     var expectedKeys = JSON.stringify(['addr','blockExpires','contractAddr','hash','optionID','orderID','price','r','s','size','v']);
     for(id in gitterMessagesCache) {
-      var message = gitterMessagesCache[id];
+      var message = JSON.parse(JSON.stringify(gitterMessagesCache[id]));
       if (typeof(message)=='object' && JSON.stringify(Object.keys(message).sort())==expectedKeys) {
         message.id = id;
-        orders.push(message);
+        if (!deadOrders[id]) {
+          orders.push(message);
+        }
       }
     }
     async.map(optionsCache,
       function(option, callbackMap){
         var ordersFiltered = orders.filter(function(x){return x.contractAddr==option.contractAddr && x.optionID==option.optionID});
         ordersFiltered = ordersFiltered.map(function(x){return {size: Math.abs(x.size), price: x.price/1000000000000000000, order: x}});
-        var newBuyOrders = {};
-        var newSellOrders = {};
+        var newBuyOrders = [];
+        var newSellOrders = [];
         async.filter(ordersFiltered,
           function(order, callbackFilter) {
             order = order.order;
@@ -563,24 +567,27 @@ Main.loadPrices = function(callback) {
                   if (verified && hash==order.hash && balance>=0) {
                     callbackFilter(true);
                   } else {
+                    deadOrders[order.id] = true;
                     callbackFilter(false);
                   }
                 });
               });
             } else {
+              deadOrders[order.id] = true;
               callbackFilter(false);
             }
           },
           function(ordersValid) {
             for (var i=0; i<ordersValid.length; i++) {
               var order = ordersValid[i];
-              if (order.order.size>0) newBuyOrders[order.order.orderID] = order;
-              if (order.order.size<0) newSellOrders[order.order.orderID] = order;
+              if (order.order.size>0) newBuyOrders.push(order);
+              if (order.order.size<0) newSellOrders.push(order);
             }
-            option.buyOrders = Object.values(newBuyOrders);
-            option.sellOrders = Object.values(newSellOrders);
+            option.buyOrders = newBuyOrders;
+            option.sellOrders = newSellOrders;
             option.buyOrders.sort(function(a,b){return b.price - a.price || b.size - a.size || a.id - b.id});
             option.sellOrders.sort(function(a,b){return a.price - b.price || b.size - a.size || a.id - b.id});
+            // console.log(option.expiration+' '+option.strike+' '+option.kind, option.buyOrders.length,option.sellOrders.length);
             callbackMap(null, option);
           }
         );
@@ -824,12 +831,20 @@ Main.getGitterMessages = function(callback) {
   utility.getGitterMessages(gitterMessagesCache, function(err, result){
     if (!err) {
       gitterMessagesCache = result.gitterMessages;
-      if (result.newMessagesFound) {
+      if (result.newMessagesFound>0) {
         Main.displayEvents(function(){});
       }
     }
     callback();
   });
+}
+Main.loadGitterStream = function(callback) {
+  // utility.streamGitterMessages(function(err, result){
+  //   if (!err && result) {
+  //     Main.displayEvents(function(){});
+  //   }
+  // });
+  callback();
 }
 Main.displayEvents = function(callback) {
   var events = Object.values(eventsCache);
@@ -905,6 +920,7 @@ var contractsCache = undefined;
 var optionsCache = undefined;
 var browserOrders = [];
 var marketMakers = {};
+var deadOrders = {};
 var refreshing = false;
 var lastRefresh = Date.now();
 var price = undefined;
