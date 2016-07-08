@@ -96,5 +96,5 @@ Tests
 ----------
 Install mocha and then run
 ```
-mocha test.js
+mocha test
 ```

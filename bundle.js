@@ -427,36 +427,39 @@ Main.newExpiration = function(date, calls, puts, margin) {
       var scaledStrikes = strikes.map(function(strike) { return strike*1000000000000000000 });
       var scaledMargin = margin*1000000000000000000;
       Main.alertInfo("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
-      utility.send(web3, myContract, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
-        if(result) {
-          txHash = result.txHash;
-          nonce = result.nonce;
-          Main.alertTxResult(err, result);
-          var address = undefined;
-          async.whilst(
-              function () { return address==undefined; },
-              function (callbackWhilst) {
-                  setTimeout(function () {
-                    utility.txReceipt(web3, txHash, function(err, receipt) {
-                      if (receipt) {
-                        address = receipt.contractAddress;
-                      }
-                      console.log("Waiting for contract creation to complete.");
-                      callbackWhilst(null);
-                    });
-                  }, 10*1000);
-              },
-              function (err) {
-                Main.alertInfo("Here is the new contract address: "+address+". We will now send a transaction to the contract that keeps track of expirations so that the new expiration will show up on Etheropt.");
-                //notify contracts contract of new contract
-                utility.send(web3, contractsContract, config.contractContractsAddr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
-                  txHash = result.txHash;
-                  nonce = result.nonce;
-                  Main.alertTxResult(err, result);
-                });
-              }
-          );
-        }
+      utility.readFile(config.contractMarket+'.bytecode', function(err, bytecode){
+        bytecode = JSON.parse(bytecode);
+        utility.send(web3, myContract, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+          if(result) {
+            txHash = result.txHash;
+            nonce = result.nonce;
+            Main.alertTxResult(err, result);
+            var address = undefined;
+            async.whilst(
+                function () { return address==undefined; },
+                function (callbackWhilst) {
+                    setTimeout(function () {
+                      utility.txReceipt(web3, txHash, function(err, receipt) {
+                        if (receipt) {
+                          address = receipt.contractAddress;
+                        }
+                        console.log("Waiting for contract creation to complete.");
+                        callbackWhilst(null);
+                      });
+                    }, 10*1000);
+                },
+                function (err) {
+                  Main.alertInfo("Here is the new contract address: "+address+". We will now send a transaction to the contract that keeps track of expirations so that the new expiration will show up on Etheropt.");
+                  //notify contracts contract of new contract
+                  utility.send(web3, contractsContract, config.contractContractsAddr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+                    txHash = result.txHash;
+                    nonce = result.nonce;
+                    Main.alertTxResult(err, result);
+                  });
+                }
+            );
+          }
+        });
       });
     }
   });
