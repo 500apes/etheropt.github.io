@@ -541,7 +541,7 @@ Main.loadPrices = function(callback) {
   utility.blockNumber(web3, function(err, blockNumber) {
     var orders = [];
     var expectedKeys = JSON.stringify(['addr','blockExpires','contractAddr','hash','optionID','orderID','price','r','s','size','v']);
-    for(id in gitterMessagesCache) {
+    Object.keys(gitterMessagesCache).forEach(function(id) {
       var message = JSON.parse(JSON.stringify(gitterMessagesCache[id]));
       if (typeof(message)=='object' && JSON.stringify(Object.keys(message).sort())==expectedKeys) {
         message.id = id;
@@ -549,7 +549,7 @@ Main.loadPrices = function(callback) {
           orders.push(message);
         }
       }
-    }
+    });
     async.map(optionsCache,
       function(option, callbackMap){
         var ordersFiltered = orders.filter(function(x){return x.contractAddr==option.contractAddr && x.optionID==option.optionID});
