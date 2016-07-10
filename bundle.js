@@ -522,18 +522,13 @@ Main.displayMarket = function(callback) {
     if (callback) callback();
   } else {
     $('#market-spinner').show();
-    Main.loadAccounts(function(){
-      Main.loadContractsFunds(function(){
-        Main.loadOptions(function(){
-          Main.getGitterMessages(function(){
-            Main.loadPrices(function(){
-              Main.displayMarket(function(){
-                Main.loadLog(function(){
-                  Main.loadGitterStream(function(){
-                    if (callback) callback();
-                  });
-                });
-              });
+    Main.loadAccounts(function(){});
+    Main.loadContractsFunds(function(){
+      Main.loadOptions(function(){
+        Main.loadPrices(function(){
+          Main.loadLog(function(){
+            Main.displayMarket(function(){
+              if (callback) callback();
             });
           });
         });
@@ -845,14 +840,6 @@ Main.getGitterMessages = function(callback) {
     callback();
   });
 }
-Main.loadGitterStream = function(callback) {
-  // utility.streamGitterMessages(function(err, result){
-  //   if (!err && result) {
-  //     Main.displayEvents(function(){});
-  //   }
-  // });
-  callback();
-}
 Main.displayEvents = function(callback) {
   var events = Object.values(eventsCache);
   events.sort(function(a,b){ return b.blockNumber-a.blockNumber || b.transactionIndex-a.transactionIndex });
@@ -895,27 +882,6 @@ Main.refresh = function(callback) {
         });
       });
     });
-    // Main.loadAccounts(function() {
-    //   Main.getGitterMessages(function() {
-    //     Main.displayEvents(function() {
-    //       Main.updatePrice(function(){
-    //         Main.loadContractsFunds(function(){
-    //           Main.loadPositions(function(){
-    //             Main.processOrders(function(){
-    //               Main.loadPrices(function() {
-    //                 Main.displayPrices(function() {
-    //                   refreshing = false;
-    //                   lastRefresh = Date.now();
-    //                   callback();
-    //                 });
-    //               });
-    //             });
-    //           });
-    //         });
-    //       });
-    //     });
-    //   });
-    // });
   } else {
     callback();
   }

@@ -520,18 +520,13 @@ Main.displayMarket = function(callback) {
     if (callback) callback();
   } else {
     $('#market-spinner').show();
-    Main.loadAccounts(function(){
-      Main.loadContractsFunds(function(){
-        Main.loadOptions(function(){
-          Main.getGitterMessages(function(){
-            Main.loadPrices(function(){
-              Main.displayMarket(function(){
-                Main.loadLog(function(){
-                  Main.loadGitterStream(function(){
-                    if (callback) callback();
-                  });
-                });
-              });
+    Main.loadAccounts(function(){});
+    Main.loadContractsFunds(function(){
+      Main.loadOptions(function(){
+        Main.loadPrices(function(){
+          Main.loadLog(function(){
+            Main.displayMarket(function(){
+              if (callback) callback();
             });
           });
         });
@@ -842,14 +837,6 @@ Main.getGitterMessages = function(callback) {
     }
     callback();
   });
-}
-Main.loadGitterStream = function(callback) {
-  // utility.streamGitterMessages(function(err, result){
-  //   if (!err && result) {
-  //     Main.displayEvents(function(){});
-  //   }
-  // });
-  callback();
 }
 Main.displayEvents = function(callback) {
   var events = Object.values(eventsCache);
