@@ -74,7 +74,7 @@ Main.logout = function() {
   nonce = undefined;
   marketMakers = {};
   browserOrders = [];
-  Main.refresh();
+  Main.refresh(function(){});
 }
 Main.createAccount = function() {
   var newAccount = utility.createAccount();
@@ -90,14 +90,14 @@ Main.deleteAccount = function() {
   nonce = undefined;
   marketMakers = {};
   browserOrders = [];
-  Main.refresh();
+  Main.refresh(function(){});
 }
 Main.selectAccount = function(i) {
   selectedAccount = i;
   nonce = undefined;
   marketMakers = {};
   browserOrders = [];
-  Main.refresh();
+  Main.refresh(function(){});
 }
 Main.addAccount = function(addr, pk) {
   if (addr.slice(0,2)!='0x') addr = '0x'+addr;
@@ -114,7 +114,7 @@ Main.addAccount = function(addr, pk) {
     nonce = undefined;
     marketMakers = {};
     browserOrders = [];
-    Main.refresh();
+    Main.refresh(function(){});
   }
 }
 Main.showPrivateKey = function() {
@@ -295,7 +295,7 @@ Main.order = function(option, price, size, expires, update, gas, priceAbove, pri
   utility.blockNumber(web3, function(err, blockNumber) {
     var order = {option: option, price: price, size: size, expires: expires, update: update, gas: gas, priceAbove: priceAbove, priceBelow: priceBelow, delta: delta, tie: tie, postOnly: postOnly, blockNumber: blockNumber, lastUpdated: 0};
     browserOrders.push(order);
-    Main.refresh();
+    Main.refresh(function(){});
   });
 }
 Main.marketMakeStart = function(contractAddr, pdf, size, width, postOnly) {
@@ -520,14 +520,16 @@ Main.displayMarket = function(callback) {
     if (callback) callback();
   } else {
     $('#market-spinner').show();
-    Main.loadContractsFunds(function(){
-      Main.loadOptions(function(){
-        Main.getGitterMessages(function(){
-          Main.loadPrices(function(){
-            Main.displayMarket(function(){
-              Main.loadLog(function(){
-                Main.loadGitterStream(function(){
-                  if (callback) callback();
+    Main.loadAccounts(function(){
+      Main.loadContractsFunds(function(){
+        Main.loadOptions(function(){
+          Main.getGitterMessages(function(){
+            Main.loadPrices(function(){
+              Main.displayMarket(function(){
+                Main.loadLog(function(){
+                  Main.loadGitterStream(function(){
+                    if (callback) callback();
+                  });
                 });
               });
             });
@@ -674,7 +676,10 @@ Main.loadLog = function(callback) {
       utility.logs(web3, myContract, contractAddr, 0, 'latest', function(err, event) {
         event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
         eventsCache[event.transactionHash+event.logIndex] = event;
-        Main.refresh();
+        Main.displayPrices(function(){
+          Main.displayEvents(function() {
+          });
+        });
       });
       callbackEach();
     },
@@ -862,7 +867,7 @@ Main.displayPrices = function(callback) {
   });
   callback();
 }
-Main.refresh = function() {
+Main.refresh = function(callback) {
   if (!refreshing || Date.now()-lastRefresh>60*1000) {
     refreshing = true;
     Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
@@ -878,6 +883,7 @@ Main.refresh = function() {
                     Main.displayPrices(function() {
                       refreshing = false;
                       lastRefresh = Date.now();
+                      callback();
                     });
                   });
                 });
@@ -887,19 +893,20 @@ Main.refresh = function() {
         });
       });
     });
+  } else {
+    callback();
   }
 }
 Main.init = function() {
   Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
   Main.connectionTest();
-  Main.loadAccounts(function(){
-    Main.displayMarket(function(){
-      function mainLoop() {
-        Main.refresh();
-        setTimeout(mainLoop, 10*1000);
-      }
-      mainLoop();
-    });
+  Main.displayMarket(function(){
+    function mainLoop() {
+      Main.refresh(function(){
+        setTimeout(mainLoop, 15*1000);
+      });
+    }
+    mainLoop();
   });
 }
 
