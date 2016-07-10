@@ -678,10 +678,7 @@ Main.loadLog = function(callback) {
       utility.logs(web3, myContract, contractAddr, 0, 'latest', function(err, event) {
         event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
         eventsCache[event.transactionHash+event.logIndex] = event;
-        Main.displayPrices(function(){
-          Main.displayEvents(function() {
-          });
-        });
+        //we'll refresh enough that we don't need to update any gui here
       });
       callbackEach();
     },
@@ -870,31 +867,55 @@ Main.displayPrices = function(callback) {
   callback();
 }
 Main.refresh = function(callback) {
-  if (!refreshing || Date.now()-lastRefresh>60*1000) {
-    refreshing = true;
+  if (refreshing<=0 || Date.now()-lastRefresh>60*1000) {
+    refreshing = 4;
     Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
     Main.loadAccounts(function() {
-      Main.getGitterMessages(function() {
-        Main.displayEvents(function() {
-          Main.updatePrice(function(){
-            Main.loadContractsFunds(function(){
-              Main.loadPositions(function(){
-                Main.processOrders(function(){
-                  Main.loadPrices(function() {
-                    Main.displayPrices(function() {
-                      refreshing = false;
-                      lastRefresh = Date.now();
-                      callback();
-                    });
-                  });
-                });
-              });
+      refreshing--;
+    });
+    Main.displayEvents(function() {
+      refreshing--;
+    });
+    Main.updatePrice(function(){
+      Main.processOrders(function(){
+        refreshing--;
+      });
+    });
+    Main.getGitterMessages(function() {
+      Main.loadContractsFunds(function(){
+        Main.loadPositions(function(){
+          Main.loadPrices(function() {
+            Main.displayPrices(function() {
+              refreshing--;
+              lastRefresh = Date.now();
+              callback();
             });
           });
         });
       });
     });
+    // Main.loadAccounts(function() {
+    //   Main.getGitterMessages(function() {
+    //     Main.displayEvents(function() {
+    //       Main.updatePrice(function(){
+    //         Main.loadContractsFunds(function(){
+    //           Main.loadPositions(function(){
+    //             Main.processOrders(function(){
+    //               Main.loadPrices(function() {
+    //                 Main.displayPrices(function() {
+    //                   refreshing = false;
+    //                   lastRefresh = Date.now();
+    //                   callback();
+    //                 });
+    //               });
+    //             });
+    //           });
+    //         });
+    //       });
+    //     });
+    //   });
+    // });
   } else {
     callback();
   }
@@ -933,7 +954,7 @@ var optionsCache = undefined;
 var browserOrders = [];
 var marketMakers = {};
 var deadOrders = {};
-var refreshing = false;
+var refreshing = 0;
 var lastRefresh = Date.now();
 var price = undefined;
 var priceUpdated = Date.now();
