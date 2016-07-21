@@ -666,19 +666,38 @@ Main.loadPositions = function(callback) {
   );
 }
 Main.loadLog = function(callback) {
-  async.eachSeries(config.contractAddrs,
-    function(contractAddr, callbackEach){
-      utility.logs(web3, myContract, contractAddr, 0, 'latest', function(err, event) {
-        event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
-        eventsCache[event.transactionHash+event.logIndex] = event;
-        //we'll refresh enough that we don't need to update any gui here
-      });
-      callbackEach();
-    },
-    function (err) {
-      callback();
+  var cookie = Main.readCookie(config.eventsCacheCookie);
+  if (cookie) eventsCache = JSON.parse(cookie);
+  utility.blockNumber(web3, function(err, blockNumber) {
+    var startBlock = 0;
+    // startBlock = blockNumber-15000;
+    for (id in eventsCache) {
+      var event = eventsCache[id];
+      if (event.blockNumber>startBlock) {
+        startBlock = event.blockNumber;
+      }
+      for (arg in event.args) {
+        console.log(arg, event.args[arg])
+        if (typeof(event.args[arg])=='string' && event.args[arg].slice(0,2)!='0x' && /^(\d|\-)+$/.test(event.args[arg])) {
+          event.args[arg] = new BigNumber(event.args[arg]);
+        }
+      }
     }
-  );
+    async.eachSeries(config.contractAddrs,
+      function(contractAddr, callbackEach){
+        utility.logs(web3, myContract, contractAddr, startBlock, 'latest', function(err, event) {
+          event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
+          eventsCache[event.transactionHash+event.logIndex] = event;
+          Main.createCookie(config.eventsCacheCookie, JSON.stringify(eventsCache), 999);
+          //we'll refresh enough that we don't need to update any gui here
+        });
+        callbackEach();
+      },
+      function (err) {
+        callback();
+      }
+    );
+  });
 }
 Main.loadContractsFunds = function(callback) {
   async.map(config.contractAddrs,
@@ -854,7 +873,7 @@ Main.displayPrices = function(callback) {
 Main.refresh = function(callback) {
   if (refreshing<=0 || Date.now()-lastRefresh>60*1000) {
     refreshing = 4;
-    Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
+    Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
     Main.loadAccounts(function() {
       refreshing--;
@@ -885,7 +904,7 @@ Main.refresh = function(callback) {
   }
 }
 Main.init = function() {
-  Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
+  Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
   Main.connectionTest();
   Main.displayMarket(function(){
     function mainLoop() {
@@ -898,18 +917,11 @@ Main.init = function() {
 }
 
 //globals
-var addrs = [config.ethAddr];
-var pks = [config.ethAddrPrivateKey];
+var contractsContract = undefined;
+var myContract = undefined;
+var addrs;
+var pks;
 var selectedAccount = 0;
-var cookie = Main.readCookie("user");
-if (cookie) {
-  cookie = JSON.parse(cookie);
-  addrs = cookie["addrs"];
-  pks = cookie["pks"];
-  if (cookie["selectedAccount"]) {
-    selectedAccount = cookie["selectedAccount"];
-  }
-}
 var connection = undefined;
 var nonce = undefined;
 var eventsCache = {};
@@ -924,23 +936,53 @@ var price = undefined;
 var priceUpdated = Date.now();
 var gitterMessagesCache = {};
 //web3
-var web3 = new Web3();
-web3.eth.defaultAccount = config.ethAddr;
-web3.setProvider(new web3.providers.HttpProvider(config.ethProvider));
+if(typeof web3 !== 'undefined' && typeof Web3 !== 'undefined') {
+    web3 = new Web3(web3.currentProvider);
+} else if (typeof Web3 !== 'undefined') {
+    web3 = new Web3(new Web3.providers.HttpProvider(config.ethProvider));
+} else if(typeof web3 == 'undefined' && typeof Web3 == 'undefined') {
+}
 
-//get contracts
-var contractsContract = undefined;
-var myContract = undefined;
-utility.loadContract(web3, config.contractContracts, config.contractContractsAddr, function(err, contract){
-  contractsContract = contract;
-  utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
-    if (result) {
-      config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
-      utility.loadContract(web3, config.contractMarket, undefined, function(err, contract){
-        myContract = contract;
-        Main.init();
+web3.version.getNetwork(function(error, version){
+  //check mainnet vs testnet
+  if (version in configs) config = configs[version];
+  //default addr, pk
+  addrs = [config.ethAddr];
+  pks = [config.ethAddrPrivateKey];
+  //get cookie
+  var cookie = Main.readCookie(config.userCookie);
+  if (cookie) {
+    cookie = JSON.parse(cookie);
+    addrs = cookie["addrs"];
+    pks = cookie["pks"];
+    if (cookie["selectedAccount"]) {
+      selectedAccount = cookie["selectedAccount"];
+    }
+  }
+  //get accounts
+  web3.eth.defaultAccount = config.ethAddr;
+  web3.eth.getAccounts(function(e,accounts){
+    if (!e) {
+      accounts.forEach(function(addr){
+        if(addrs.indexOf(addr)<0) {
+          addrs.push(addr);
+          pks.push(undefined);
+        }
       });
     }
+  });
+  //load contract
+  utility.loadContract(web3, config.contractContracts, config.contractContractsAddr, function(err, contract){
+    contractsContract = contract;
+    utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
+      if (result) {
+        config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
+        utility.loadContract(web3, config.contractMarket, undefined, function(err, contract){
+          myContract = contract;
+          Main.init();
+        });
+      }
+    });
   });
 });
 

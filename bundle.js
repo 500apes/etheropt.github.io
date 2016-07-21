@@ -668,19 +668,38 @@ Main.loadPositions = function(callback) {
   );
 }
 Main.loadLog = function(callback) {
-  async.eachSeries(config.contractAddrs,
-    function(contractAddr, callbackEach){
-      utility.logs(web3, myContract, contractAddr, 0, 'latest', function(err, event) {
-        event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
-        eventsCache[event.transactionHash+event.logIndex] = event;
-        //we'll refresh enough that we don't need to update any gui here
-      });
-      callbackEach();
-    },
-    function (err) {
-      callback();
+  var cookie = Main.readCookie(config.eventsCacheCookie);
+  if (cookie) eventsCache = JSON.parse(cookie);
+  utility.blockNumber(web3, function(err, blockNumber) {
+    var startBlock = 0;
+    // startBlock = blockNumber-15000;
+    for (id in eventsCache) {
+      var event = eventsCache[id];
+      if (event.blockNumber>startBlock) {
+        startBlock = event.blockNumber;
+      }
+      for (arg in event.args) {
+        console.log(arg, event.args[arg])
+        if (typeof(event.args[arg])=='string' && event.args[arg].slice(0,2)!='0x' && /^(\d|\-)+$/.test(event.args[arg])) {
+          event.args[arg] = new BigNumber(event.args[arg]);
+        }
+      }
     }
-  );
+    async.eachSeries(config.contractAddrs,
+      function(contractAddr, callbackEach){
+        utility.logs(web3, myContract, contractAddr, startBlock, 'latest', function(err, event) {
+          event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
+          eventsCache[event.transactionHash+event.logIndex] = event;
+          Main.createCookie(config.eventsCacheCookie, JSON.stringify(eventsCache), 999);
+          //we'll refresh enough that we don't need to update any gui here
+        });
+        callbackEach();
+      },
+      function (err) {
+        callback();
+      }
+    );
+  });
 }
 Main.loadContractsFunds = function(callback) {
   async.map(config.contractAddrs,
@@ -856,7 +875,7 @@ Main.displayPrices = function(callback) {
 Main.refresh = function(callback) {
   if (refreshing<=0 || Date.now()-lastRefresh>60*1000) {
     refreshing = 4;
-    Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
+    Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
     Main.loadAccounts(function() {
       refreshing--;
@@ -887,7 +906,7 @@ Main.refresh = function(callback) {
   }
 }
 Main.init = function() {
-  Main.createCookie("user", JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
+  Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
   Main.connectionTest();
   Main.displayMarket(function(){
     function mainLoop() {
@@ -900,18 +919,11 @@ Main.init = function() {
 }
 
 //globals
-var addrs = [config.ethAddr];
-var pks = [config.ethAddrPrivateKey];
+var contractsContract = undefined;
+var myContract = undefined;
+var addrs;
+var pks;
 var selectedAccount = 0;
-var cookie = Main.readCookie("user");
-if (cookie) {
-  cookie = JSON.parse(cookie);
-  addrs = cookie["addrs"];
-  pks = cookie["pks"];
-  if (cookie["selectedAccount"]) {
-    selectedAccount = cookie["selectedAccount"];
-  }
-}
 var connection = undefined;
 var nonce = undefined;
 var eventsCache = {};
@@ -926,23 +938,53 @@ var price = undefined;
 var priceUpdated = Date.now();
 var gitterMessagesCache = {};
 //web3
-var web3 = new Web3();
-web3.eth.defaultAccount = config.ethAddr;
-web3.setProvider(new web3.providers.HttpProvider(config.ethProvider));
+if(typeof web3 !== 'undefined' && typeof Web3 !== 'undefined') {
+    web3 = new Web3(web3.currentProvider);
+} else if (typeof Web3 !== 'undefined') {
+    web3 = new Web3(new Web3.providers.HttpProvider(config.ethProvider));
+} else if(typeof web3 == 'undefined' && typeof Web3 == 'undefined') {
+}
 
-//get contracts
-var contractsContract = undefined;
-var myContract = undefined;
-utility.loadContract(web3, config.contractContracts, config.contractContractsAddr, function(err, contract){
-  contractsContract = contract;
-  utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
-    if (result) {
-      config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
-      utility.loadContract(web3, config.contractMarket, undefined, function(err, contract){
-        myContract = contract;
-        Main.init();
+web3.version.getNetwork(function(error, version){
+  //check mainnet vs testnet
+  if (version in configs) config = configs[version];
+  //default addr, pk
+  addrs = [config.ethAddr];
+  pks = [config.ethAddrPrivateKey];
+  //get cookie
+  var cookie = Main.readCookie(config.userCookie);
+  if (cookie) {
+    cookie = JSON.parse(cookie);
+    addrs = cookie["addrs"];
+    pks = cookie["pks"];
+    if (cookie["selectedAccount"]) {
+      selectedAccount = cookie["selectedAccount"];
+    }
+  }
+  //get accounts
+  web3.eth.defaultAccount = config.ethAddr;
+  web3.eth.getAccounts(function(e,accounts){
+    if (!e) {
+      accounts.forEach(function(addr){
+        if(addrs.indexOf(addr)<0) {
+          addrs.push(addr);
+          pks.push(undefined);
+        }
       });
     }
+  });
+  //load contract
+  utility.loadContract(web3, config.contractContracts, config.contractContractsAddr, function(err, contract){
+    contractsContract = contract;
+    utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
+      if (result) {
+        config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
+        utility.loadContract(web3, config.contractMarket, undefined, function(err, contract){
+          myContract = contract;
+          Main.init();
+        });
+      }
+    });
   });
 });
 
@@ -85695,29 +85737,62 @@ exports.postGitterMessage = postGitterMessage;
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},_dereq_("buffer").Buffer)
 },{"../config.js":297,"async":10,"async/dist/async.min.js":9,"bignumber.js":14,"buffer":575,"ethereumjs-tx":88,"ethereumjs-util":91,"fs":528,"https":621,"keythereum":149,"request":181,"web3":246,"web3/lib/solidity/coder.js":253,"web3/lib/utils/sha3.js":265,"web3/lib/utils/utils.js":266,"web3/lib/web3/event.js":273,"web3/lib/web3/function.js":277}],297:[function(_dereq_,module,exports){
 (function (global){
-var config = {};
+var configs = {};
 
-config.homeURL = 'https://etheropt.github.io';
-// config.homeURL = 'http://localhost:8080';
-config.contractMarket = 'etheropt.sol';
-config.contractContracts = 'etheropt_contracts.sol';
-config.contractAddrs = [];
-config.contractContractsAddr = '0x9eea10abd08519d7a2cc3734ff8bb38e1de35446';
-config.domain = undefined;
-config.port = 8082;
-config.url = undefined;
-config.ethTestnet = false;
-config.ethProvider = 'http://localhost:8545';
-config.ethGasPrice = 20000000000;
-config.ethAddr = '0x0000000000000000000000000000000000000000';
-config.ethAddrPrivateKey = '';
-config.gitterHost = 'https://api.gitter.im';
-config.gitterStream = 'stream.gitter.im';
-config.gitterToken = 'fab13af0884785b1876c813dddc1727c573326f5';
-config.gitterRoomID = '5776ec9ac2f0db084a2105c2';
+//mainnet
+configs["1"] = {
+  // homeURL: 'https://etheropt.github.io',
+  homeURL: 'http://localhost:8080',
+  contractMarket: 'etheropt.sol',
+  contractContracts: 'etheropt_contracts.sol',
+  contractAddrs: [],
+  contractContractsAddr: '0x9eea10abd08519d7a2cc3734ff8bb38e1de35446',
+  domain: undefined,
+  port: 8082,
+  url: undefined,
+  ethTestnet: false,
+  ethProvider: 'http://localhost:8545',
+  ethGasPrice: 20000000000,
+  ethAddr: '0x0000000000000000000000000000000000000000',
+  ethAddrPrivateKey: '',
+  gitterHost: 'https://api.gitter.im',
+  gitterStream: 'stream.gitter.im',
+  gitterToken: 'fab13af0884785b1876c813dddc1727c573326f5',
+  gitterRoomID: '5776ec9ac2f0db084a2105c2',
+  userCookie: 'Etheropt',
+  eventsCacheCookie: 'Etheropt_eventsCache'
+};
+
+//testnet
+configs["2"] = {
+  // homeURL: 'https://etheropt.github.io',
+  homeURL: 'http://localhost:8080',
+  contractMarket: 'etheropt.sol',
+  contractContracts: 'etheropt_contracts.sol',
+  contractAddrs: [],
+  contractContractsAddr: '0x94968f0f86e5000d3d4e093a680dc01a10b3d1ea',
+  domain: undefined,
+  port: 8082,
+  url: undefined,
+  ethTestnet: true,
+  ethProvider: 'http://localhost:8545',
+  ethGasPrice: 20000000000,
+  ethAddr: '0x0000000000000000000000000000000000000000',
+  ethAddrPrivateKey: '',
+  gitterHost: 'https://api.gitter.im',
+  gitterStream: 'stream.gitter.im',
+  gitterToken: 'fab13af0884785b1876c813dddc1727c573326f5',
+  gitterRoomID: '5776ec9ac2f0db084a2105c2',
+  userCookie: 'Etheropt_testnet',
+  eventsCacheCookie: 'Etheropt_eventsCache_testnet'
+};
+
+//default config
+var config = configs["1"]; //mainnet
 
 try {
   global.config = config;
+  global.configs = configs;
   module.exports = config;
 } catch (err) {}
 
