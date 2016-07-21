@@ -677,7 +677,6 @@ Main.loadLog = function(callback) {
         startBlock = event.blockNumber;
       }
       for (arg in event.args) {
-        console.log(arg, event.args[arg])
         if (typeof(event.args[arg])=='string' && event.args[arg].slice(0,2)!='0x' && /^(\d|\-)+$/.test(event.args[arg])) {
           event.args[arg] = new BigNumber(event.args[arg]);
         }
