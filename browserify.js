@@ -427,6 +427,7 @@ Main.newExpiration = function(date, calls, puts, margin) {
       Main.alertInfo("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
       utility.readFile(config.contractMarket+'.bytecode', function(err, bytecode){
         bytecode = JSON.parse(bytecode);
+        console.log(JSON.stringify([expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes]));
         utility.send(web3, myContract, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
           if(result) {
             txHash = result.txHash;

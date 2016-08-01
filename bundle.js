@@ -429,6 +429,7 @@ Main.newExpiration = function(date, calls, puts, margin) {
       Main.alertInfo("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
       utility.readFile(config.contractMarket+'.bytecode', function(err, bytecode){
         bytecode = JSON.parse(bytecode);
+        console.log(JSON.stringify([expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes]));
         utility.send(web3, myContract, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
           if(result) {
             txHash = result.txHash;
@@ -84931,7 +84932,9 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
       if (options.data.slice(0,2)!="0x") {
         options.data = '0x' + options.data;
       }
-      options.data += encodeConstructorParams(contract.abi, args);
+      var encodedParams = encodeConstructorParams(contract.abi, args);
+      console.log(encodedParams);
+      options.data += encodedParams;
     } else {
       options.to = address;
       var functionAbi = contract.abi.find(function(element, index, array) {return element.name==functionName});
@@ -85048,7 +85051,17 @@ function txReceipt(web3, txHash, callback) {
   }
   try {
     if (web3.currentProvider) {
-      callback(undefined, web3.eth.getTransactionReceipt(txHash));
+      try {
+        web3.eth.getTransactionReceipt(txHash, function (err, result) {
+          if (err) {
+            proxy();
+          } else {
+            callback(undefined, result);
+          }
+        });
+      } catch (err) {
+        proxy();
+      }
     } else {
       proxy();
     }
@@ -85740,8 +85753,8 @@ var configs = {};
 
 //mainnet
 configs["1"] = {
-  homeURL: 'https://etheropt.github.io',
-  // homeURL: 'http://localhost:8080',
+  // homeURL: 'https://etheropt.github.io',
+  homeURL: 'http://0.0.0.0:8080',
   contractMarket: 'etheropt.sol',
   contractContracts: 'etheropt_contracts.sol',
   contractAddrs: [],
@@ -85765,7 +85778,7 @@ configs["1"] = {
 //testnet
 configs["2"] = {
   homeURL: 'https://etheropt.github.io',
-  // homeURL: 'http://localhost:8080',
+  // homeURL: 'http://0.0.0.0:8080',
   contractMarket: 'etheropt.sol',
   contractContracts: 'etheropt_contracts.sol',
   contractAddrs: [],
