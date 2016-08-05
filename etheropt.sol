@@ -1,4 +1,4 @@
-//last compiled with soljson-v0.3.5-2016-07-21-6610add
+//last compiled with soljson-v0.3.5-2016-07-21-6610add.js
 
 contract Etheropt {
 

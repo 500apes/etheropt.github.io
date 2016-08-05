@@ -1,34 +1,25 @@
 <div>
   <ul class="nav nav-tabs" role="tablist">
-    <li role="presentation"><a href="#connect-ethereum" aria-controls="connect-ethereum" role="tab" data-toggle="tab">Connect to Ethereum</a></li>
-    <li role="presentation" class="active"><a href="#create-account" aria-controls="create-account" role="tab" data-toggle="tab">Create/import an account</a></li>
+    <li role="presentation" class="active"><a href="#connect-ethereum" aria-controls="connect-ethereum" role="tab" data-toggle="tab">Connect to Ethereum</a></li>
     <li role="presentation"><a href="#deposit-withdraw" aria-controls="deposit-withdraw" role="tab" data-toggle="tab">Deposit and withdraw</a></li>
     <li role="presentation"><a href="#understand-options" aria-controls="understand-options" role="tab" data-toggle="tab">Understand options</a></li>
     <li role="presentation"><a href="#trade-options" aria-controls="trade-options" role="tab" data-toggle="tab">Trade options</a></li>
     <li role="presentation"><a href="#market-make" aria-controls="market-make" role="tab" data-toggle="tab">Market make</a></li>
   </ul>
   <div class="tab-content list-spacing padding">
-    <div role="tabpanel" class="tab-pane" id="connect-ethereum">
+    <div role="tabpanel" class="tab-pane active" id="connect-ethereum">
       <h3>Connect to Ethereum</h3>
+      <p>There are three ways you can connect to the Ethereum network.
       <ol>
-        <li>The recommended way to connect to the Ethereum network is by running Geth on your computer. When you do this, Etheropt will connect to Geth to query the smart contracts and send transactions on your behalf. If you do not wish to use Geth, Etheropt will automatically use the Etherscan API to connect to the Ethereum network and send transactions on your behalf.</li>
-        <li>To run Geth locally in such a way that Etheropt can connect to it, run Geth with these options: <code>geth --rpc --rpccorsdomain 'https://etheropt.github.io' console</code>. Once the Geth console has started up, run <code>personal.unlockAccount("0xYOUR_ETHEREUM_ACCOUNT")</code> to unlock your account so that Etheropt can send transactions on your behalf.</li>
-        <li>If you are using a local version of Geth not secured by an SSL connection, you may need to force your browser to load content over unsecured connections. In Google Chrome, click the shield in the address bar and click "Load unsafe scripts."</li>
-        <li>Your current connection will be shown in the "Connection" tab, so you can tell if you are connected to Geth or the Etherscan proxy.</li>
-      </ol>
-    </div>
-    <div role="tabpanel" class="tab-pane active" id="create-account">
-      <h3>Create/import an account</h3>
-      <ol>
-        <li>If you already have an account you want to use, you can import it. Click the account dropdown (upper right) and choose "Import account."</li>
-        <li>If you want to make a new Ethereum account to use with Etheropt, click the account dropdown (upper right) and choose "Create account." If you prefer, you can also use <a href="http://www.myetherwallet.com/" target="_blank">MyEtherWallet</a> to create a new Ethereum account, then use "Import account" to add your new address and its private key.</li>
-        <li>Click the account dropdown and choose "Export private key." Write your private key down somewhere safe.</li>
+        <li>Connect to the Ethereum network through <a href="https://metamask.io">MetaMask</a>. MetaMask is a Chrome plugin that lets you manage your Ethereum accounts and sign transactions on a case by case basis. If you are using MetaMask, your MetaMask account will automatically appear in the account dropdown.</li>
+        <li>Connect to Ethereum via the Mist browser. The only downside to doing this is that you will have to unlock your account manually in order to broadcast resting orders (other transactions will work). Mist will eventually support the eth.sign() function that is needed to individually approve resting orders, but for now you will need to unlock your account manually by running <code>geth attach</code> and then <code>personal.unlockAccount("0xYOUR_ETHEREUM_ACCOUNT")</code> from the command line.</li>
+        <li>Connect to Ethereum through the Etherscan API. This is the default option if you don't have MetaMask or Mist. You will need to create a new account by clicking "Create account" under the address dropdown. You should export the private key and write it down by clicking "Export private key" under the address dropdown. If you prefer, you can also use <a href="http://www.myetherwallet.com/" target="_blank">MyEtherWallet</a> to create a new Ethereum account, then use "Import account" to add your new address and its private key.</li>
       </ol>
     </div>
     <div role="tabpanel" class="tab-pane" id="deposit-withdraw">
       <h3>Deposit and withdraw</h3>
       <ol>
-        <li>Assuming you have followed the "Create/import account" guide, you have an Ethereum account you can use with Etheropt. You should see its address in the account dropdown in the upper right. You will need some Ether in this account. If you don't have Ether, click the account dropdown and choose "Deposit with ShapeShift.io." This will let you convert Bitcoin or any other cryptocurrency into Ether and have it deposited into your account.</li>
+        <li>By now you should have an address in the account dropdown in the upper right. You will need some Ether in this account. If you don't have Ether, click the account dropdown and choose "Deposit with ShapeShift.io." This will let you convert Bitcoin or any other cryptocurrency into Ether and have it deposited into your account.</li>
         <li>Each expiration has its own smart contract, so you will need to pick an expiration and send funds to the expiration's smart contract. Click one of the expirations in the tabs beneath this guide.</li>
         <li>Now that you have selected an expiration, click on the "Funds" button. This will let you deposit Ether from your Ethereum account into the expiration's smart contract. Don't forget that every Ethereum transaction requires a small transaction fee known as gas, so you will need a little bit extra in your account in addition to the funds you are sending. For funding and withdrawing, this number will be less than 0.01 ether. You should see the transaction pop up in the transaction log after about 15 seconds (the average time to confirm an Ethereum transaction).</li>
         <li>When you want to withdraw funds, click on the "Available" button. This will let you withdraw Ether from the expiration's smart contract into your Ethereum account. You can only withdraw from your available funds (the funds that are not being held to finance trades).</li>

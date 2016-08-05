@@ -429,7 +429,6 @@ Main.newExpiration = function(date, calls, puts, margin) {
       Main.alertInfo("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
       utility.readFile(config.contractMarket+'.bytecode', function(err, bytecode){
         bytecode = JSON.parse(bytecode);
-        console.log(JSON.stringify([expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes]));
         utility.send(web3, myContract, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
           if(result) {
             txHash = result.txHash;
@@ -562,7 +561,12 @@ Main.loadPrices = function(callback) {
             if (blockNumber<order.blockExpires) {
               var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
               var hash = '0x'+sha256(new Buffer(condensed,'hex'));
-              var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+              var verified = false;
+              try {
+                var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+              } catch(err) {
+                console.log(err);
+              }
               utility.call(web3, myContract, order.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
                 var balance = result.toNumber();
                 utility.call(web3, myContract, order.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
@@ -590,7 +594,6 @@ Main.loadPrices = function(callback) {
             option.sellOrders = newSellOrders;
             option.buyOrders.sort(function(a,b){return b.price - a.price || b.size - a.size || a.id - b.id});
             option.sellOrders.sort(function(a,b){return a.price - b.price || b.size - a.size || a.id - b.id});
-            // console.log(option.expiration+' '+option.strike+' '+option.kind, option.buyOrders.length,option.sellOrders.length);
             callbackMap(null, option);
           }
         );
@@ -84933,7 +84936,6 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
         options.data = '0x' + options.data;
       }
       var encodedParams = encodeConstructorParams(contract.abi, args);
-      console.log(encodedParams);
       options.data += encodedParams;
     } else {
       options.to = address;
@@ -84942,11 +84944,11 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
       var typeName = inputTypes.join();
       options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
     }
-    var tx = new Tx(options);
-    signTx(web3, fromAddress, tx, privateKey, function(err, tx){
-      if (!err) {
-        var serializedTx = tx.serialize().toString('hex');
-        function proxy() {
+    function proxy() {
+      var tx = new Tx(options);
+      signTx(web3, fromAddress, tx, privateKey, function(err, tx){
+        if (!err) {
+          var serializedTx = tx.serialize().toString('hex');
           var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api';
           request.post({url: url, form: {module: 'proxy', action: 'eth_sendRawTransaction', hex: serializedTx}}, function(err, httpResponse, body){
             if (!err) {
@@ -84964,26 +84966,29 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
               callback(err, {txHash: undefined, nonce: nonce});
             }
           });
+        } else {
+          console.log(err)
+          callback('Failed to sign transaction', {txHash: undefined, nonce: nonce});
         }
-        if (web3.currentProvider) {
-          try {
-            web3.eth.sendRawTransaction(serializedTx, function (err, hash) {
-              if (err) {
-                proxy();
-              } else {
-                callback(undefined, {txHash: hash, nonce: nonce+1});
-              }
-            });
-          } catch (err) {
+      });
+    }
+    try {
+      if (web3.currentProvider) {
+        options.from = fromAddress;
+        web3.eth.sendTransaction(options, function(err, hash){
+          if (!err) {
+            callback(undefined, {txHash: hash, nonce: nonce+1});
+          } else {
+            console.log("HERE:", err, nonce);
             proxy();
           }
-        } else {
-          proxy();
-        }
+        })
       } else {
-        callback('Failed to sign transaction', {txHash: undefined, nonce: nonce});
+        proxy();
       }
-    });
+    } catch (err) {
+      proxy();
+    }
   });
 }
 
@@ -85202,9 +85207,15 @@ function getNextNonce(web3, address, callback) {
   }
   try {
     if (web3.currentProvider) {
-      var nextNonce = Number(web3.eth.getTransactionCount(address));
-      //Note. initial nonce is 2^20 on testnet, but getTransactionCount already starts at 2^20.
-      callback(undefined, nextNonce);
+      web3.eth.getTransactionCount(address, function(err, result){
+        if (!err) {
+          var nextNonce = Number(result);
+          //Note. initial nonce is 2^20 on testnet, but getTransactionCount already starts at 2^20.
+          callback(undefined, nextNonce);
+        } else {
+          proxy();
+        }
+      });
     } else {
       proxy();
     }
@@ -85777,8 +85788,8 @@ configs["1"] = {
 
 //testnet
 configs["2"] = {
-  homeURL: 'https://etheropt.github.io',
-  // homeURL: 'http://0.0.0.0:8080',
+  // homeURL: 'https://etheropt.github.io',
+  homeURL: 'http://0.0.0.0:8080',
   contractMarket: 'etheropt.sol',
   contractContracts: 'etheropt_contracts.sol',
   contractAddrs: [],

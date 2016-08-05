@@ -427,7 +427,6 @@ Main.newExpiration = function(date, calls, puts, margin) {
       Main.alertInfo("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
       utility.readFile(config.contractMarket+'.bytecode', function(err, bytecode){
         bytecode = JSON.parse(bytecode);
-        console.log(JSON.stringify([expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes]));
         utility.send(web3, myContract, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
           if(result) {
             txHash = result.txHash;
@@ -560,7 +559,12 @@ Main.loadPrices = function(callback) {
             if (blockNumber<order.blockExpires) {
               var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
               var hash = '0x'+sha256(new Buffer(condensed,'hex'));
-              var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+              var verified = false;
+              try {
+                var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+              } catch(err) {
+                console.log(err);
+              }
               utility.call(web3, myContract, order.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
                 var balance = result.toNumber();
                 utility.call(web3, myContract, order.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
@@ -588,7 +592,6 @@ Main.loadPrices = function(callback) {
             option.sellOrders = newSellOrders;
             option.buyOrders.sort(function(a,b){return b.price - a.price || b.size - a.size || a.id - b.id});
             option.sellOrders.sort(function(a,b){return a.price - b.price || b.size - a.size || a.id - b.id});
-            // console.log(option.expiration+' '+option.strike+' '+option.kind, option.buyOrders.length,option.sellOrders.length);
             callbackMap(null, option);
           }
         );
