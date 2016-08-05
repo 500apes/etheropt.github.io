@@ -469,7 +469,7 @@ Main.connectionTest = function() {
   connection = {connection: 'Proxy', provider: 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io', testnet: config.ethTestnet};
   try {
     if (web3.currentProvider) {
-      web3.eth.getBalance('0x0000000000000000000000000000000000000000');
+      web3.eth.coinbase;
       connection = {connection: 'Geth', provider: config.ethProvider, testnet: config.ethTestnet};
     }
   } catch(err) {
