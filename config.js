@@ -2,8 +2,8 @@ var configs = {};
 
 //mainnet
 configs["1"] = {
-  // homeURL: 'https://etheropt.github.io',
-  homeURL: 'http://0.0.0.0:8080',
+  homeURL: 'https://etheropt.github.io',
+  // homeURL: 'http://0.0.0.0:8080',
   contractMarket: 'etheropt.sol',
   contractContracts: 'etheropt_contracts.sol',
   contractAddrs: [],
@@ -26,8 +26,8 @@ configs["1"] = {
 
 //testnet
 configs["2"] = {
-  // homeURL: 'https://etheropt.github.io',
-  homeURL: 'http://0.0.0.0:8080',
+  homeURL: 'https://etheropt.github.io',
+  // homeURL: 'http://0.0.0.0:8080',
   contractMarket: 'etheropt.sol',
   contractContracts: 'etheropt_contracts.sol',
   contractAddrs: [],
