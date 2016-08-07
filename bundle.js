@@ -84936,6 +84936,7 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
         options.data = '0x' + options.data;
       }
       var encodedParams = encodeConstructorParams(contract.abi, args);
+      console.log(encodedParams);
       options.data += encodedParams;
     } else {
       options.to = address;
@@ -84944,8 +84945,8 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
       var typeName = inputTypes.join();
       options.data = '0x' + sha3(functionName+'('+typeName+')').slice(0, 8) + coder.encodeParams(inputTypes, args);
     }
+    var tx = new Tx(options);
     function proxy() {
-      var tx = new Tx(options);
       signTx(web3, fromAddress, tx, privateKey, function(err, tx){
         if (!err) {
           var serializedTx = tx.serialize().toString('hex');
@@ -84975,11 +84976,13 @@ function send(web3, contract, address, functionName, args, fromAddress, privateK
     try {
       if (web3.currentProvider) {
         options.from = fromAddress;
+        options.gas = options.gasLimit;
+        delete options.gasLimit;
         web3.eth.sendTransaction(options, function(err, hash){
           if (!err) {
             callback(undefined, {txHash: hash, nonce: nonce+1});
           } else {
-            console.log("HERE:", err, nonce);
+            console.log(err);
             proxy();
           }
         })
@@ -85382,7 +85385,7 @@ function deployContract(web3, sourceFile, contractName, constructorParams, addre
           // bytecode = compiled.bytecode;
         }
         var contract = web3.eth.contract(abi);
-        send(web3, contract, undefined, 'constructor', constructorParams.concat([{from: address, data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}]), address, undefined, 0, function(err, result) {
+        send(web3, contract, undefined, 'constructor', constructorParams.concat([{from: address, data: bytecode, gas: 4700000, gasPrice: config.ethGasPrice}]), address, undefined, 0, function(err, result) {
           var txHash = result.txHash;
           var address = undefined;
           async.whilst(
@@ -85810,8 +85813,24 @@ configs["2"] = {
   eventsCacheCookie: 'Etheropt_eventsCache_testnet'
 };
 
+function getParameterByName(name, url) {
+  if (!url) url = window.location.href;
+  name = name.replace(/[\[\]]/g, "\\$&");
+  var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+      results = regex.exec(url);
+  if (!results) return null;
+  if (!results[2]) return '';
+  return decodeURIComponent(results[2].replace(/\+/g, " "));
+}
 //default config
-var config = configs["1"]; //mainnet
+var index = "1"; //mainnet
+if (typeof(window)!='undefined') {
+  var network = getParameterByName("network");
+  if (network) {
+    index = network;
+  }
+}
+var config = configs[index];
 
 try {
   global.config = config;

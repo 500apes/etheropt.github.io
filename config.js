@@ -48,8 +48,24 @@ configs["2"] = {
   eventsCacheCookie: 'Etheropt_eventsCache_testnet'
 };
 
+function getParameterByName(name, url) {
+  if (!url) url = window.location.href;
+  name = name.replace(/[\[\]]/g, "\\$&");
+  var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+      results = regex.exec(url);
+  if (!results) return null;
+  if (!results[2]) return '';
+  return decodeURIComponent(results[2].replace(/\+/g, " "));
+}
 //default config
-var config = configs["1"]; //mainnet
+var index = "1"; //mainnet
+if (typeof(window)!='undefined') {
+  var network = getParameterByName("network");
+  if (network) {
+    index = network;
+  }
+}
+var config = configs[index];
 
 try {
   global.config = config;
