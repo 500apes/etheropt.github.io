@@ -8,6 +8,27 @@ body {
   display:table;
 }
 
+#family {
+  width: 100%;
+  background: #eee;
+  padding-top: 3px;
+}
+
+#family .inside {
+  width: 100%;
+  margin: 0 auto;
+  text-align: center;
+}
+
+#family a {
+  text-decoration: none;
+  color: #000;
+}
+
+#family button {
+  margin-bottom: 3px;
+}
+
 #header {
   width: 100%;
   display:table-row;
