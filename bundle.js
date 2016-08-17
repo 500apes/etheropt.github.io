@@ -85120,21 +85120,23 @@ function logs(web3, contract, address, fromBlock, toBlock, callback) {
       }
     });
   }
-  try {
-    if (web3.currentProvider) {
-      web3.eth.filter(options, function(error, item){
-        if (!error) {
-          decodeEvent(item);
-        } else {
-          proxy(1);
-        }
-      });
-    } else {
-      proxy(1);
-    }
-  } catch (err) {
-    proxy(1);
-  }
+  // Geth/Mist/MetaMask web3.eth.filter is slow, so we'll just use the proxy for events
+  // try {
+  //   if (web3.currentProvider) {
+  //     web3.eth.filter(options, function(error, item){
+  //       if (!error) {
+  //         decodeEvent(item);
+  //       } else {
+  //         proxy(1);
+  //       }
+  //     });
+  //   } else {
+  //     proxy(1);
+  //   }
+  // } catch (err) {
+  //   proxy(1);
+  // }
+  proxy(1);
 }
 
 function getBalance(web3, address, callback) {
@@ -85576,40 +85578,39 @@ function streamGitterMessages(gitterMessages, callback) {
 
 function getGitterMessages(gitterMessages, callback) {
   var numMessages = undefined;
-  var beforeId = undefined;
+  var skip = 0;
   var messages = [];
-  var limit = 5;
+  var pages = 20;
   var newMessagesFound = 0;
+  var perPage = 100;
   async.until(
-    function () { return limit <= 0; },
+    function () { return pages <= 0; },
     function (callbackUntil) {
-      limit -= 1;
-      var url = config.gitterHost + '/v1/rooms/'+config.gitterRoomID+'/chatMessages?access_token='+config.gitterToken+'&limit=50';
-      if (beforeId) url += '&beforeId='+beforeId;
+      pages -= 1;
+      var url = config.gitterHost + '/v1/rooms/'+config.gitterRoomID+'/chatMessages?access_token='+config.gitterToken+'&limit='+perPage+'&skip='+skip;
       request.get(url, function(err, httpResponse, body){
         if (!err) {
           var data = JSON.parse(body);
           if (data && data.length>0) {
-            beforeId = data[0].id;
+            skip += perPage;
             data.forEach(function(message){
               if (gitterMessages[message.id]) {
-                limit = 0;
+                pages = 0;
               } else {
-                newMessagesFound++;
-              }
-              try {
-                gitterMessages[message.id] = JSON.parse(message.text);
-              } catch (err) {
+                try {
+                  gitterMessages[message.id] = JSON.parse(message.text);
+                  newMessagesFound++;
+                } catch (err) {
+                }
               }
             });
           } else {
-            limit = 0;
+            pages = 0;
           }
-          setTimeout(function(){callbackUntil(null)}, 1000);
         } else {
           numMessages = 0;
-          callbackUntil(null);
         }
+        callbackUntil(null);
       });
     },
     function (err) {
@@ -85779,7 +85780,7 @@ configs["1"] = {
   ethTestnet: false,
   ethProvider: 'http://localhost:8545',
   ethGasPrice: 20000000000,
-  ethAddr: '0x0000000000000000000000000000000000000000',
+  ethAddr: '0x0000000000000000000000000000000000000123',
   ethAddrPrivateKey: '',
   gitterHost: 'https://api.gitter.im',
   gitterStream: 'stream.gitter.im',
@@ -85803,7 +85804,7 @@ configs["2"] = {
   ethTestnet: true,
   ethProvider: 'http://localhost:8545',
   ethGasPrice: 20000000000,
-  ethAddr: '0x0000000000000000000000000000000000000000',
+  ethAddr: '0x0000000000000000000000000000000000000123',
   ethAddrPrivateKey: '',
   gitterHost: 'https://api.gitter.im',
   gitterStream: 'stream.gitter.im',
