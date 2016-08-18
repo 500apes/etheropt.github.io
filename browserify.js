@@ -121,7 +121,7 @@ Main.showPrivateKey = function() {
   var addr = addrs[selectedAccount];
   var pk = pks[selectedAccount];
   if (pk==undefined || pk=='') {
-    Main.alertInfo('For account '+addr+', there is no private key available. You can still transact if you are connected to Geth and the account is unlocked.');
+    Main.alertInfo('For account '+addr+', there is no private key available. You can still transact if you are connected to Ethereum and the account is unlocked.');
   } else {
     Main.alertInfo('For account '+addr+', the private key is '+pk+'.');
   }
@@ -468,7 +468,7 @@ Main.connectionTest = function() {
   try {
     if (web3.currentProvider) {
       web3.eth.coinbase;
-      connection = {connection: 'Geth', provider: config.ethProvider, testnet: config.ethTestnet};
+      connection = {connection: 'RPC', provider: config.ethProvider, testnet: config.ethTestnet};
     }
   } catch(err) {
     web3.setProvider(undefined);
@@ -478,7 +478,7 @@ Main.connectionTest = function() {
   return connection;
 }
 Main.loadAccounts = function(callback) {
-  if (Main.connectionTest().connection=='Geth') {
+  if (Main.connectionTest().connection=='RPC') {
     $('#pk_div').hide();
   }
   if (addrs.length<=0 || addrs.length!=pks.length) {
