@@ -33,7 +33,7 @@ body {
   width: 100%;
   display:table-row;
   font-size: 18px;
-  height: 80px;
+  height: 120px;
   padding: 0;
   margin-bottom: 8px;
 }
@@ -77,7 +77,7 @@ body {
 }
 
 /* Absolute Center Spinner */
-#market-spinner {
+#loading {
   position: fixed;
   z-index: 999;
   height: 2em;
@@ -91,7 +91,7 @@ body {
 }
 
 /* Transparent Overlay */
-#market-spinner:before {
+#loading:before {
   content: '';
   display: block;
   position: fixed;

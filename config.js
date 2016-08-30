@@ -4,8 +4,8 @@ var configs = {};
 configs["1"] = {
   homeURL: 'https://etheropt.github.io',
   // homeURL: 'http://0.0.0.0:8080',
-  contractMarket: 'etheropt.sol',
-  contractContracts: 'etheropt_contracts.sol',
+  contractMarket: 'smart_contract/etheropt.sol',
+  contractContracts: 'smart_contract/etheropt_contracts.sol',
   contractAddrs: [],
   contractContractsAddr: '0x9eea10abd08519d7a2cc3734ff8bb38e1de35446',
   domain: undefined,
@@ -21,15 +21,17 @@ configs["1"] = {
   gitterToken: 'fab13af0884785b1876c813dddc1727c573326f5',
   gitterRoomID: '5776ec9ac2f0db084a2105c2',
   userCookie: 'Etheropt',
-  eventsCacheCookie: 'Etheropt_eventsCache'
+  eventsCacheCookie: 'Etheropt_eventsCache',
+  gitterCacheCookie: 'Etheropt_gitterCache',
+  deadOrdersCookie: 'Etheropt_deadOrders',
 };
 
 //testnet
 configs["2"] = {
   homeURL: 'https://etheropt.github.io',
   // homeURL: 'http://0.0.0.0:8080',
-  contractMarket: 'etheropt.sol',
-  contractContracts: 'etheropt_contracts.sol',
+  contractMarket: 'smart_contract/etheropt.sol',
+  contractContracts: 'smart_contract/etheropt_contracts.sol',
   contractAddrs: [],
   contractContractsAddr: '0x94968f0f86e5000d3d4e093a680dc01a10b3d1ea',
   domain: undefined,
@@ -45,7 +47,9 @@ configs["2"] = {
   gitterToken: 'fab13af0884785b1876c813dddc1727c573326f5',
   gitterRoomID: '5776ec9ac2f0db084a2105c2',
   userCookie: 'Etheropt_testnet',
-  eventsCacheCookie: 'Etheropt_eventsCache_testnet'
+  eventsCacheCookie: 'Etheropt_eventsCache_testnet',
+  gitterCacheCookie: 'Etheropt_gitterCache_testnet',
+  deadOrdersCookie: 'Etheropt_deadOrders_testnet',
 };
 
 function getParameterByName(name, url) {

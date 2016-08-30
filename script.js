@@ -69,7 +69,7 @@ $(function () {
     $('body').on('click', '#new_expiration_submit', function (e) {
         e.preventDefault();
         $('#new_expiration_modal').modal('hide');
-        bundle.Main.newExpiration($('#new_expiration_date').val(),$('#new_expiration_call_strikes').val(),$('#new_expiration_put_strikes').val(),$('#new_expiration_margin').val());
+        bundle.Main.newExpiration($('#new_expiration_fromcur').val(), $('#new_expiration_tocur').val(), $('#new_expiration_date').val(),$('#new_expiration_call_strikes').val(),$('#new_expiration_put_strikes').val(),$('#new_expiration_margin').val());
     });
 });
 $(function () {

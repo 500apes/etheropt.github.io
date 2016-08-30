@@ -9,15 +9,30 @@ var async = (typeof(window) === 'undefined') ? require('async') : require('async
 function Main() {
 }
 Main.alertInfo = function(message) {
-  $('#notifications-container').css('display', 'block');
-  $('#notifications').prepend($('<p>' + message + '</p>').hide().fadeIn(2000));
   console.log(message);
+  alertify.message(message);
+}
+Main.alertDialog = function(message) {
+  console.log(message);
+  alertify.alert('Alert', message, function(){});
+}
+Main.alertWarning = function(message) {
+  console.log(message);
+  alertify.warning(message);
+}
+Main.alertError = function(message) {
+  console.log(message);
+  alertify.error(message);
+}
+Main.alertSuccess = function(message) {
+  console.log(message);
+  alertify.success(message);
 }
 Main.alertTxResult = function(err, result) {
   if (result.txHash) {
-    Main.alertInfo('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+result.txHash+'" target="_blank">'+result.txHash+'</a>.');
+    Main.alertDialog('You just created an Ethereum transaction. Track its progress here: <a href="http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+result.txHash+'" target="_blank">'+result.txHash+'</a>.');
   } else {
-    Main.alertInfo('You tried to send an Ethereum transaction but there was an error: '+err);
+    Main.alertError('You tried to send an Ethereum transaction but there was an error: '+err);
   }
 }
 Main.tooltip = function(message) {
@@ -81,7 +96,7 @@ Main.createAccount = function() {
   var addr = newAccount.address;
   var pk = newAccount.privateKey;
   Main.addAccount(addr, pk);
-  Main.alertInfo('You just created an Ethereum account: '+addr+'.');
+  Main.alertDialog('You just created an Ethereum account: '+addr+'.');
 }
 Main.deleteAccount = function() {
   addrs.splice(selectedAccount, 1);
@@ -104,9 +119,9 @@ Main.addAccount = function(addr, pk) {
   if (pk.slice(0,2)=='0x') pk = pk.slice(2);
   addr = utility.toChecksumAddress(addr);
   if (pk!=undefined && pk!='' && !utility.verifyPrivateKey(addr, pk)) {
-    Main.alertInfo('For account '+addr+', the private key is invalid.');
+    Main.alertDialog('For account '+addr+', the private key is invalid.');
   } else if (!web3.isAddress(addr)) {
-    Main.alertInfo('The specified account, '+addr+', is invalid.');
+    Main.alertDialog('The specified account, '+addr+', is invalid.');
   } else {
     addrs.push(addr);
     pks.push(pk);
@@ -121,9 +136,9 @@ Main.showPrivateKey = function() {
   var addr = addrs[selectedAccount];
   var pk = pks[selectedAccount];
   if (pk==undefined || pk=='') {
-    Main.alertInfo('For account '+addr+', there is no private key available. You can still transact if you are connected to Ethereum and the account is unlocked.');
+    Main.alertDialog('For account '+addr+', there is no private key available. You can still transact if you are connected to Ethereum and the account is unlocked.');
   } else {
-    Main.alertInfo('For account '+addr+', the private key is '+pk+'.');
+    Main.alertDialog('For account '+addr+', the private key is '+pk+'.');
   }
 }
 Main.shapeshift_click = function(a,e) {
@@ -186,22 +201,22 @@ Main.processOrders = function(callback) {
                       condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
                       hash = '0x'+sha256(new Buffer(condensed,'hex'));
                       var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
-                      utility.call(web3, myContract, browserOrder.option.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
+                      utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
                         var balance = result.toNumber();
-                        utility.call(web3, myContract, browserOrder.option.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
+                        utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
                           balance = balance + result.toNumber();
                           if (!verified) {
-                            Main.alertInfo('You tried sending an order to the order book, but signature verification failed.');
+                            Main.alertError('You tried sending an order to the order book, but signature verification failed.');
                             callbackBrowserOrder();
                           } else if (balance<=0) {
-                            Main.alertInfo('You tried sending an order to the order book, but you do not have enough funds to place your order. You need to add '+(utility.weiToEth(-balance))+' eth to your account to cover this trade. ');
+                            Main.alertError('You tried sending an order to the order book, but you do not have enough funds to place your order. You need to add '+(utility.weiToEth(-balance))+' eth to your account to cover this trade. ');
                             callbackBrowserOrder();
                           } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
                             utility.postGitterMessage(JSON.stringify(order), function(err, result){
                               if (!err) {
                                 Main.alertInfo('You sent an order to the order book!');
                               } else {
-                                Main.alertInfo('You tried sending an order to the order book but there was an error.');
+                                Main.alertError('You tried sending an order to the order book but there was an error.');
                               }
                               callbackBrowserOrder();
                             });
@@ -211,7 +226,7 @@ Main.processOrders = function(callback) {
                         });
                       });
                     } else {
-                      Main.alertInfo('You tried sending an order to the order book, but it could not be signed.');
+                      Main.alertError('You tried sending an order to the order book, but it could not be signed.');
                       console.log(err);
                       callbackBrowserOrder();
                     }
@@ -239,9 +254,9 @@ Main.processOrders = function(callback) {
                     if (matchSize!=0) {
                       cumulativeMatchSize += matchSize; //let's assume the order will go through
                       var deposit = utility.ethToWei(0);
-                      utility.call(web3, myContract, browserOrder.option.contractAddr, 'orderMatchTest', [matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, addrs[selectedAccount], deposit, matchSize], function(err, result) {
+                      utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'orderMatchTest', [matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, addrs[selectedAccount], deposit, matchSize], function(err, result) {
                         if (result && blockNumber<matchOrder.order.blockExpires-1) {
-                          utility.send(web3, myContract, browserOrder.option.contractAddr, 'orderMatch', [matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, matchOrder.order.v, matchOrder.order.r, matchOrder.order.s, matchSize, {gas: browserOrder.gas, value: deposit}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+                          utility.send(web3, contractMarket, browserOrder.option.contractAddr, 'orderMatch', [matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, matchOrder.order.v, matchOrder.order.r, matchOrder.order.s, matchSize, {gas: browserOrder.gas, value: deposit}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
                             txHash = result.txHash;
                             nonce = result.nonce;
                             Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
@@ -249,7 +264,7 @@ Main.processOrders = function(callback) {
                             callbackMatchOrder();
                           });
                         } else {
-                          Main.alertInfo('You tried to match against a resting order but the order match failed. This can be because the order expired or traded already, or either you or the counterparty do not have enough funds to cover the trade.');
+                          Main.alertError('You tried to match against a resting order but the order match failed. This can be because the order expired or traded already, or either you or the counterparty do not have enough funds to cover the trade.');
                           callbackMatchOrder();
                         }
                       });
@@ -274,7 +289,7 @@ Main.processOrders = function(callback) {
       },
       function(err) {
         //update display
-        new EJS({url: config.homeURL+'/'+'orders_table.ejs'}).update('orders', {orders: browserOrders, utility: utility, blockNumber: blockNumber});
+        new EJS({url: config.homeURL+'/templates/'+'orders_table.ejs'}).update('orders', {orders: browserOrders, utility: utility, blockNumber: blockNumber});
         callback();
       }
     );
@@ -321,7 +336,7 @@ Main.marketMakeStop = function(contractAddr) {
 }
 Main.fund = function(amount, contractAddr) {
   amount = utility.ethToWei(amount);
-  utility.send(web3, myContract, contractAddr, 'addFunds', [{gas: 200000, value: amount}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+  utility.send(web3, contractMarket, contractAddr, 'addFunds', [{gas: 200000, value: amount}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
     txHash = result.txHash;
     nonce = result.nonce;
     Main.alertTxResult(err, result);
@@ -329,13 +344,13 @@ Main.fund = function(amount, contractAddr) {
 }
 Main.withdraw = function(amount, contractAddr) {
   amount = utility.ethToWei(amount);
-  utility.call(web3, myContract, contractAddr, 'getFundsAndAvailable', [addrs[selectedAccount]], function(err, result) {
+  utility.call(web3, contractMarket, contractAddr, 'getFundsAndAvailable', [addrs[selectedAccount]], function(err, result) {
     if (!err) {
       var fundsAvailable = result[1].toNumber();
       if (amount>fundsAvailable) amount = fundsAvailable;
     }
     if (amount>0) {
-      utility.send(web3, myContract, contractAddr, 'withdrawFunds', [amount, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+      utility.send(web3, contractMarket, contractAddr, 'withdrawFunds', [amount, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
         txHash = result.txHash;
         nonce = result.nonce;
         Main.alertTxResult(err, result);
@@ -384,7 +399,7 @@ Main.expire = function(contractAddr) {
       var settlement = result.winner_value;
       if (sigR && sigS && sigV && value) {
         Main.alertInfo("Expiring "+firstOption.expiration+" using settlement price: "+settlement);
-        utility.send(web3, myContract, contractAddr, 'expire', [0, sigV, sigR, sigS, value, {gas: 1000000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+        utility.send(web3, contractMarket, contractAddr, 'expire', [0, sigV, sigR, sigS, value, {gas: 1000000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
           txHash = result.txHash;
           nonce = result.nonce;
           Main.alertTxResult(err, result);
@@ -394,22 +409,20 @@ Main.expire = function(contractAddr) {
   });
 }
 Main.publishExpiration = function(address) {
-  utility.send(web3, contractsContract, config.contractContractsAddr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, esult) {
+  utility.send(web3, contractContracts, config.contractContractsAddr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, esult) {
     txHash = result.txHash;
     nonce = result.nonce;
     Main.alertTxResult(err, result);
   });
 }
 Main.disableExpiration = function(address) {
-  utility.send(web3, contractsContract, config.contractContractsAddr, 'disableContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+  utility.send(web3, contractContracts, config.contractContractsAddr, 'disableContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
     txHash = result.txHash;
     nonce = result.nonce;
     Main.alertTxResult(err, result);
   });
 }
-Main.newExpiration = function(date, calls, puts, margin) {
-  var fromcur = "ETH";
-  var tocur = "USD";
+Main.newExpiration = function(fromcur, tocur, date, calls, puts, margin) {
   margin = Number(margin);
   var expiration = date;
   var expirationTimestamp = Date.parse(expiration+" 00:00:00 +0000").getTime()/1000;
@@ -424,10 +437,10 @@ Main.newExpiration = function(date, calls, puts, margin) {
       var originalStrikes = strikes;
       var scaledStrikes = strikes.map(function(strike) { return strike*1000000000000000000 });
       var scaledMargin = margin*1000000000000000000;
-      Main.alertInfo("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
+      Main.alertDialog("You are creating a new contract. This will involve two transactions. After the first one is confirmed, the second one will be sent. Please be patient.");
       utility.readFile(config.contractMarket+'.bytecode', function(err, bytecode){
         bytecode = JSON.parse(bytecode);
-        utility.send(web3, myContract, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+        utility.send(web3, contractMarket, undefined, 'constructor', [expirationTimestamp, fromcur+"/"+tocur, scaledMargin, realityID, factHash, ethAddr, scaledStrikes, {from: addrs[selectedAccount], data: bytecode, gas: 4712388, gasPrice: config.ethGasPrice}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
           if(result) {
             txHash = result.txHash;
             nonce = result.nonce;
@@ -447,9 +460,9 @@ Main.newExpiration = function(date, calls, puts, margin) {
                     }, 10*1000);
                 },
                 function (err) {
-                  Main.alertInfo("Here is the new contract address: "+address+". We will now send a transaction to the contract that keeps track of expirations so that the new expiration will show up on Etheropt.");
+                  Main.alertDialog("Here is the new contract address: "+address+". We will now send a transaction to the contract that keeps track of expirations so that the new expiration will show up on Etheropt.");
                   //notify contracts contract of new contract
-                  utility.send(web3, contractsContract, config.contractContractsAddr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+                  utility.send(web3, contractContracts, config.contractContractsAddr, 'newContract', [address, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
                     txHash = result.txHash;
                     nonce = result.nonce;
                     Main.alertTxResult(err, result);
@@ -473,11 +486,11 @@ Main.connectionTest = function() {
   } catch(err) {
     web3.setProvider(undefined);
   }
-  new EJS({url: config.homeURL+'/'+'connection_description.ejs'}).update('connection', {connection: connection});
+  new EJS({url: config.homeURL+'/templates/'+'connection_description.ejs'}).update('connection', {connection: connection});
   Main.popovers();
   return connection;
 }
-Main.loadAccounts = function(callback) {
+Main.displayAccounts = function(callback) {
   if (Main.connectionTest().connection=='RPC') {
     $('#pk_div').hide();
   }
@@ -493,46 +506,10 @@ Main.loadAccounts = function(callback) {
       });
     },
     function(err, addresses) {
-      new EJS({url: config.homeURL+'/'+'addresses.ejs'}).update('addresses', {addresses: addresses, selectedAccount: selectedAccount});
+      new EJS({url: config.homeURL+'/templates/'+'addresses.ejs'}).update('addresses', {addresses: addresses, selectedAccount: selectedAccount});
       callback();
     }
   );
-}
-Main.displayMarket = function(callback) {
-  if (contractsCache && optionsCache) {
-    contractsCache.sort(function(a,b){return new Date(optionsCache.filter(function(x){return x.contractAddr==a.contractAddr}).length==0 ? "2020-01-01" : optionsCache.filter(function(x){return x.contractAddr==a.contractAddr})[0].expiration) - new Date(optionsCache.filter(function(x){return x.contractAddr==b.contractAddr}).length==0 ? "2020-01-01" : optionsCache.filter(function(x){return x.contractAddr==b.contractAddr})[0].expiration)});
-    contractsCache.forEach(function(contract){
-      var optionsFiltered = optionsCache.filter(function(x){return x.contractAddr==contract.contractAddr});
-      var item = {
-        type: 'component',
-        componentName: 'layout',
-        isClosable: false,
-        title: optionsFiltered.length>0 ? optionsFiltered[0].expiration : contract.contractAddr.slice(0,12)+'...',
-        componentState: { id: 'contract', type: 'ejs', data: {contract: contract} }
-      };
-      myLayout.root.contentItems[0].contentItems[0].contentItems[0].addChild( item );
-      new EJS({url: config.homeURL+'/'+'contract_nav.ejs'}).update(contract.contractAddr+'_nav', {contract: contract, options: optionsCache});
-      new EJS({url: config.homeURL+'/'+'contract_prices.ejs'}).update(contract.contractAddr+'_prices', {contract: contract, options: optionsCache, addr: addrs[selectedAccount]});
-      myLayout.root.contentItems[0].contentItems[0].contentItems[0].setActiveContentItem(myLayout.root.contentItems[0].contentItems[0].contentItems[0].contentItems[1]);
-    });
-    $('#market-spinner').hide();
-    Main.tooltips();
-    if (callback) callback();
-  } else {
-    $('#market-spinner').show();
-    Main.loadAccounts(function(){});
-    Main.loadContractsFunds(function(){
-      Main.loadOptions(function(){
-        Main.loadPrices(function(){
-          Main.loadLog(function(){
-            Main.displayMarket(function(){
-              if (callback) callback();
-            });
-          });
-        });
-      });
-    });
-  }
 }
 Main.loadPrices = function(callback) {
   utility.blockNumber(web3, function(err, blockNumber) {
@@ -565,9 +542,9 @@ Main.loadPrices = function(callback) {
               } catch(err) {
                 console.log(err);
               }
-              utility.call(web3, myContract, order.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
+              utility.call(web3, contractMarket, order.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
                 var balance = result.toNumber();
-                utility.call(web3, myContract, order.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
+                utility.call(web3, contractMarket, order.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
                   balance = balance + result.toNumber();
                   if (verified && hash==order.hash && balance>=0) {
                     callbackFilter(true);
@@ -583,6 +560,7 @@ Main.loadPrices = function(callback) {
             }
           },
           function(ordersValid) {
+            Main.createCookie(config.deadOrdersCookie, JSON.stringify(deadOrders), 999);
             for (var i=0; i<ordersValid.length; i++) {
               var order = ordersValid[i];
               if (order.order.size>0) newBuyOrders.push(order);
@@ -597,21 +575,6 @@ Main.loadPrices = function(callback) {
         );
       },
       function(err, options){
-        //update last updated timer
-        config.contractAddrs.forEach(function(contractAddr){
-          var optionsFiltered = optionsCache ? optionsCache.filter(function(x){return x.contractAddr==contractAddr}) : [];
-          if (optionsFiltered.length>0) {
-            if (optionsFiltered[0].timer) clearInterval(optionsFiltered[0].timer);
-            optionsFiltered[0].lastUpdated = Date.now();
-            optionsFiltered[0].timer = setInterval(function () {
-              function pad(val) {return val > 9 ? val : "0" + val;}
-              var sec = Math.ceil((Date.now() - optionsFiltered[0].lastUpdated) / 1000);
-              if ($('#'+contractAddr+"_updated").length) {
-                $('#'+contractAddr+"_updated")[0].innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
-              }
-            }, 1000);
-          }
-        });
         //update cache
         optionsCache = options;
         callback();
@@ -622,7 +585,7 @@ Main.loadPrices = function(callback) {
 Main.loadPositions = function(callback) {
   async.map(config.contractAddrs,
     function(contractAddr, callback) {
-      utility.call(web3, myContract, contractAddr, 'getMarket', [addrs[selectedAccount]], function(err, result) {
+      utility.call(web3, contractMarket, contractAddr, 'getMarket', [addrs[selectedAccount]], function(err, result) {
         if (result) {
           var optionIDs = result[0];
           var strikes = result[1];
@@ -669,9 +632,7 @@ Main.loadPositions = function(callback) {
     }
   );
 }
-Main.loadLog = function(callback) {
-  var cookie = Main.readCookie(config.eventsCacheCookie);
-  if (cookie) eventsCache = JSON.parse(cookie);
+Main.loadEvents = function(callback) {
   utility.blockNumber(web3, function(err, blockNumber) {
     var startBlock = 0;
     // startBlock = blockNumber-15000;
@@ -686,18 +647,24 @@ Main.loadLog = function(callback) {
         }
       }
     }
-    async.eachSeries(config.contractAddrs,
-      function(contractAddr, callbackEach){
-        utility.logs(web3, myContract, contractAddr, startBlock, 'latest', function(err, event) {
-          event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
-          eventsCache[event.transactionHash+event.logIndex] = event;
-          Main.createCookie(config.eventsCacheCookie, JSON.stringify(eventsCache), 999);
-          //we'll refresh enough that we don't need to update any gui here
+    async.map(config.contractAddrs,
+      function(contractAddr, callbackMap){
+        utility.logsOnce(web3, contractMarket, contractAddr, startBlock, 'latest', function(err, events) {
+          var newEvents = 0;
+          events.forEach(function(event){
+            if (!eventsCache[event.transactionHash+event.logIndex]) {
+              newEvents++;
+              event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
+              eventsCache[event.transactionHash+event.logIndex] = event;
+            }
+          });
+          callbackMap(null, newEvents);
         });
-        callbackEach();
       },
-      function (err) {
-        callback();
+      function (err, newEventsArray) {
+        var newEvents = newEventsArray.reduce(function(a,b){return a+b}, 0);
+        Main.createCookie(config.eventsCacheCookie, JSON.stringify(eventsCache), 999);
+        callback(newEvents);
       }
     );
   });
@@ -705,7 +672,7 @@ Main.loadLog = function(callback) {
 Main.loadContractsFunds = function(callback) {
   async.map(config.contractAddrs,
     function(contractAddr, callback) {
-      utility.call(web3, myContract, contractAddr, 'getFundsAndAvailable', [addrs[selectedAccount]], function(err, result) {
+      utility.call(web3, contractMarket, contractAddr, 'getFundsAndAvailable', [addrs[selectedAccount]], function(err, result) {
         if (result) {
           var funds = result[0].toString();
           var fundsAvailable = result[1].toString();
@@ -726,14 +693,14 @@ Main.loadOptions = function(callback) {
   //Note: loadOptions loads everything it can about options and should be called less frequently. loadPositions loads just positions.
   async.mapSeries(config.contractAddrs,
     function(contractAddr, callback) {
-      utility.call(web3, myContract, contractAddr, 'getOptionChain', [], function(err, result) {
+      utility.call(web3, contractMarket, contractAddr, 'getOptionChain', [], function(err, result) {
         if (result) {
           var expiration = (new Date(result[0].toNumber()*1000)).toISOString().substring(0,10);
           var fromcur = result[1].split("/")[0];
           var tocur = result[1].split("/")[1];
           var margin = result[2].toNumber() / 1000000000000000000.0;
           var realityID = result[3].toNumber();
-          utility.call(web3, myContract, contractAddr, 'getMarket', [addrs[selectedAccount]], function(err, result) {
+          utility.call(web3, contractMarket, contractAddr, 'getMarket', [addrs[selectedAccount]], function(err, result) {
             if (result) {
               var optionIDs = result[0];
               var strikes = result[1];
@@ -766,6 +733,8 @@ Main.loadOptions = function(callback) {
                   option.tocur = optionChainDescription.tocur;
                   option.margin = optionChainDescription.margin;
                   option.realityID = realityID;
+                  option.buyOrders = [];
+                  option.sellOrders = [];
                   callbackMap(null, option);
                 },
                 function(err, options) {
@@ -850,12 +819,12 @@ Main.getPrice = function() {
   return price;
 }
 Main.getGitterMessages = function(callback) {
+  console.log('Getting Gitter');
   utility.getGitterMessages(gitterMessagesCache, function(err, result){
     if (!err) {
       gitterMessagesCache = result.gitterMessages;
-      if (result.newMessagesFound>0) {
-        Main.displayEvents(function(){});
-      }
+      Main.createCookie(config.gitterCacheCookie, JSON.stringify(gitterMessagesCache), 999);
+      console.log('Done getting Gitter');
     }
     callback();
   });
@@ -863,65 +832,106 @@ Main.getGitterMessages = function(callback) {
 Main.displayEvents = function(callback) {
   var events = Object.values(eventsCache);
   events.sort(function(a,b){ return b.blockNumber-a.blockNumber || b.transactionIndex-a.transactionIndex });
-  new EJS({url: config.homeURL+'/'+'events_table.ejs'}).update('events', {events: events, options: optionsCache});
+  new EJS({url: config.homeURL+'/templates/'+'events_table.ejs'}).update('events', {events: events, options: optionsCache});
   callback();
 }
-Main.displayPrices = function(callback) {
-  contractsCache.forEach(function(contract){
-    new EJS({url: config.homeURL+'/'+'contract_nav.ejs'}).update(contract.contractAddr+'_nav', {contract: contract, options: optionsCache});
-    new EJS({url: config.homeURL+'/'+'contract_prices.ejs'}).update(contract.contractAddr+'_prices', {contract: contract, options: optionsCache, addr: addrs[selectedAccount]});
+Main.displayContent = function(callback) {
+  new EJS({url: config.homeURL+'/templates/'+'family.ejs'}).update('family', {});
+  callback();
+}
+Main.displayPricesUpdatedTimer = function(callback) {
+  if (pricesUpdatedTimer) clearInterval(pricesUpdatedTimer);
+  pricesUpdated = Date.now();
+  pricesUpdatedTimer = setInterval(function () {
+    function pad(val) {return val > 9 ? val : "0" + val;}
+    var sec = Math.ceil((Date.now() - pricesUpdated) / 1000);
+    if ($('#updated').length) {
+      $('#updated')[0].innerHTML = (pad(parseInt(sec / 60, 10)))+":"+(pad(++sec % 60));
+    }
+  }, 1000);
+  callback();
+}
+Main.selectContract = function(contractAddr) {
+  selectedContract = contractAddr;
+  Main.refresh(function(){}, true);
+}
+Main.displayMarket = function(callback) {
+  var optionExpirations = contractsCache.map(function(contract){
+    var options = optionsCache.filter(function(x){return x.contractAddr==contract.contractAddr});
+    if (options.length>0) {
+      return {
+        expiration: options[0].expiration,
+        contractAddr: contract.contractAddr,
+        fromcur: options[0].fromcur,
+        tocur: options[0].tocur,
+      };
+    } else {
+      return {
+        expiration: "Expired",
+        contractAddr: contract.contractAddr,
+        fromcur: '',
+        tocur: '',
+      };
+    }
   });
+  optionExpirations.sort(function(a,b){return a.expiration > b.expiration ? 1 : -1});
+  if (!selectedContract) selectedContract = optionExpirations[0].contractAddr;
+  var matchingContracts = contractsCache.filter(function(x){return x.contractAddr==selectedContract});
+  if (matchingContracts.length>=1) {
+    var contract = matchingContracts[0];
+    new EJS({url: config.homeURL+'/templates/'+'market_nav.ejs'}).update('market_nav', {contract: contract, options: optionsCache, optionExpirations: optionExpirations});
+    new EJS({url: config.homeURL+'/templates/'+'market_prices.ejs'}).update('market_prices', {contract: contract, options: optionsCache, addr: addrs[selectedAccount]});
+  }
   callback();
 }
-Main.refresh = function(callback) {
-  if (refreshing<=0 || Date.now()-lastRefresh>60*1000) {
-    refreshing = 4;
+Main.resetCaches = function() {
+  Main.eraseCookie(config.eventsCacheCookie);
+  Main.eraseCookie(config.gitterCacheCookie);
+  Main.eraseCookie(config.deadOrdersCookie);
+  location.reload();
+}
+Main.refresh = function(callback, force) {
+  if (!lastRefresh || Date.now()-lastRefresh>15*1000 || force) {
+    console.log('Refreshing');
+    if (!lastRefresh) force = true;
+    lastRefresh = Date.now();
     Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
-    Main.loadAccounts(function() {
-      refreshing--;
+    Main.updatePrice(function(){});
+    Main.processOrders(function(){});
+    Main.loadEvents(function(newEvents){
+      if (newEvents>0 || force) {
+        Main.loadContractsFunds(function(){});
+        Main.loadPositions(function(){});
+        Main.loadPrices(function(){});
+        Main.displayAccounts(function(){});
+        Main.displayEvents(function(){});
+        Main.displayMarket(function(){});
+      }
     });
-    Main.displayEvents(function() {
-      refreshing--;
-    });
-    Main.updatePrice(function(){
-      Main.processOrders(function(){
-        refreshing--;
+    Main.getGitterMessages(function(){
+      Main.displayMarket(function(){
+        $('#loading').hide();
       });
+      Main.displayPricesUpdatedTimer(function(){});
     });
-    Main.getGitterMessages(function() {
-      Main.loadContractsFunds(function(){
-        Main.loadPositions(function(){
-          Main.loadPrices(function() {
-            Main.displayPrices(function() {
-              refreshing--;
-              lastRefresh = Date.now();
-              callback();
-            });
-          });
-        });
-      });
-    });
-  } else {
-    callback();
   }
+  callback();
 }
-Main.init = function() {
+Main.init = function(callback) {
   Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
   Main.connectionTest();
-  Main.displayMarket(function(){
-    function mainLoop() {
-      Main.refresh(function(){
-        setTimeout(mainLoop, 15*1000);
-      });
-    }
-    mainLoop();
+  Main.displayContent(function(){});
+  Main.loadContractsFunds(function(){
+    Main.loadOptions(function(){
+      callback();
+    });
   });
 }
 
 //globals
-var contractsContract = undefined;
-var myContract = undefined;
+var contractContracts = undefined;
+var contractMarket = undefined;
 var addrs;
 var pks;
 var selectedAccount = 0;
@@ -934,10 +944,13 @@ var browserOrders = [];
 var marketMakers = {};
 var deadOrders = {};
 var refreshing = 0;
-var lastRefresh = Date.now();
+var lastRefresh = undefined;
 var price = undefined;
 var priceUpdated = Date.now();
 var gitterMessagesCache = {};
+var selectedContract = undefined;
+var pricesUpdated = Date.now();
+var pricesUpdatedTimer = undefined;
 //web3
 if(typeof web3 !== 'undefined' && typeof Web3 !== 'undefined') {
     web3 = new Web3(web3.currentProvider);
@@ -958,9 +971,20 @@ web3.version.getNetwork(function(error, version){
     cookie = JSON.parse(cookie);
     addrs = cookie["addrs"];
     pks = cookie["pks"];
-    if (cookie["selectedAccount"]) {
-      selectedAccount = cookie["selectedAccount"];
-    }
+    if (cookie["selectedAccount"]) selectedAccount = cookie["selectedAccount"];
+  }
+  //gitter messages cache cookie
+  var gitterCookie = Main.readCookie(config.gitterCacheCookie);
+  if (gitterCookie) {
+    gitterMessagesCache = JSON.parse(gitterCookie);
+  }
+  //events cache cookie
+  var eventsCacheCookie = Main.readCookie(config.eventsCacheCookie);
+  if (eventsCacheCookie) eventsCache = JSON.parse(eventsCacheCookie);
+  //dead orders cookie
+  var deadOrdersCookie = Main.readCookie(config.deadOrdersCookie);
+  if (deadOrdersCookie) {
+    deadOrders = JSON.parse(deadOrdersCookie);
   }
   //get accounts
   web3.eth.defaultAccount = config.ethAddr;
@@ -976,13 +1000,20 @@ web3.version.getNetwork(function(error, version){
   });
   //load contract
   utility.loadContract(web3, config.contractContracts, config.contractContractsAddr, function(err, contract){
-    contractsContract = contract;
-    utility.call(web3, contractsContract, config.contractContractsAddr, 'getContracts', [], function(err, result) {
+    contractContracts = contract;
+    utility.call(web3, contractContracts, config.contractContractsAddr, 'getContracts', [], function(err, result) {
       if (result) {
         config.contractAddrs = result.filter(function(x){return x!='0x0000000000000000000000000000000000000000'}).getUnique();
         utility.loadContract(web3, config.contractMarket, undefined, function(err, contract){
-          myContract = contract;
-          Main.init();
+          contractMarket = contract;
+          Main.init(function(){
+            function mainLoop() {
+              Main.refresh(function(){
+                setTimeout(mainLoop, 15*1000);
+              });
+            }
+            mainLoop();
+          });
         });
       }
     });

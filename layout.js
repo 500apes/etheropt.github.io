@@ -28,6 +28,13 @@ $(function(){
                     type: 'component',
                     componentName: 'layout',
                     isClosable: false,
+                    title:'Market',
+                    componentState: { id: 'market_container', type: 'ejs' }
+                  },
+                  {
+                    type: 'component',
+                    componentName: 'layout',
+                    isClosable: false,
                     title:'Guides',
                     componentState: { id: 'guides', type: 'ejs' }
                   }
@@ -107,7 +114,7 @@ $(function(){
   myLayout = new GoldenLayout( config, $('#layout-container') );
   myLayout.registerComponent( 'layout', function( container, state ){
     if (state.type=='ejs') {
-      var html = new EJS({url: state.id+'.ejs'}).render(state.data);
+      var html = new EJS({url: 'templates/'+state.id+'.ejs'}).render(state.data);
       container.getElement().html( html );
     }
   });

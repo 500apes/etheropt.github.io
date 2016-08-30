@@ -4,7 +4,7 @@
   <div id="<%= contract.contractAddr %>_prices">
     <table class="table table-hover">
       <tr>
-        <td colspan="2">Prices last updated: <span id="<%= contract.contractAddr %>_updated">00:00</span></td>
+        <td colspan="2">Prices last updated: <span id="updated">00:00</span></td>
         <td colspan="3">In-the-money limit: <%= filteredOptions[0].margin %></td>
         <td colspan="2">Cash <%= bundle.utility.weiToEth(filteredOptions[0].cash) %> eth</td>
       </tr>

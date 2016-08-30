@@ -74,6 +74,7 @@ describe("Test", function(done) {
   var expiration = 1457676000;
   var symbol = "ETH/USD";
   var margin = Number(utility.ethToWei(5));
+  var unit = Number(1000000000000000000);
   var realityID = 7573;
   var factHash = '0x4c28f2fecb85003b84f3e93ae89d97925f217e5151aafe46d01d2a7434b481aa';
   var ethAddr = '0x6fde387af081c37d9ffa762b49d340e6ae213395';
@@ -130,22 +131,6 @@ describe("Test", function(done) {
                 done();
               });
             });
-          });
-        });
-      });
-    });
-    it("Should become a market maker", function(done) {
-      var funds = utility.ethToWei(1000);
-      var server = "http://localhost:8081";
-      utility.testSend(web3, contractMarket, contractMarketAddr, 'marketMaker', [server, {gas: 1000000, value: 0}], accounts[0], undefined, 0, function(err, result) {
-        assert.equal(err, undefined);
-        utility.testCall(web3, contractMarket, contractMarketAddr, 'getMarketMakers', [], function(err, result) {
-          assert.equal(err, undefined);
-          assert.equal(result.equals([server, "", "", "", ""]), false);
-          utility.testCall(web3, contractMarket, contractMarketAddr, 'getMarketMakerFunds', [], function(err, result) {
-            assert.equal(err, undefined);
-            assert.equal(result.equals([funds, 0, 0, 0, 0]), false);
-            done();
           });
         });
       });
@@ -320,15 +305,15 @@ describe("Test", function(done) {
             for (var i=0; i<strikes.length; i++) {
               if (strikes[i].gt(new BigNumber(0)) && settlement.gt(strikes[i])) {
                 if (margin.gt(settlement.sub(strikes[i]))) {
-                  expectedFundChange = expectedFundChange.add(positions[i].mul(settlement.sub(strikes[i])).divToInt(1000000000000000000));
+                  expectedFundChange = expectedFundChange.add(positions[i].mul(settlement.sub(strikes[i])).divToInt(unit));
                 } else {
-                  expectedFundChange = expectedFundChange.add(positions[i].mul(margin).divToInt(1000000000000000000));
+                  expectedFundChange = expectedFundChange.add(positions[i].mul(margin).divToInt(unit));
                 }
               } else if (strikes[i].lt(new BigNumber(0)) && settlement.lt(strikes[i].neg())) {
                 if (margin.gt(strikes[i].neg().sub(settlement))) {
-                  expectedFundChange = expectedFundChange.add(positions[i].mul(strikes[i].neg().sub(settlement)).divToInt(1000000000000000000));
+                  expectedFundChange = expectedFundChange.add(positions[i].mul(strikes[i].neg().sub(settlement)).divToInt(unit));
                 } else {
-                  expectedFundChange = expectedFundChange.add(positions[i].mul(margin).divToInt(1000000000000000000));
+                  expectedFundChange = expectedFundChange.add(positions[i].mul(margin).divToInt(unit));
                 }
               }
             }

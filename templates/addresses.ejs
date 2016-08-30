@@ -13,5 +13,7 @@
     <li><a onclick="bundle.Main.shapeshift_click(this, event);" href="https://shapeshift.io/shifty.html?destination=<%= addresses[selectedAccount].addr%>&amp;output=ETH&amp;amount=">Deposit with ShapeShift.io</a></li>
     <li><a href="#" onclick="bundle.Main.deleteAccount()">Forget current account</a></li>
     <li><a href="#" onclick="bundle.Main.logout()">Forget all accounts</a></li>
+    <li role="separator" class="divider"></li>
+    <li><a href="javascript:;" onclick="bundle.Main.resetCaches();">Reset caches</a></li>
   </ul>
 </div>
