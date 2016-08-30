@@ -89,7 +89,7 @@ Main.logout = function() {
   nonce = undefined;
   marketMakers = {};
   browserOrders = [];
-  Main.refresh(function(){});
+  Main.refresh(function(){}, true);
 }
 Main.createAccount = function() {
   var newAccount = utility.createAccount();
@@ -105,14 +105,14 @@ Main.deleteAccount = function() {
   nonce = undefined;
   marketMakers = {};
   browserOrders = [];
-  Main.refresh(function(){});
+  Main.refresh(function(){}, true);
 }
 Main.selectAccount = function(i) {
   selectedAccount = i;
   nonce = undefined;
   marketMakers = {};
   browserOrders = [];
-  Main.refresh(function(){});
+  Main.refresh(function(){}, true);
 }
 Main.addAccount = function(addr, pk) {
   if (addr.slice(0,2)!='0x') addr = '0x'+addr;
@@ -129,7 +129,7 @@ Main.addAccount = function(addr, pk) {
     nonce = undefined;
     marketMakers = {};
     browserOrders = [];
-    Main.refresh(function(){});
+    Main.refresh(function(){}, true);
   }
 }
 Main.showPrivateKey = function() {
