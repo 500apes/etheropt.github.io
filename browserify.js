@@ -901,11 +901,13 @@ Main.refresh = function(callback, force) {
     Main.processOrders(function(){});
     Main.loadEvents(function(newEvents){
       if (newEvents>0 || force) {
-        Main.loadContractsFunds(function(){});
-        Main.loadPositions(function(){});
+        Main.loadContractsFunds(function(){
+          Main.loadPositions(function(){
+            Main.displayMarket(function(){});
+          });
+        });
         Main.displayAccounts(function(){});
         Main.displayEvents(function(){});
-        Main.displayMarket(function(){});
       }
     });
     Main.getGitterMessages(function(){
