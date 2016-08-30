@@ -903,15 +903,16 @@ Main.refresh = function(callback, force) {
       if (newEvents>0 || force) {
         Main.loadContractsFunds(function(){});
         Main.loadPositions(function(){});
-        Main.loadPrices(function(){});
         Main.displayAccounts(function(){});
         Main.displayEvents(function(){});
         Main.displayMarket(function(){});
       }
     });
     Main.getGitterMessages(function(){
-      Main.displayMarket(function(){
-        $('#loading').hide();
+      Main.loadPrices(function(){
+        Main.displayMarket(function(){
+          $('#loading').hide();
+        });
       });
       Main.displayPricesUpdatedTimer(function(){});
     });
