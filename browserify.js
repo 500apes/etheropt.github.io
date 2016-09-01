@@ -641,15 +641,19 @@ Main.loadEvents = function(callback) {
     async.map(config.contractAddrs,
       function(contractAddr, callbackMap){
         utility.logsOnce(web3, contractMarket, contractAddr, startBlock, 'latest', function(err, events) {
-          var newEvents = 0;
-          events.forEach(function(event){
-            if (!eventsCache[event.transactionHash+event.logIndex]) {
-              newEvents++;
-              event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
-              eventsCache[event.transactionHash+event.logIndex] = event;
-            }
-          });
-          callbackMap(null, newEvents);
+          if (!err) {
+            var newEvents = 0;
+            events.forEach(function(event){
+              if (!eventsCache[event.transactionHash+event.logIndex]) {
+                newEvents++;
+                event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
+                eventsCache[event.transactionHash+event.logIndex] = event;
+              }
+            });
+            callbackMap(null, newEvents);
+          } else {
+            callbackMap(null, 0);
+          }
         });
       },
       function (err, newEventsArray) {
