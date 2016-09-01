@@ -638,34 +638,25 @@ Main.loadEvents = function(callback) {
         }
       }
     }
-    console.log(config.contractAddrs)
     async.map(config.contractAddrs,
       function(contractAddr, callbackMap){
         utility.logsOnce(web3, contractMarket, contractAddr, startBlock, 'latest', function(err, events) {
-          console.log(contractAddr, err, events)
           if (!err) {
             var newEvents = 0;
-            try {
-              events.forEach(function(event){
-                if (!eventsCache[event.transactionHash+event.logIndex]) {
-                  newEvents++;
-                  event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
-                  eventsCache[event.transactionHash+event.logIndex] = event;
-                }
-              });
-            }catch(err) {
-              console.log("err", err)
-            }
-            console.log('calling callbackMap a')
+            events.forEach(function(event){
+              if (event && !eventsCache[event.transactionHash+event.logIndex]) {
+                newEvents++;
+                event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
+                eventsCache[event.transactionHash+event.logIndex] = event;
+              }
+            });
             callbackMap(null, newEvents);
           } else {
-            console.log('calling callbackMap b')
             callbackMap(null, 0);
           }
         });
       },
       function (err, newEventsArray) {
-        console.log(newEventsArray)
         var newEvents = newEventsArray.reduce(function(a,b){return a+b}, 0);
         Main.createCookie(config.eventsCacheCookie, JSON.stringify(eventsCache), 999);
         callback(newEvents);
