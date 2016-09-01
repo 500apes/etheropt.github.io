@@ -473,7 +473,6 @@ Main.connectionTest = function() {
   return connection;
 }
 Main.displayAccounts = function(callback) {
-  console.log('d')
   if (Main.connectionTest().connection=='RPC') {
     $('#pk_div').hide();
   }
@@ -641,9 +640,12 @@ Main.loadEvents = function(callback) {
         }
       }
     }
+    console.log(config.contractAddrs)
     async.map(config.contractAddrs,
       function(contractAddr, callbackMap){
+        console.log(contractAddr);
         utility.logsOnce(web3, contractMarket, contractAddr, startBlock, 'latest', function(err, events) {
+          console.log(err, events);
           var newEvents = 0;
           events.forEach(function(event){
             if (!eventsCache[event.transactionHash+event.logIndex]) {
@@ -898,11 +900,8 @@ Main.refresh = function(callback, force) {
     Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
     Main.updatePrice(function(){});
-    console.log('a')
     Main.loadEvents(function(newEvents){
-      console.log('b')
       if (newEvents>0 || force) {
-        console.log('c')
         Main.loadContractsFunds(function(){
           Main.loadPositions(function(){
             Main.displayMarket(function(){});
