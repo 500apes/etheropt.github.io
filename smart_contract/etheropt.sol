@@ -67,6 +67,7 @@ contract SafeMath {
 
 contract Etheropt is SafeMath {
 
+  uint public version = 2;
   struct Position {
     mapping(uint => int) positions;
     int cash;
@@ -100,8 +101,8 @@ contract Etheropt is SafeMath {
   event Withdraw(address indexed user, uint amount, int balance); //balance is balance after withdraw
   event Expire(address indexed caller, address indexed user); //user is the account that was expired
   event OrderMatch(address indexed matchUser, int matchSize, address indexed orderUser, int orderSize, uint optionID, uint price);
-  event Order(uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, uint8 v, bytes32 r, bytes32 s);
-  event Cancel(uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, uint8 v, bytes32 r, bytes32 s);
+  event Order(address contractAddr, uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, uint8 v, bytes32 r, bytes32 s);
+  event Cancel(address contractAddr, uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, uint8 v, bytes32 r, bytes32 s);
 
   function Etheropt(uint expiration_, string underlying_, uint margin_, uint realityID_, bytes32 factHash_, address ethAddr_, int[] strikes_) {
     expiration = expiration_;
@@ -156,17 +157,18 @@ contract Etheropt is SafeMath {
     }
   }
 
-  function order(uint optionID, uint price, int size, uint orderID, uint blockExpires, uint8 v, bytes32 r, bytes32 s) {
+  function order(address contractAddr, uint optionID, uint price, int size, uint orderID, uint blockExpires, uint8 v, bytes32 r, bytes32 s) {
     if (msg.value>0) throw;
-    Order(optionID, price, size, orderID, blockExpires, msg.sender, v, r, s);
+    Order(contractAddr, optionID, price, size, orderID, blockExpires, msg.sender, v, r, s);
   }
 
-  function cancelOrder(uint optionID, uint price, int size, uint orderID, uint blockExpires, uint8 v, bytes32 r, bytes32 s) {
+  function cancelOrder(address contractAddr, uint optionID, uint price, int size, uint orderID, uint blockExpires, uint8 v, bytes32 r, bytes32 s) {
     if (msg.value>0) throw;
-    bytes32 hash = sha256(optionID, price, size, orderID, blockExpires);
+    bytes32 hash = sha256(contractAddr, optionID, price, size, orderID, blockExpires);
     if (ecrecover(hash,v,r,s) != msg.sender) throw;
+    if (contractAddr != address(this)) throw;
     orderFills[hash] = size;
-    Cancel(optionID, price, size, orderID, blockExpires, msg.sender, v, r, s);
+    Cancel(contractAddr, optionID, price, size, orderID, blockExpires, msg.sender, v, r, s);
   }
 
   function getFundsAndAvailable(address user) constant returns(int, int) {
@@ -249,21 +251,27 @@ contract Etheropt is SafeMath {
     }
   }
 
-  function orderMatchTest(uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, address sender, uint value, int matchSize) constant returns(bool) {
+  function orderMatchTest(address contractAddr, uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, address sender, uint value, int matchSize) constant returns(bool) {
+    if (contractAddr != address(this)) return false;
     if (block.number>blockExpires) return false;
     if (size>0 && matchSize>0) return false;
     if (size<0 && matchSize<0) return false;
-    if (size>0 && matchSize<0 && orderFills[sha256(optionID, price, size, orderID, blockExpires)]>safeAddi(size,matchSize)) return false;
-    if (size<0 && matchSize>0 && orderFills[sha256(optionID, price, size, orderID, blockExpires)]<safeAddi(size,matchSize)) return false;
+    if (size>0 && matchSize<0 && orderFills[sha256(contractAddr, optionID, price, size, orderID, blockExpires)]>safeAddi(size,matchSize)) return false;
+    if (size<0 && matchSize>0 && orderFills[sha256(contractAddr, optionID, price, size, orderID, blockExpires)]<safeAddi(size,matchSize)) return false;
     if (getFunds(addr, false)+getMaxLossAfterTrade(addr, optionID, -matchSize, matchSize * safeUintToInt(price))<=0) return false;
     if (getFunds(sender, false)+int(value)+getMaxLossAfterTrade(sender, optionID, matchSize, -matchSize * safeUintToInt(price))<=0) return false;
     return true;
   }
 
-  function orderMatch(uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, uint8 v, bytes32 r, bytes32 s, int matchSize) {
+  function getOrderFill(address contractAddr, uint optionID, uint price, int size, uint orderID, uint blockExpires) constant returns(int) {
+    return size-orderFills[sha256(contractAddr, optionID, price, size, orderID, blockExpires)];
+  }
+
+  function orderMatch(address contractAddr, uint optionID, uint price, int size, uint orderID, uint blockExpires, address addr, uint8 v, bytes32 r, bytes32 s, int matchSize) {
     addFunds();
-    bytes32 hash = sha256(optionID, price, size, orderID, blockExpires);
+    bytes32 hash = sha256(contractAddr, optionID, price, size, orderID, blockExpires);
     if (ecrecover(hash, v, r, s) != addr) throw;
+    if (contractAddr != address(this)) throw;
     if (block.number>blockExpires) throw;
     if (size>0 && matchSize>0) throw;
     if (size<0 && matchSize<0) throw;

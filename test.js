@@ -163,15 +163,15 @@ describe("Test", function(done) {
             assert.equal(err, undefined);
             blockExpires = blockNumber + blockExpires;
             var option = {optionID: optionID};
-            var condensed = utility.pack([option.optionID, price, size, orderID, blockExpires], [256, 256, 256, 256, 256]);
+            var condensed = utility.pack([contractMarketAddr, option.optionID, price, size, orderID, blockExpires], [160, 256, 256, 256, 256, 256]);
             var hash = sha256(new Buffer(condensed,'hex'));
             utility.sign(web3, orderAccount, hash, undefined, function(err, sig) {
               assert.equal(err, undefined);
               var order = {optionID: option.optionID, price: price, size: size, orderID: orderID, blockExpires: blockExpires, addr: orderAccount, v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
-              utility.testCall(web3, contractMarket, contractMarketAddr, 'orderMatchTest', [order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, counterpartyAccount, 0, matchSize], function(err, result) {
+              utility.testCall(web3, contractMarket, contractMarketAddr, 'orderMatchTest', [contractMarketAddr, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, counterpartyAccount, 0, matchSize], function(err, result) {
                 assert.equal(err, undefined);
                 assert.equal(result, true);
-                utility.testSend(web3, contractMarket, contractMarketAddr, 'orderMatch', [order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 4000000, value: 0}], counterpartyAccount, undefined, 0, function(err, result) {
+                utility.testSend(web3, contractMarket, contractMarketAddr, 'orderMatch', [contractMarketAddr, order.optionID, order.price, order.size, order.orderID, order.blockExpires, order.addr, order.v, order.r, order.s, matchSize, {gas: 4000000, value: 0}], counterpartyAccount, undefined, 0, function(err, result) {
                   assert.equal(err, undefined);
                   utility.testCall(web3, contractMarket, contractMarketAddr, 'getMarket', [orderAccount], function(err, result) {
                     assert.equal(err, undefined);

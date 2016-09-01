@@ -38,8 +38,5 @@
     <div class="navbar-form navbar-left">
       <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#expire_modal" data-contract="<%= contract.contractAddr%>"><i class="fa fa-calendar"></i> Expire</button>
     </div>
-    <div class="navbar-form navbar-left">
-      <button type="button" class="btn btn-default btn-xs" data-toggle="modal" data-target="#market_make_modal" data-contract="<%= contract.contractAddr%>" data-limit="<%= filteredOptions[0].margin%>" data-strikes="<%= filteredOptions.map(function(x){return x.kind=='Call' ? x.strike : -x.strike}).join(',') %>" data-range="0,30"><i class="fa fa-usd"></i> Market make</button>
-    </div>
   <% } %>
 </nav>

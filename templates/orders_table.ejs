@@ -3,22 +3,14 @@
     <th>Option</th>
     <th>Size @ price</th>
     <th>Expires (blocks)</th>
-    <th>Update every (blocks)</th>
-    <th>Last updated (blocks ago)</th>
-    <th>ETH/USD limits</th>
-    <th>Delta</th>
-    <th>Tie</th>
+    <th>Cancel</th>
   </tr>
   <% orders.forEach(function(order){ %>
     <tr>
       <td><%= order.option.expiration+" "+order.option.fromcur+"/"+order.option.tocur+" "+order.option.strike+" "+order.option.kind %></td>
-      <td><%= utility.weiToEth(order.size) %> eth @ <%= utility.weiToEth(order.priceTied ? order.priceTied : order.price) %></td>
-      <td><%= Math.max(0,order.blockNumber+order.expires-blockNumber) %></td>
-      <td><%= order.update %></td>
-      <td><%= order.lastUpdated>0 ? Math.max(0,blockNumber-order.lastUpdated) : '' %></td>
-      <td><%= order.priceAbove ? '>'+order.priceAbove : '' %> <%= order.priceBelow ? '<'+order.priceBelow : '' %></td>
-      <td><%= order.delta ? order.delta : '' %></td>
-      <td><%= order.tie ? order.tie : '' %></td>
+      <td><%= utility.weiToEth(order.size) %> eth @ <%= utility.weiToEth(order.price) %></td>
+      <td><%= Math.max(0,order.order.blockExpires-blockNumber) %></td>
+      <td><button style="btn btc-default btn-xs" onclick="bundle.Main.cancelOrder(<%= order.order.orderID %>)">Cancel</buton</td>
     </tr>
   <% }); %>
 </table>

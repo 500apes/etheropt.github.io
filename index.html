@@ -159,34 +159,8 @@
                         <input type="text" class="form-control" id="buy_expires" placeholder="Blocks" value="10" />
                       </div>
                       <div class="form-group">
-                        <label for="buy_update">Update every N blocks</label>
-                        <p>1 block &#8776; 15 seconds</p>
-                        <input type="text" class="form-control" id="buy_update" placeholder="Blocks" value="5" />
-                      </div>
-                      <div class="form-group">
-                        <label for="buy_gas">Gas</label>
-                        <p>This is the transaction fee charged by Ethereum.</p>
-                        <input type="text" class="form-control" id="buy_gas" placeholder="" value="1000000" />
-                      </div>
-                      <div class="form-group">
                         <label for="buy_post_only">Post only</label>
                         <input type="checkbox" class="form-control" id="buy_post_only" value="false" onchange="this.value=this.checked" />
-                      </div>
-                      <div class="form-group">
-                        <label for="buy_price_above">Good if ETH/USD above</label>
-                        <input type="text" class="form-control" id="buy_price_above" placeholder="Price" value="" />
-                      </div>
-                      <div class="form-group">
-                        <label for="buy_price_below">Good if ETH/USD below</label>
-                        <input type="text" class="form-control" id="buy_price_below" placeholder="Price" value="" />
-                      </div>
-                      <div class="form-group">
-                        <label for="buy_tie">Tie price</label>
-                        <input type="text" class="form-control" id="buy_tie" placeholder="Price" value="" />
-                      </div>
-                      <div class="form-group">
-                        <label for="buy_delta">Delta</label>
-                        <input type="text" class="form-control" id="buy_delta" placeholder="Delta" value="" />
                       </div>
                     </div>
                   </div>
@@ -252,34 +226,8 @@
                         <input type="text" class="form-control" id="sell_expires" placeholder="Blocks" value="10" />
                       </div>
                       <div class="form-group">
-                        <label for="sell_update">Update every N blocks</label>
-                        <p>1 block &#8776; 15 seconds</p>
-                        <input type="text" class="form-control" id="sell_update" placeholder="Blocks" value="5" />
-                      </div>
-                      <div class="form-group">
-                        <label for="sell_gas">Gas</label>
-                        <p>This is the transaction fee charged by Ethereum.</p>
-                        <input type="text" class="form-control" id="sell_gas" placeholder="" value="1000000" />
-                      </div>
-                      <div class="form-group">
                         <label for="sell_post_only">Post only</label>
                         <input type="checkbox" class="form-control" id="sell_post_only" value="false" onchange="this.value=this.checked" />
-                      </div>
-                      <div class="form-group">
-                        <label for="sell_price_above">Good if ETH/USD above</label>
-                        <input type="text" class="form-control" id="sell_price_above" placeholder="Price" value="" />
-                      </div>
-                      <div class="form-group">
-                        <label for="sell_price_below">Good if ETH/USD below</label>
-                        <input type="text" class="form-control" id="sell_price_below" placeholder="Price" value="" />
-                      </div>
-                      <div class="form-group">
-                        <label for="sell_tie">Tie price</label>
-                        <input type="text" class="form-control" id="sell_tie" placeholder="Price" value="" />
-                      </div>
-                      <div class="form-group">
-                        <label for="sell_delta">Delta</label>
-                        <input type="text" class="form-control" id="sell_delta" placeholder="Delta" value="" />
                       </div>
                     </div>
                   </div>
@@ -420,43 +368,6 @@
       </div>
     </div>
 
-    <!-- Market make -->
-    <div class="modal fade" id="market_make_modal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
-      <div class="modal-dialog modal-sm" role="document">
-        <div class="modal-content">
-          <div class="modal-header">
-            <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-            <h4 class="modal-title" id="myModalLabel">Market make</h4>
-          </div>
-          <div class="modal-body">
-            <form>
-              <div class="form-group">
-                <label for="market_make_pdf">PDF</label>
-                <p><a href="/pdf" id="market_make_pdf_link" target="_blank">Generate a PDF (probability density function)</a> and paste it here.</p>
-                <input type="text" class="form-control" id="market_make_pdf" placeholder="" />
-              </div>
-              <div class="form-group">
-                <label for="market_make_size">Size</label>
-                <input type="text" class="form-control" id="market_make_size" placeholder="Size (eth)" />
-              </div>
-              <div class="form-group">
-                <label for="market_make_width">Width</label>
-                <input type="text" class="form-control" id="market_make_width" placeholder="Width" />
-              </div>
-              <div class="form-group">
-                <label for="market_make_post_only">Post only</label>
-                <input type="checkbox" class="form-control" id="market_make_post_only" value="true" onchange="this.value=this.checked" checked="checked" />
-              </div>
-              <input type="hidden" id="market_make_contract_addr" value="" />
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-primary" id="market_make_stop">Stop</button>
-            <button type="button" class="btn btn-primary" id="market_make_start">Start</button>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <script src="//code.jquery.com/jquery-1.11.1.min.js" type="text/javascript"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/golden-layout/1.5.1/goldenlayout.min.js" type="text/javascript"></script>

@@ -89,7 +89,6 @@ Main.logout = function() {
   pks = [config.ethAddrPrivateKey];
   selectedAccount = 0;
   nonce = undefined;
-  marketMakers = {};
   browserOrders = [];
   Main.refresh(function(){}, true);
 }
@@ -105,14 +104,12 @@ Main.deleteAccount = function() {
   pks.splice(selectedAccount, 1);
   selectedAccount = 0;
   nonce = undefined;
-  marketMakers = {};
   browserOrders = [];
   Main.refresh(function(){}, true);
 }
 Main.selectAccount = function(i) {
   selectedAccount = i;
   nonce = undefined;
-  marketMakers = {};
   browserOrders = [];
   Main.refresh(function(){}, true);
 }
@@ -129,7 +126,6 @@ Main.addAccount = function(addr, pk) {
     pks.push(pk);
     selectedAccount = addrs.length-1;
     nonce = undefined;
-    marketMakers = {};
     browserOrders = [];
     Main.refresh(function(){}, true);
   }
@@ -149,192 +145,176 @@ Main.shapeshift_click = function(a,e) {
   window.open(link,'1418115287605','width=700,height=500,toolbar=0,menubar=0,location=0,status=1,scrollbars=1,resizable=0,left=0,top=0');
   return false;
 }
-Main.processOrders = function(callback) {
+Main.displayMyOrders = function(callback) {
   utility.blockNumber(web3, function(err, blockNumber) {
-    //process orders
-    browserOrders = browserOrders.filter(function(browserOrder){return blockNumber<browserOrder.blockNumber+browserOrder.expires && browserOrder.size!=0});
-    async.eachSeries(browserOrders,
-      function(browserOrder, callbackBrowserOrder) {
-        if (blockNumber>=browserOrder.lastUpdated+browserOrder.update) {
-          browserOrder.lastUpdated = blockNumber;
-          //update option
-          browserOrder.option = optionsCache.filter(function(option){return option.contractAddr == browserOrder.option.contractAddr && option.optionID == browserOrder.option.optionID})[0];
-          if (browserOrder.positionLock!=undefined) {
-            browserOrder.size -= (browserOrder.option.position-browserOrder.positionLock); //update remaining size based on change in position
+    var orders = [];
+    async.each(optionsCache,
+      function(option, callbackEach) {
+        option.buyOrders.forEach(function(x){
+          if (x.order.addr.toLowerCase()==addrs[selectedAccount].toLowerCase()) {
+            orders.push({order: x.order, size: x.size, price: x.price, option: option});
           }
-          browserOrder.positionLock = browserOrder.option.position;
-          if ((browserOrder.priceAbove==undefined || price>browserOrder.priceAbove) && (browserOrder.priceBelow==undefined || price<browserOrder.priceBelow) && (Date.now()-priceUpdated<30*1000)) {
-            browserOrder.priceTied = browserOrder.price;
-            if (browserOrder.tie!=undefined && browserOrder.delta!=undefined) {
-              browserOrder.priceTied = browserOrder.price + browserOrder.delta * 1000000000000000000 * (price - browserOrder.tie);
-            }
-            //market maker order
-            if (browserOrder.marketMaker) {
-              var marketMaker = marketMakers[browserOrder.marketMaker];
-              if (marketMaker) {
-                var theo = 0;
-                for (var i=0; i<marketMaker.pdf.length; i++) {
-                  theo += (browserOrder.option.kind=='Call' ? Math.max(0,Math.min(browserOrder.option.margin, marketMaker.pdf[i][0]-browserOrder.option.strike)) : Math.max(0,Math.min(browserOrder.option.margin, browserOrder.option.strike-marketMaker.pdf[i][0]))) * marketMaker.pdf[i][1];
-                }
-                if (browserOrder.size>0) {
-                  browserOrder.size = marketMaker.size;
-                  browserOrder.price = (Math.max(0,theo-marketMaker.width/2)).toFixed(2)*1000000000000000000;
-                } else {
-                  browserOrder.size = -marketMaker.size;
-                  browserOrder.price = (Math.max(0,theo+marketMaker.width/2)).toFixed(2)*1000000000000000000;
-                }
-                browserOrder.priceTied = browserOrder.price;
-              } else {
-                browserOrder.size = 0;
-              }
-            }
-            //send the remainder of the order to rest on the order book
-            function sendToOrderBook() {
-              if (browserOrder.size-cumulativeMatchSize!=0) {
-                browserOrder.priceTied = utility.roundToNearest(browserOrder.priceTied, 1000000);
-                utility.blockNumber(web3, function(err, blockNumber) {
-                  var orderID = utility.getRandomInt(0,Math.pow(2,32));
-                  var blockExpires = blockNumber + browserOrder.update;
-                  var condensed = utility.pack([browserOrder.option.optionID, browserOrder.priceTied, browserOrder.size-cumulativeMatchSize, orderID, blockExpires], [256, 256, 256, 256, 256]);
-                  var hash = sha256(new Buffer(condensed,'hex'));
-                  utility.sign(web3, addrs[selectedAccount], hash, pks[selectedAccount], function(err, sig) {
-                    if (sig) {
-                      var order = {contractAddr: browserOrder.option.contractAddr, optionID: browserOrder.option.optionID, price: browserOrder.priceTied, size: browserOrder.size-cumulativeMatchSize, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAccount], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
-                      condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
-                      hash = '0x'+sha256(new Buffer(condensed,'hex'));
-                      var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
-                      utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
-                        var balance = result.toNumber();
-                        utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
-                          balance = balance + result.toNumber();
-                          if (!verified) {
-                            Main.alertError('You tried sending an order to the order book, but signature verification failed.');
-                            callbackBrowserOrder();
-                          } else if (balance<=0) {
-                            Main.alertError('You tried sending an order to the order book, but you do not have enough funds to place your order. You need to add '+(utility.weiToEth(-balance))+' eth to your account to cover this trade. ');
-                            callbackBrowserOrder();
-                          } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
-                            utility.postGitterMessage(JSON.stringify(order), function(err, result){
-                              if (!err) {
-                                Main.alertInfo('You sent an order to the order book!');
-                              } else {
-                                Main.alertError('You tried sending an order to the order book but there was an error.');
-                              }
-                              callbackBrowserOrder();
-                            });
-                          } else {
-                            callbackBrowserOrder();
-                          }
-                        });
-                      });
-                    } else {
-                      Main.alertError('You tried sending an order to the order book, but it could not be signed.');
-                      console.log(err);
-                      callbackBrowserOrder();
-                    }
-                  });
-                });
-              } else {
-                callbackBrowserOrder();
-              }
-            }
-            //match against existing orders
-            var cumulativeMatchSize = 0;
-            if (browserOrder.postOnly==false) { //as long as postOnly isn't set
-              var matchOrders = browserOrder.size>0 ? browserOrder.option.sellOrders : browserOrder.option.buyOrders;
-              async.each(matchOrders,
-                function(matchOrder, callbackMatchOrder) {
-                  if ((browserOrder.size>0 && browserOrder.priceTied>=matchOrder.order.price) || (browserOrder.size<0 && browserOrder.priceTied<=matchOrder.order.price)) {
-                    var matchSize = 0;
-                    if (Math.abs(cumulativeMatchSize)>=Math.abs(browserOrder.size)) {
-                      //we've attempted to match enough size already
-                    } else if (Math.abs(browserOrder.size-cumulativeMatchSize)>=Math.abs(matchOrder.size)) { //the order is bigger than the match order
-                      matchSize = -matchOrder.order.size;
-                    } else { //the match order covers the order
-                      matchSize = browserOrder.size-cumulativeMatchSize;
-                    }
-                    if (matchSize!=0) {
-                      cumulativeMatchSize += matchSize; //let's assume the order will go through
-                      var deposit = utility.ethToWei(0);
-                      utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'orderMatchTest', [matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, addrs[selectedAccount], deposit, matchSize], function(err, result) {
-                        if (result && blockNumber<matchOrder.order.blockExpires-1) {
-                          utility.send(web3, contractMarket, browserOrder.option.contractAddr, 'orderMatch', [matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, matchOrder.order.v, matchOrder.order.r, matchOrder.order.s, matchSize, {gas: browserOrder.gas, value: deposit}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
-                            txHash = result.txHash;
-                            nonce = result.nonce;
-                            Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
-                            Main.alertTxResult(err, result);
-                            callbackMatchOrder();
-                          });
-                        } else {
-                          Main.alertError('You tried to match against a resting order but the order match failed. This can be because the order expired or traded already, or either you or the counterparty do not have enough funds to cover the trade.');
-                          callbackMatchOrder();
-                        }
-                      });
-                    } else {
-                      callbackMatchOrder();
-                    }
-                  } else {
-                    callbackMatchOrder();
-                  }
-                },
-                function(err) {
-                  sendToOrderBook();
-                }
-              );
-            } else {
-              sendToOrderBook();
-            }
+        });
+        option.sellOrders.forEach(function(x){
+          if (x.order.addr.toLowerCase()==addrs[selectedAccount].toLowerCase()) {
+            orders.push({order: x.order, size: x.size, price: x.price, option: option});
           }
-        } else {
-          callbackBrowserOrder();
-        }
+        });
+        callbackEach(null);
       },
       function(err) {
-        //update display
-        new EJS({url: config.homeURL+'/templates/'+'orders_table.ejs'}).update('orders', {orders: browserOrders, utility: utility, blockNumber: blockNumber});
+        new EJS({url: config.homeURL+'/templates/'+'orders_table.ejs'}).update('orders', {orders: orders, utility: utility, blockNumber: blockNumber});
         callback();
       }
     );
   });
 }
-Main.order = function(option, price, size, expires, update, gas, priceAbove, priceBelow, delta, tie, postOnly) {
+Main.cancelOrder = function(orderID) {
+  var orderToCancel = undefined;
+  optionsCache.forEach(function(option){
+    option.buyOrders.forEach(function(order){
+      if (order.order.orderID==orderID && order.order.addr.toLowerCase()==addrs[selectedAccount].toLowerCase()) {
+        orderToCancel = order.order;
+      }
+    });
+    option.sellOrders.forEach(function(order){
+      if (order.order.orderID==orderID && order.order.addr.toLowerCase()==addrs[selectedAccount].toLowerCase()) {
+        orderToCancel = order.order;
+      }
+    });
+  });
+  if (orderToCancel) {
+    utility.send(web3, contractMarket, orderToCancel.contractAddr, 'cancelOrder', [orderToCancel.contractAddr, orderToCancel.optionID, orderToCancel.price, orderToCancel.size, orderToCancel.orderID, orderToCancel.blockExpires, orderToCancel.v, orderToCancel.r, orderToCancel.s, {gas: 150000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+      txHash = result.txHash;
+      nonce = result.nonce;
+      Main.alertTxResult(err, result);
+    });
+  }
+}
+Main.processOrder = function(browserOrder, callback) {
+  utility.blockNumber(web3, function(err, blockNumber) {
+    //update option
+    browserOrder.option = optionsCache.filter(function(option){return option.contractAddr == browserOrder.option.contractAddr && option.optionID == browserOrder.option.optionID})[0];
+    //send the remainder of the order to rest on the order book
+    function sendToOrderBook(cumulativeMatchSize) {
+      if (Math.abs(browserOrder.size)-Math.abs(cumulativeMatchSize)>0) {
+        utility.blockNumber(web3, function(err, blockNumber) {
+          var orderID = utility.getRandomInt(0,Math.pow(2,32));
+          var blockExpires = blockNumber + browserOrder.expires;
+          var condensed = utility.pack([browserOrder.option.contractAddr, browserOrder.option.optionID, browserOrder.price, browserOrder.size-cumulativeMatchSize, orderID, blockExpires], [160, 256, 256, 256, 256, 256]);
+          var hash = sha256(new Buffer(condensed,'hex'));
+          utility.sign(web3, addrs[selectedAccount], hash, pks[selectedAccount], function(err, sig) {
+            if (sig) {
+              var order = {contractAddr: browserOrder.option.contractAddr, optionID: browserOrder.option.optionID, price: browserOrder.price, size: browserOrder.size-cumulativeMatchSize, orderID: orderID, blockExpires: blockExpires, addr: addrs[selectedAccount], v: sig.v, r: sig.r, s: sig.s, hash: '0x'+hash};
+              condensed = utility.pack([order.contractAddr, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [160, 256, 256, 256, 256, 256]);
+              hash = '0x'+sha256(new Buffer(condensed,'hex'));
+              var verified = utility.verify(web3, order.addr, order.v, order.r, order.s, order.hash);
+              utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'getFunds', [order.addr, false], function(err, result) {
+                var balance = result.toNumber();
+                utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'getMaxLossAfterTrade', [order.addr, order.optionID, order.size, -order.size*order.price], function(err, result) {
+                  balance = balance + result.toNumber();
+                  if (!verified) {
+                    Main.alertError('You tried sending an order to the order book, but signature verification failed.');
+                    callback();
+                  } else if (balance<=0) {
+                    Main.alertError('You tried sending an order to the order book, but you do not have enough funds to place your order. You need to add '+(utility.weiToEth(-balance))+' eth to your account to cover this trade. ');
+                    callback();
+                  } else if (blockNumber<=order.blockExpires && verified && hash==order.hash && balance>=0) {
+                    utility.postGitterMessage(JSON.stringify(order), function(err, result){
+                      if (!err) {
+                        Main.alertInfo('You sent an order to the order book!');
+                      } else {
+                        Main.alertError('You tried sending an order to the order book but there was an error.');
+                      }
+                      callback();
+                    });
+                  } else {
+                    callback();
+                  }
+                });
+              });
+            } else {
+              Main.alertError('You tried sending an order to the order book, but it could not be signed.');
+              console.log(err);
+              callback();
+            }
+          });
+        });
+      } else {
+        callback();
+      }
+    }
+    //match against existing orders
+    var cumulativeMatchSize = 0;
+    if (browserOrder.postOnly==false) { //as long as postOnly isn't set
+      var matchOrders = browserOrder.size>0 ? browserOrder.option.sellOrders : browserOrder.option.buyOrders;
+      async.eachSeries(matchOrders,
+        function(matchOrder, callbackMatchOrder) {
+          if ((browserOrder.size>0 && browserOrder.price>=matchOrder.order.price) || (browserOrder.size<0 && browserOrder.price<=matchOrder.order.price)) {
+            var matchSize = 0;
+            if (Math.abs(cumulativeMatchSize)>=Math.abs(browserOrder.size)) {
+              //we've attempted to match enough size already
+            } else if (Math.abs(browserOrder.size-cumulativeMatchSize)>=Math.abs(matchOrder.size)) { //the order is bigger than the match order
+              matchSize = -matchOrder.order.size;
+            } else { //the match order covers the order
+              matchSize = browserOrder.size-cumulativeMatchSize;
+            }
+            if (matchSize!=0) {
+              cumulativeMatchSize += matchSize; //let's assume the order will go through
+              var deposit = utility.ethToWei(0);
+              utility.call(web3, contractMarket, browserOrder.option.contractAddr, 'orderMatchTest', [matchOrder.order.contractAddr, matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, addrs[selectedAccount], deposit, matchSize], function(err, result) {
+                if (result && blockNumber<matchOrder.order.blockExpires-1) {
+                  utility.send(web3, contractMarket, browserOrder.option.contractAddr, 'orderMatch', [matchOrder.order.contractAddr, matchOrder.order.optionID, matchOrder.order.price, matchOrder.order.size, matchOrder.order.orderID, matchOrder.order.blockExpires, matchOrder.order.addr, matchOrder.order.v, matchOrder.order.r, matchOrder.order.s, matchSize, {gas: 1000000, value: deposit}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+                    txHash = result.txHash;
+                    nonce = result.nonce;
+                    Main.alertInfo('Some of your order ('+utility.weiToEth(Math.abs(matchSize))+' eth) was sent to the blockchain to match against a resting order.');
+                    Main.alertTxResult(err, result);
+                    callbackMatchOrder();
+                  });
+                } else {
+                  Main.alertError('You tried to match against a resting order but the order match failed. This can be because the order expired or traded already, or either you or the counterparty do not have enough funds to cover the trade.');
+                  callbackMatchOrder();
+                }
+              });
+            } else {
+              callbackMatchOrder();
+            }
+          } else {
+            callbackMatchOrder();
+          }
+        },
+        function(err) {
+          sendToOrderBook(cumulativeMatchSize);
+        }
+      );
+    } else {
+      sendToOrderBook(cumulativeMatchSize);
+    }
+  });
+}
+Main.order = function(option, price, size, expires, postOnly) {
   option = JSON.parse(option);
   size = utility.ethToWei(size);
   price = price * 1000000000000000000;
-  gas = Number(gas);
   expires = Number(expires);
-  update = Number(update);
-  priceAbove = priceAbove ? Number(priceAbove) : undefined;
-  priceBelow = priceBelow ? Number(priceBelow) : undefined;
-  delta = delta ? Number(delta) : undefined;
-  tie = tie ? Number(tie) : undefined;
   postOnly = postOnly=='true' ? true : false;
-  utility.blockNumber(web3, function(err, blockNumber) {
-    var order = {option: option, price: price, size: size, expires: expires, update: update, gas: gas, priceAbove: priceAbove, priceBelow: priceBelow, delta: delta, tie: tie, postOnly: postOnly, blockNumber: blockNumber, lastUpdated: 0};
-    browserOrders.push(order);
-    Main.refresh(function(){});
-  });
-}
-Main.marketMakeStart = function(contractAddr, pdf, size, width, postOnly) {
-  utility.blockNumber(web3, function(err, blockNumber) {
-    size = utility.ethToWei(size);
-    pdf = JSON.parse(pdf);
-    width = Number(width);
-    postOnly = postOnly=='true' ? true : false;
-    marketMakers[contractAddr] = {pdf: pdf, size: size, contractAddr: contractAddr, width: width};
-    browserOrders = browserOrders.filter(function(browserOrder){return browserOrder.marketMaker!=contractAddr});
-    optionsCache.filter(function(option) {return option.contractAddr==contractAddr}).forEach(function(option) {
-      var orderBuy = {marketMaker: contractAddr, option: option, price: undefined, size: 1, expires: 1000000, update: 5, gas: 1000000, priceAbove: undefined, priceBelow: undefined, delta: undefined, tie: undefined, postOnly: postOnly, blockNumber: blockNumber, lastUpdated: 0};
-      browserOrders.push(orderBuy);
-      var orderSell = {marketMaker: contractAddr, option: option, price: undefined, size: -1, expires: 1000000, update: 5, gas: 1000000, priceAbove: undefined, priceBelow: undefined, delta: undefined, tie: undefined, postOnly: postOnly, blockNumber: blockNumber, lastUpdated: 0};
-      browserOrders.push(orderSell);
+  var order = {option: option, price: price, size: size, expires: expires, postOnly: postOnly};
+  var contract = Main.getContract(option.contractAddr);
+  if (contract && contract.version>=2) {
+    Main.processOrder(order, function(){
+      Main.refresh(function(){}, true);
     });
-    Main.processOrders(function(){});
-  });
+  } else {
+    Main.alertDialog("This contract is out of date. You can no longer place orders, but existing funds and positions are safe, and you are free to withdraw from your available balance. This contract will settle as usual when it expires.");
+  }
 }
-Main.marketMakeStop = function(contractAddr) {
-  delete marketMakers[contractAddr];
-  browserOrders = browserOrders.filter(function(browserOrder){return browserOrder.marketMaker!=contractAddr});
+Main.getContract = function(contractAddr) {
+  var matchingContracts = contractsCache.filter(function(x){return x.contractAddr==contractAddr});
+  if (matchingContracts.length>=1) {
+    return matchingContracts[0];
+  } else {
+    return undefined;
+  }
 }
 Main.fund = function(amount, contractAddr) {
   amount = utility.ethToWei(amount);
@@ -536,7 +516,7 @@ Main.loadPrices = function(callback) {
           function(order, callbackFilter) {
             order = order.order;
             if (blockNumber<order.blockExpires) {
-              var condensed = utility.pack([order.optionID, order.price, order.size, order.orderID, order.blockExpires], [256, 256, 256, 256, 256]);
+              var condensed = utility.pack([order.contractAddr, order.optionID, order.price, order.size, order.orderID, order.blockExpires], [160, 256, 256, 256, 256, 256]);
               var hash = '0x'+sha256(new Buffer(condensed,'hex'));
               var verified = false;
               try {
@@ -563,16 +543,27 @@ Main.loadPrices = function(callback) {
           },
           function(ordersValid) {
             Main.createCookie(config.deadOrdersCookie, JSON.stringify(deadOrders), 999);
-            for (var i=0; i<ordersValid.length; i++) {
-              var order = ordersValid[i];
-              if (order.order.size>0) newBuyOrders.push(order);
-              if (order.order.size<0) newSellOrders.push(order);
-            }
-            option.buyOrders = newBuyOrders;
-            option.sellOrders = newSellOrders;
-            option.buyOrders.sort(function(a,b){return b.price - a.price || b.size - a.size || a.id - b.id});
-            option.sellOrders.sort(function(a,b){return a.price - b.price || b.size - a.size || a.id - b.id});
-            callbackMap(null, option);
+            async.each(ordersValid,
+              function(order, callbackEach) {
+                utility.call(web3, contractMarket, order.order.contractAddr, 'getOrderFill', [order.order.contractAddr, order.order.optionID, order.order.price, order.order.size, order.order.orderID, order.order.blockExpires], function(err, result) {
+                  if (!err && result!=0) {
+                    order.remainingSize = result.toNumber();
+                    if (order.order.size>0) newBuyOrders.push(order);
+                    if (order.order.size<0) newSellOrders.push(order);
+                  } else {
+                    deadOrders[order.id] = true;
+                  }
+                  callbackEach(null);
+                });
+              },
+              function(err) {
+                option.buyOrders = newBuyOrders;
+                option.sellOrders = newSellOrders;
+                option.buyOrders.sort(function(a,b){return b.price - a.price || b.remainingSize - a.remainingSize || a.id - b.id});
+                option.sellOrders.sort(function(a,b){return a.price - b.price || b.remainingSize - a.remainingSize || a.id - b.id});
+                callbackMap(null, option);
+              }
+            );
           }
         );
       },
@@ -679,7 +670,13 @@ Main.loadContractsFunds = function(callback) {
           var funds = result[0].toString();
           var fundsAvailable = result[1].toString();
           var contractLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/address/'+contractAddr;
-          callback(null, {contractAddr: contractAddr, contractLink: contractLink, funds: funds, fundsAvailable: fundsAvailable});
+          utility.call(web3, contractMarket, contractAddr, 'version', [], function(err, result) {
+            var version = -1;
+            if (!err) {
+              version = result;
+            }
+            callback(null, {contractAddr: contractAddr, contractLink: contractLink, funds: funds, fundsAvailable: fundsAvailable, version: version});
+          });
         } else {
           callback(null, undefined);
         }
@@ -900,7 +897,6 @@ Main.refresh = function(callback, force) {
     Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
     Main.updatePrice(function(){});
-    Main.processOrders(function(){});
     Main.loadEvents(function(newEvents){
       if (newEvents>0 || force) {
         Main.loadContractsFunds(function(){
@@ -915,6 +911,7 @@ Main.refresh = function(callback, force) {
     Main.getGitterMessages(function(){
       Main.loadPrices(function(){
         Main.displayMarket(function(){
+          Main.displayMyOrders(function(){});
           $('#loading').hide();
         });
       });
@@ -946,7 +943,6 @@ var eventsCache = {};
 var contractsCache = undefined;
 var optionsCache = undefined;
 var browserOrders = [];
-var marketMakers = {};
 var deadOrders = {};
 var refreshing = 0;
 var lastRefresh = undefined;
@@ -85846,8 +85842,8 @@ var configs = {};
 
 //mainnet
 configs["1"] = {
-  homeURL: 'https://etheropt.github.io',
-  // homeURL: 'http://0.0.0.0:8080',
+  // homeURL: 'https://etheropt.github.io',
+  homeURL: 'http://0.0.0.0:8080',
   contractMarket: 'smart_contract/etheropt.sol',
   contractContracts: 'smart_contract/etheropt_contracts.sol',
   contractAddrs: [],
@@ -85872,8 +85868,8 @@ configs["1"] = {
 
 //testnet
 configs["2"] = {
-  homeURL: 'https://etheropt.github.io',
-  // homeURL: 'http://0.0.0.0:8080',
+  // homeURL: 'https://etheropt.github.io',
+  homeURL: 'http://0.0.0.0:8080',
   contractMarket: 'smart_contract/etheropt.sol',
   contractContracts: 'smart_contract/etheropt_contracts.sol',
   contractAddrs: [],
