@@ -624,7 +624,9 @@ Main.loadPositions = function(callback) {
   );
 }
 Main.loadEvents = function(callback) {
+  console.log('A')
   utility.blockNumber(web3, function(err, blockNumber) {
+    console.log('B', blockNumber)
     var startBlock = 0;
     // startBlock = blockNumber-15000;
     for (id in eventsCache) {
