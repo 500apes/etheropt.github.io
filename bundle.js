@@ -640,9 +640,11 @@ Main.loadEvents = function(callback) {
         }
       }
     }
+    console.log(config.contractAddrs)
     async.map(config.contractAddrs,
       function(contractAddr, callbackMap){
         utility.logsOnce(web3, contractMarket, contractAddr, startBlock, 'latest', function(err, events) {
+          console.log(contractAddr, err, events)
           if (!err) {
             var newEvents = 0;
             events.forEach(function(event){
