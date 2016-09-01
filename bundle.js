@@ -647,13 +647,17 @@ Main.loadEvents = function(callback) {
           console.log(contractAddr, err, events)
           if (!err) {
             var newEvents = 0;
-            events.forEach(function(event){
-              if (!eventsCache[event.transactionHash+event.logIndex]) {
-                newEvents++;
-                event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
-                eventsCache[event.transactionHash+event.logIndex] = event;
-              }
-            });
+            try {
+              events.forEach(function(event){
+                if (!eventsCache[event.transactionHash+event.logIndex]) {
+                  newEvents++;
+                  event.txLink = 'http://'+(config.ethTestnet ? 'testnet.' : '')+'etherscan.io/tx/'+event.transactionHash;
+                  eventsCache[event.transactionHash+event.logIndex] = event;
+                }
+              });
+            }catch(err) {
+              console.log("err", err)
+            }
             console.log('calling callbackMap a')
             callbackMap(null, newEvents);
           } else {
