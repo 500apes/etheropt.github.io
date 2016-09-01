@@ -652,8 +652,10 @@ Main.loadEvents = function(callback) {
                 eventsCache[event.transactionHash+event.logIndex] = event;
               }
             });
+            console.log('calling callbackMap a')
             callbackMap(null, newEvents);
           } else {
+            console.log('calling callbackMap b')
             callbackMap(null, 0);
           }
         });
