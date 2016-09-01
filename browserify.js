@@ -150,12 +150,12 @@ Main.displayMyOrders = function(callback) {
       function(option, callbackEach) {
         option.buyOrders.forEach(function(x){
           if (x.order.addr.toLowerCase()==addrs[selectedAccount].toLowerCase()) {
-            orders.push({order: x.order, size: x.size, price: x.price, option: option});
+            orders.push({order: x.order, size: x.size, remainingSize: x.remainingSize, price: x.price, option: option});
           }
         });
         option.sellOrders.forEach(function(x){
           if (x.order.addr.toLowerCase()==addrs[selectedAccount].toLowerCase()) {
-            orders.push({order: x.order, size: x.size, price: x.price, option: option});
+            orders.push({order: x.order, size: x.size, remainingSize: x.remainingSize, price: x.price, option: option});
           }
         });
         callbackEach(null);
@@ -409,6 +409,7 @@ Main.newExpiration = function(fromcur, tocur, date, calls, puts, margin) {
   var strikes = calls.split(",").map(function(x){return Number(x)}).slice(0,5).concat(puts.split(",").map(function(x){return -Number(x)}).slice(0,5));
   strikes.sort(function(a,b){ return Math.abs(a)-Math.abs(b) || a-b });
   request.post('https://www.realitykeys.com/api/v1/exchange/new', {form: {fromcur: fromcur, tocur: tocur, settlement_date: expiration, objection_period_secs: '86400', accept_terms_of_service: 'current', use_existing: '1'}}, function(err, httpResponse, body){
+    console.log(err, body);
     if (!err) {
       result = JSON.parse(body);
       var realityID = result.id;
