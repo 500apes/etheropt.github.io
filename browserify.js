@@ -471,6 +471,7 @@ Main.connectionTest = function() {
   return connection;
 }
 Main.displayAccounts = function(callback) {
+  console.log('d')
   if (Main.connectionTest().connection=='RPC') {
     $('#pk_div').hide();
   }
@@ -895,8 +896,11 @@ Main.refresh = function(callback, force) {
     Main.createCookie(config.userCookie, JSON.stringify({"addrs": addrs, "pks": pks, "selectedAccount": selectedAccount}), 999);
     Main.connectionTest();
     Main.updatePrice(function(){});
+    console.log('a')
     Main.loadEvents(function(newEvents){
+      console.log('b')
       if (newEvents>0 || force) {
+        console.log('c')
         Main.loadContractsFunds(function(){
           Main.loadPositions(function(){
             Main.displayMarket(function(){});
