@@ -548,7 +548,7 @@ Main.loadPrices = function(callback) {
               function(order, callbackEach) {
                 utility.call(web3, contractMarket, order.order.contractAddr, 'getOrderFill', [order.order.contractAddr, order.order.optionID, order.order.price, order.order.size, order.order.orderID, order.order.blockExpires], function(err, result) {
                   if (!err && result!=0) {
-                    order.remainingSize = result.toNumber();
+                    order.remainingSize = Math.abs(result.toNumber());
                     if (order.order.size>0) newBuyOrders.push(order);
                     if (order.order.size<0) newSellOrders.push(order);
                   } else {
