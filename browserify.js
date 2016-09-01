@@ -624,9 +624,7 @@ Main.loadPositions = function(callback) {
   );
 }
 Main.loadEvents = function(callback) {
-  console.log('A')
   utility.blockNumber(web3, function(err, blockNumber) {
-    console.log('B', blockNumber)
     var startBlock = 0;
     // startBlock = blockNumber-15000;
     for (id in eventsCache) {
@@ -640,12 +638,9 @@ Main.loadEvents = function(callback) {
         }
       }
     }
-    console.log(config.contractAddrs)
     async.map(config.contractAddrs,
       function(contractAddr, callbackMap){
-        console.log(contractAddr);
         utility.logsOnce(web3, contractMarket, contractAddr, startBlock, 'latest', function(err, events) {
-          console.log(err, events);
           var newEvents = 0;
           events.forEach(function(event){
             if (!eventsCache[event.transactionHash+event.logIndex]) {
@@ -658,6 +653,7 @@ Main.loadEvents = function(callback) {
         });
       },
       function (err, newEventsArray) {
+        console.log(newEventsArray)
         var newEvents = newEventsArray.reduce(function(a,b){return a+b}, 0);
         Main.createCookie(config.eventsCacheCookie, JSON.stringify(eventsCache), 999);
         callback(newEvents);
