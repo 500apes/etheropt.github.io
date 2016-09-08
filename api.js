@@ -267,7 +267,7 @@ API.getUSDBalance = function(addr, callback) {
         }
       ],
       function(err, results){
-        var balances = {'Balance': results[0], 'Etheropt Balance': results[1]};
+        var balances = {'Balance': results[0], 'EtherOpt Balance': results[1]};
         var total = 0;
         for (var dapp in balances) {
           var balance = balances[dapp];
