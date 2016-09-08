@@ -9,12 +9,17 @@ var sha256 = require('js-sha256').sha256;
 function API(){
 }
 
-API.init = function(callback) {
+API.init = function(callback, path) {
   var self = this;
 
   //self.config, utility
   self.config = config;
   self.utility = utility;
+
+  if (path) {
+    self.config.contractMarket = path + self.config.contractMarket;
+    self.config.contractContracts = path + self.config.contractContracts;
+  }
 
   //web3
   self.web3 = new Web3();
