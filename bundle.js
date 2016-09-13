@@ -85189,7 +85189,7 @@ function logsOnce(web3, contract, address, fromBlock, toBlock, callback) {
   }
   function proxy(retries) {
     var url = 'https://'+(config.ethTestnet ? 'testnet' : 'api')+'.etherscan.io/api?module=logs&action=getLogs&address='+address+'&fromBlock='+fromBlock+'&toBlock='+toBlock;
-    request.get(url, function(err, httpResponse, body){
+    request.get(url, {timeout: 1500}, function(err, httpResponse, body){
       if (!err) {
         try {
           var result = JSON.parse(body);
@@ -85209,8 +85209,12 @@ function logsOnce(web3, contract, address, fromBlock, toBlock, callback) {
         } catch (err) {
           if (retries>0) {
             proxy(retries-1)
+          } else {
+            callback(null, []);
           }
         }
+      } else {
+        callback(null, []);
       }
     });
   }
