@@ -332,7 +332,7 @@ Main.withdraw = function(amount, contractAddr) {
       if (amount>fundsAvailable) amount = fundsAvailable;
     }
     if (amount>0) {
-      utility.send(web3, contractMarket, contractAddr, 'withdrawFunds', [amount, {gas: 300000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
+      utility.send(web3, contractMarket, contractAddr, 'withdrawFunds', [amount, {gas: 400000, value: 0}], addrs[selectedAccount], pks[selectedAccount], nonce, function(err, result) {
         txHash = result.txHash;
         nonce = result.nonce;
         Main.alertTxResult(err, result);

@@ -2,7 +2,7 @@ var request = require('request');
 var async = require('async');
 
 var period = 86400; //1 day bars
-var daysData = 200; //200 days
+var daysData = 3; //200 days
 var start = Math.ceil(Date.now()/1000 - daysData*86400);
 var end = Math.ceil(Date.now()/1000);
 var expectedDataPoints = daysData * 86400 / period;
@@ -77,5 +77,6 @@ async.parallel(
     console.log(new Date());
     console.log("BTC_USD price:", last_BTC_USD, ", vol:", vol_BTC_USD);
     console.log("ETH_USD price:", last_ETH_USD, ", vol:", vol_ETH_USD);
+    console.log(mean(ETH_USD));
   }
 );
